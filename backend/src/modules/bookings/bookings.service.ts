@@ -1,0 +1,1122 @@
+import crypto from 'crypto';
+import type { PrismaClient } from '@prisma/client';
+import {
+  BookingChannel,
+  BookingStatus,
+  PaymentStatus,
+  PaymentProvider,
+  AuditAction,
+  BookingChannel as BC,
+} from '@prisma/client';
+import type { Redis } from 'ioredis';
+import type { MobileMoneyGateway } from '../../infra/mobileMoney/gateway';
+import { enqueueSms } from '../../infra/queue/sms.queue';
+import type {
+  CreateBookingInput,
+  InitiatePaymentInput,
+  WalkInBookingInput,
+  CancelAtCounterInput,
+  BookingListQueryInput,
+  WebhookPayload,
+} from './bookings.schema';
+
+// =====================================================================
+// BookingsService
+// Contrat : docs/contrat-api.yaml §Traveler-Bookings, §Cooperative-Bookings
+// Règles critiques :
+//   RG-02 : Walk-in → PlatformFee = 0, Commission = 0 (vérifié explicitement)
+//   RG-03 : Pas de DELETE /bookings côté voyageur
+//   VH-05 : PlatformFee = max(1000, prix_total * 0.03)
+//   VH-09 : QR payload = JSON signé HMAC-SHA256
+// =====================================================================
+
+// =====================================================================
+// Erreurs métier
+// =====================================================================
+
+export class NotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NotFoundError';
+    (this as NodeJS.ErrnoException).code = 'NOT_FOUND';
+  }
+}
+
+export class ForbiddenError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ForbiddenError';
+    (this as NodeJS.ErrnoException).code = 'FORBIDDEN';
+  }
+}
+
+export class ConflictError extends Error {
+  constructor(
+    message: string,
+    public readonly conflictingSeats?: { seatDefinitionId: string; code: string; status: 'HELD' | 'SOLD' }[],
+  ) {
+    super(message);
+    this.name = 'ConflictError';
+    (this as NodeJS.ErrnoException).code = 'CONFLICT';
+  }
+}
+
+export class WebhookSignatureError extends Error {
+  constructor() {
+    super('Signature webhook invalide');
+    this.name = 'WebhookSignatureError';
+    (this as NodeJS.ErrnoException).code = 'INVALID_SIGNATURE';
+  }
+}
+
+// =====================================================================
+// Helpers
+// =====================================================================
+
+/**
+ * Génère une référence de réservation lisible : IT-XXXXX (5 alphanum).
+ */
+function generateBookingReference(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let ref = 'IT-';
+  const bytes = crypto.randomBytes(5);
+  for (let i = 0; i < 5; i++) {
+    ref += chars[bytes[i] % chars.length];
+  }
+  return ref;
+}
+
+/**
+ * Génère et signe le payload QR du billet (VH-09).
+ * Stocké en base même pour PENDING_PAYMENT, exposé uniquement si CONFIRMED.
+ */
+function generateQrPayload(data: {
+  bookingRef: string;
+  tripInstanceId: string;
+  seatCodes: string[];
+  issuedAt: string;
+}): string {
+  const secret = process.env.QR_SECRET ?? 'change_me_qr_secret';
+  const body = JSON.stringify(data);
+  const sig = crypto.createHmac('sha256', secret).update(body).digest('hex');
+  return Buffer.from(JSON.stringify({ ...data, sig })).toString('base64url');
+}
+
+/**
+ * Calcule les frais de service plateforme (VH-05) pour une réservation en ligne.
+ * Règle : max(1 000 MGA, seatSubtotal * 3%) par réservation.
+ * Walk-in : toujours 0 (RG-02) — vérification dans le code appelant.
+ */
+function calculatePlatformFee(seatSubtotalMga: number): number {
+  const threePercent = Math.round(seatSubtotalMga * 0.03);
+  return Math.max(1000, threePercent);
+}
+
+/**
+ * Calcule la commission InsTRAM (VH-04) selon le plan tarifaire.
+ * Walk-in : toujours 0 (RG-02).
+ * Plan SUBSCRIPTION : toujours 0.
+ * Plan COMMISSION : commissionRate% du montant siège.
+ */
+function calculateCommission(
+  seatSubtotalMga: number,
+  commissionRate: number | null | undefined,
+): number {
+  if (!commissionRate) return 0;
+  return Math.round(seatSubtotalMga * (commissionRate / 100));
+}
+
+// =====================================================================
+// Service
+// =====================================================================
+
+export class BookingsService {
+  constructor(
+    private readonly db: PrismaClient,
+    private readonly redis: Redis,
+    private readonly gateway: MobileMoneyGateway,
+  ) {}
+
+  // ------------------------------------------------------------------
+  // POST /bookings
+  // Crée un Booking en PENDING_PAYMENT à partir d'un hold.
+  // Étend le TTL du hold à expiresAt = NOW() + 5 min (paiement — VH-01).
+  // Contrat : retourne Booking (le paiement est initié via POST /payments).
+  // ------------------------------------------------------------------
+
+  async createOnlineBooking(
+    userId: string,
+    input: CreateBookingInput,
+  ): Promise<Record<string, unknown>> {
+    const { holdId, passengers } = input;
+
+    // 1. Charger le hold de référence et valider la propriété
+    const referenceHold = await this.db.seatHold.findFirst({
+      where: {
+        id: holdId,
+        heldByUserId: userId,
+        expiresAt: { gt: new Date() },
+        bookingId: null,
+      },
+      include: { tripInstance: { include: { fares: true, cooperative: { include: { pricingPlans: { where: { effectiveFrom: { lte: new Date() }, OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: new Date() } }] }, orderBy: { effectiveFrom: 'desc' }, take: 1 } } } } } },
+    });
+
+    if (!referenceHold) {
+      throw new ConflictError(
+        'Hold introuvable, expiré ou déjà utilisé. Veuillez re-sélectionner vos sièges.',
+      );
+    }
+
+    const tripInstanceId = referenceHold.tripInstanceId;
+
+    // 2. Charger tous les holds actifs du groupe (user+trip)
+    const groupHolds = await this.db.seatHold.findMany({
+      where: {
+        tripInstanceId,
+        heldByUserId: userId,
+        expiresAt: { gt: new Date() },
+        bookingId: null,
+      },
+      include: {
+        seatDefinition: { select: { id: true, code: true, category: true } },
+      },
+    });
+
+    if (groupHolds.length === 0) {
+      throw new ConflictError('Tous les holds ont expiré.');
+    }
+
+    // 3. Étendre le TTL à NOW() + 5 min (phase paiement — VH-01)
+    const extendedExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    await this.db.seatHold.updateMany({
+      where: { id: { in: groupHolds.map((h) => h.id) } },
+      data: { expiresAt: extendedExpiresAt },
+    });
+
+    // 4. Calculer les montants
+    const trip = referenceHold.tripInstance;
+    const fares = trip.fares;
+
+    const fareByDefId = new Map<string, number>();
+    const fareByCat = new Map<string, number>();
+    for (const fare of fares) {
+      if (fare.seatDefinitionId) fareByDefId.set(fare.seatDefinitionId, fare.priceMga);
+      else if (fare.category) fareByCat.set(fare.category, fare.priceMga);
+    }
+
+    const seatSubtotalMga = groupHolds.reduce((sum, h) => {
+      const price =
+        fareByDefId.get(h.seatDefinitionId) ??
+        fareByCat.get(h.seatDefinition.category) ??
+        0;
+      return sum + price;
+    }, 0);
+
+    // VH-05 : frais plateforme
+    const platformFeeMga = calculatePlatformFee(seatSubtotalMga);
+    const totalAmountMga = seatSubtotalMga + platformFeeMga;
+
+    // Commission (pour traçabilité, calculée maintenant)
+    const pricingPlan = trip.cooperative.pricingPlans[0];
+    const commissionMga = calculateCommission(
+      seatSubtotalMga,
+      pricingPlan?.commissionRate,
+    );
+
+    // 5. Générer référence + QR payload
+    const seatCodes = groupHolds.map((h) => h.seatDefinition.code);
+    const issuedAt = new Date().toISOString();
+
+    // Référence unique avec retry sur collision (très rare)
+    let reference = generateBookingReference();
+    let refExists = await this.db.booking.findUnique({ where: { reference } });
+    while (refExists) {
+      reference = generateBookingReference();
+      refExists = await this.db.booking.findUnique({ where: { reference } });
+    }
+
+    const qrPayload = generateQrPayload({
+      bookingRef: reference,
+      tripInstanceId,
+      seatCodes,
+      issuedAt,
+    });
+
+    // 6. Transaction : créer Booking + Passengers + BookingSeats provisoires vides + Commission
+    const booking = await this.db.$transaction(async (tx) => {
+      const created = await tx.booking.create({
+        data: {
+          reference,
+          tripInstanceId,
+          cooperativeId: trip.cooperativeId,
+          buyerUserId: userId,
+          channel: BookingChannel.ONLINE,
+          status: BookingStatus.PENDING_PAYMENT,
+          totalAmountMga,
+          seatSubtotalMga,
+          platformFeeMga,
+          qrPayload,
+        },
+      });
+
+      // Lier les holds à ce booking
+      await tx.seatHold.updateMany({
+        where: { id: { in: groupHolds.map((h) => h.id) } },
+        data: { bookingId: created.id },
+      });
+
+      // Créer les passagers
+      await tx.passenger.createMany({
+        data: passengers.map((p) => ({
+          bookingId: created.id,
+          firstName: p.firstName,
+          lastName: p.lastName,
+          phone: p.phone ?? null,
+          nationalIdRef: p.nationalIdRef ?? null,
+          seatCode: p.seatCode,
+        })),
+      });
+
+      // Commission (traçabilité)
+      await tx.commission.create({
+        data: {
+          bookingId: created.id,
+          cooperativeId: trip.cooperativeId,
+          amountMga: commissionMga,
+          pricingPlanRef: pricingPlan?.id ?? null,
+        },
+      });
+
+      return created;
+    });
+
+    return this._formatBooking(booking);
+  }
+
+  // ------------------------------------------------------------------
+  // POST /payments — Initier le paiement Mobile Money
+  // Contrat : POST /payments (endpoint distinct de POST /bookings)
+  // ------------------------------------------------------------------
+
+  async initiatePayment(
+    userId: string,
+    input: InitiatePaymentInput,
+  ): Promise<Record<string, unknown>> {
+    const { bookingId, provider, payerPhone } = input;
+
+    const booking = await this.db.booking.findFirst({
+      where: {
+        id: bookingId,
+        buyerUserId: userId,
+        status: BookingStatus.PENDING_PAYMENT,
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundError('Réservation introuvable ou non en attente de paiement');
+    }
+
+    // Vérifier qu'un paiement n'a pas déjà été initié
+    const existingPayment = await this.db.payment.findFirst({
+      where: { bookingId, status: { in: [PaymentStatus.INITIATED, PaymentStatus.PENDING, PaymentStatus.CONFIRMED] } },
+    });
+
+    if (existingPayment) {
+      throw new ConflictError('Un paiement est déjà en cours ou confirmé pour cette réservation');
+    }
+
+    // Appel gateway stub (sandbox — jamais les vraies clés prod)
+    const { instruction, expiresAt: gatewayExpiresAt } = await this.gateway.initiatePayment({
+      provider: provider as 'MVOLA' | 'ORANGE_MONEY',
+      amount: booking.totalAmountMga,
+      currency: 'MGA',
+      phone: payerPhone,
+      reference: booking.reference,
+    });
+
+    const payment = await this.db.$transaction(async (tx) => {
+      const p = await tx.payment.create({
+        data: {
+          bookingId,
+          provider: provider as PaymentProvider,
+          amountMga: booking.totalAmountMga,
+          status: PaymentStatus.PENDING,
+        },
+      });
+
+      // PlatformFee
+      await tx.platformFee.create({
+        data: {
+          paymentId: p.id,
+          amountMga: booking.platformFeeMga,
+          policyRef: 'VH-05',
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actorUserId: userId,
+          action: AuditAction.PAYMENT_INITIATED,
+          entityType: 'Payment',
+          entityId: p.id,
+          after: { bookingId, provider, amountMga: booking.totalAmountMga },
+        },
+      });
+
+      return p;
+    });
+
+    return {
+      paymentId: payment.id,
+      status: payment.status,
+      instructions: {
+        messageFr: instruction,
+        messageMg: instruction,
+        ussdCode: null,
+        expiresAt: gatewayExpiresAt.toISOString(),
+      },
+    };
+  }
+
+  // ------------------------------------------------------------------
+  // GET /bookings — Historique voyageur (paginé, trié par date desc)
+  // ------------------------------------------------------------------
+
+  async getBookings(
+    userId: string,
+    query: BookingListQueryInput,
+  ): Promise<Record<string, unknown>> {
+    const { status, cursor, limit } = query;
+
+    const where: Record<string, unknown> = { buyerUserId: userId };
+    if (status) where.status = status;
+    if (cursor) where.id = { lt: cursor };
+
+    const items = await this.db.booking.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit + 1,
+      include: {
+        tripInstance: {
+          include: {
+            route: {
+              include: { origin: true, destination: true },
+            },
+          },
+        },
+      },
+    });
+
+    const hasMore = items.length > limit;
+    const page = hasMore ? items.slice(0, limit) : items;
+    const nextCursor = hasMore ? page[page.length - 1].id : null;
+
+    return {
+      items: page.map((b) => ({
+        id: b.id,
+        reference: b.reference,
+        status: b.status,
+        channel: b.channel,
+        totalAmountMga: b.totalAmountMga,
+        seatSubtotalMga: b.seatSubtotalMga,
+        platformFeeMga: b.platformFeeMga,
+        tripInstanceId: b.tripInstanceId,
+        createdAt: b.createdAt.toISOString(),
+        tripInstance: {
+          departureAt: b.tripInstance.departureAt.toISOString(),
+          route: {
+            origin: b.tripInstance.route.origin.nameFr,
+            destination: b.tripInstance.route.destination.nameFr,
+          },
+        },
+      })),
+      nextCursor,
+    };
+  }
+
+  // ------------------------------------------------------------------
+  // GET /bookings/:id — Détail + billet QR si CONFIRMED
+  // ------------------------------------------------------------------
+
+  async getBookingById(
+    bookingId: string,
+    userId: string,
+  ): Promise<Record<string, unknown>> {
+    const booking = await this.db.booking.findFirst({
+      where: { id: bookingId, buyerUserId: userId },
+      include: {
+        tripInstance: {
+          include: {
+            route: { include: { origin: true, destination: true } },
+            vehicle: { include: { seatMap: true } },
+            fares: true,
+            cooperative: true,
+          },
+        },
+        passengers: true,
+        payments: true,
+        seats: true,
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundError('Réservation introuvable');
+    }
+
+    const ticket =
+      booking.status === BookingStatus.CONFIRMED
+        ? {
+            reference: booking.reference,
+            qrPayload: booking.qrPayload,
+            qrImageUrl: null,
+            issuedAt: booking.confirmedAt?.toISOString() ?? booking.createdAt.toISOString(),
+          }
+        : null;
+
+    return {
+      ...this._formatBooking(booking),
+      trip: {
+        id: booking.tripInstance.id,
+        departureAt: booking.tripInstance.departureAt.toISOString(),
+        arrivalEstimatedAt: booking.tripInstance.arrivalEstimatedAt?.toISOString() ?? null,
+        status: booking.tripInstance.status,
+        route: {
+          origin: booking.tripInstance.route.origin.nameFr,
+          destination: booking.tripInstance.route.destination.nameFr,
+        },
+      },
+      passengers: booking.passengers.map((p) => ({
+        firstName: p.firstName,
+        lastName: p.lastName,
+        seatCode: p.seatCode,
+        phone: p.phone,
+      })),
+      payments: booking.payments.map((p) => ({
+        id: p.id,
+        provider: p.provider,
+        amountMga: p.amountMga,
+        status: p.status,
+        providerTransactionId: p.providerTransactionId,
+        initiatedAt: p.initiatedAt.toISOString(),
+        confirmedAt: p.confirmedAt?.toISOString() ?? null,
+      })),
+      ticket,
+    };
+  }
+
+  // ------------------------------------------------------------------
+  // POST /coop/bookings/walk-in
+  // RG-02 : PlatformFee = 0 ET Commission = 0 — vérification explicite
+  // Même transaction atomique que le hold (SELECT FOR UPDATE + contraintes)
+  // ------------------------------------------------------------------
+
+  async createWalkIn(
+    staffUserId: string,
+    cooperativeId: string,
+    input: WalkInBookingInput,
+  ): Promise<Record<string, unknown>> {
+    const { tripInstanceId, seatDefinitionIds, passengers, paymentMethod, buyerPhone, buyerLang } =
+      input;
+
+    // Vérifier que le trajet appartient à la coopérative de l'agent
+    const trip = await this.db.tripInstance.findFirst({
+      where: { id: tripInstanceId, cooperativeId },
+      include: { fares: true },
+    });
+
+    if (!trip) {
+      throw new ForbiddenError(
+        "Trajet introuvable ou non appartenant à votre coopérative",
+      );
+    }
+
+    // Charger les sièges demandés
+    const seatDefs = await this.db.seatDefinition.findMany({
+      where: { id: { in: seatDefinitionIds } },
+      select: { id: true, code: true, category: true },
+    });
+
+    if (seatDefs.length !== seatDefinitionIds.length) {
+      throw new NotFoundError('Un ou plusieurs sièges introuvables');
+    }
+
+    const seatCodeMap = new Map(seatDefs.map((s) => [s.id, s.code]));
+    const seatCategoryMap = new Map(seatDefs.map((s) => [s.id, s.category]));
+
+    // Tarifs
+    const fareByDefId = new Map<string, number>();
+    const fareByCat = new Map<string, number>();
+    for (const fare of trip.fares) {
+      if (fare.seatDefinitionId) fareByDefId.set(fare.seatDefinitionId, fare.priceMga);
+      else if (fare.category) fareByCat.set(fare.category, fare.priceMga);
+    }
+
+    const seatSubtotalMga = seatDefinitionIds.reduce((sum, id) => {
+      const cat = seatCategoryMap.get(id);
+      return sum + (fareByDefId.get(id) ?? (cat ? fareByCat.get(cat) ?? 0 : 0));
+    }, 0);
+
+    // RG-02 : WALK-IN → frais = 0, commission = 0 (vérification explicite)
+    const WALK_IN_PLATFORM_FEE = 0;
+    const WALK_IN_COMMISSION = 0;
+    if (WALK_IN_PLATFORM_FEE !== 0 || WALK_IN_COMMISSION !== 0) {
+      // Cette assertion ne devrait jamais se déclencher — garantie de non-régression
+      throw new Error('VIOLATION RG-02 : Walk-in ne peut jamais avoir de frais plateforme ou commission');
+    }
+
+    // Référence unique
+    let reference = generateBookingReference();
+    let refExists = await this.db.booking.findUnique({ where: { reference } });
+    while (refExists) {
+      reference = generateBookingReference();
+      refExists = await this.db.booking.findUnique({ where: { reference } });
+    }
+
+    const seatCodes = seatDefinitionIds.map((id) => seatCodeMap.get(id) ?? id);
+    const issuedAt = new Date().toISOString();
+    const qrPayload = generateQrPayload({
+      bookingRef: reference,
+      tripInstanceId,
+      seatCodes,
+      issuedAt,
+    });
+
+    // Transaction atomique (même protection que hold ONLINE)
+    const booking = await this.db.$transaction(async (tx) => {
+      // SELECT FOR UPDATE sur chaque SeatDefinition
+      for (const seatId of seatDefinitionIds) {
+        await tx.$queryRaw`
+          SELECT id FROM "SeatDefinition"
+          WHERE id = ${seatId}::uuid
+          FOR UPDATE
+        `;
+      }
+
+      // Vérifier BookingSeat actifs
+      const activeBookingSeats = await tx.bookingSeat.findMany({
+        where: {
+          tripInstanceId,
+          seatDefinitionId: { in: seatDefinitionIds },
+          isActive: true,
+        },
+        select: { seatDefinitionId: true, seatCode: true },
+      });
+
+      // Vérifier SeatHolds non expirés
+      const activeHolds = await tx.seatHold.findMany({
+        where: {
+          tripInstanceId,
+          seatDefinitionId: { in: seatDefinitionIds },
+          expiresAt: { gt: new Date() },
+        },
+        select: { seatDefinitionId: true },
+      });
+
+      const conflicting = [
+        ...activeBookingSeats.map((bs) => ({
+          seatDefinitionId: bs.seatDefinitionId,
+          code: bs.seatCode,
+          status: 'SOLD' as const,
+        })),
+        ...activeHolds.map((h) => ({
+          seatDefinitionId: h.seatDefinitionId,
+          code: seatCodeMap.get(h.seatDefinitionId) ?? h.seatDefinitionId,
+          status: 'HELD' as const,
+        })),
+      ];
+
+      if (conflicting.length > 0) {
+        throw new ConflictError('Siège(s) déjà pris', conflicting);
+      }
+
+      // Créer le Booking WALK_IN directement CONFIRMED
+      const created = await tx.booking.create({
+        data: {
+          reference,
+          tripInstanceId,
+          cooperativeId,
+          createdByStaffId: staffUserId,
+          channel: BookingChannel.WALK_IN,
+          status: BookingStatus.CONFIRMED,
+          boardingStatus: 'NOT_BOARDED',
+          totalAmountMga: seatSubtotalMga,
+          seatSubtotalMga,
+          platformFeeMga: WALK_IN_PLATFORM_FEE, // Toujours 0 (RG-02)
+          qrPayload,
+          confirmedAt: new Date(),
+        },
+      });
+
+      // Créer les BookingSeats directement actifs
+      for (const seatId of seatDefinitionIds) {
+        const cat = seatCategoryMap.get(seatId)!;
+        const price = fareByDefId.get(seatId) ?? fareByCat.get(cat) ?? 0;
+        await tx.bookingSeat.create({
+          data: {
+            bookingId: created.id,
+            tripInstanceId,
+            seatDefinitionId: seatId,
+            seatCode: seatCodeMap.get(seatId) ?? seatId,
+            category: cat,
+            priceMga: price,
+            isActive: true,
+          },
+        });
+      }
+
+      // Créer le Payment CASH (ou mobile) — RG-02 : pas de frais plateforme
+      const payment = await tx.payment.create({
+        data: {
+          bookingId: created.id,
+          provider: paymentMethod as PaymentProvider,
+          amountMga: seatSubtotalMga,
+          status: PaymentStatus.CONFIRMED,
+          confirmedAt: new Date(),
+        },
+      });
+
+      // PlatformFee = 0 (RG-02)
+      await tx.platformFee.create({
+        data: {
+          paymentId: payment.id,
+          amountMga: WALK_IN_PLATFORM_FEE, // 0
+          policyRef: 'RG-02-WALK_IN',
+        },
+      });
+
+      // Commission = 0 (RG-02)
+      await tx.commission.create({
+        data: {
+          bookingId: created.id,
+          paymentId: payment.id,
+          cooperativeId,
+          amountMga: WALK_IN_COMMISSION, // 0
+          pricingPlanRef: 'RG-02-WALK_IN',
+        },
+      });
+
+      // Passagers
+      await tx.passenger.createMany({
+        data: passengers.map((p) => ({
+          bookingId: created.id,
+          firstName: p.firstName,
+          lastName: p.lastName,
+          phone: p.phone ?? null,
+          nationalIdRef: p.nationalIdRef ?? null,
+          seatCode: p.seatCode,
+        })),
+      });
+
+      // AuditLog (RG-13 : traçabilité walk-in)
+      await tx.auditLog.create({
+        data: {
+          actorUserId: staffUserId,
+          action: AuditAction.BOOKING_CREATED,
+          entityType: 'Booking',
+          entityId: created.id,
+          after: {
+            reference,
+            tripInstanceId,
+            channel: 'WALK_IN',
+            seatSubtotalMga,
+            platformFeeMga: 0,
+            commissionMga: 0,
+          },
+        },
+      });
+
+      return created;
+    });
+
+    // Pub/Sub : SEAT_SOLD
+    await this.redis.publish(
+      `trip:${tripInstanceId}`,
+      JSON.stringify({
+        event: 'SEAT_SOLD',
+        tripInstanceId,
+        seatDefinitionIds,
+        bookingId: booking.id,
+      }),
+    );
+
+    // SMS si téléphone fourni (transactionnel — bypass silence nocturne VH-02)
+    const smsPhone = buyerPhone ?? passengers[0]?.phone;
+    if (smsPhone) {
+      await enqueueSms({
+        phone: smsPhone,
+        templateCode: 'BOOKING_CONFIRMED',
+        params: { reference, seatCodes: seatCodes.join(', ') },
+        lang: (buyerLang as 'FR' | 'MG') ?? 'FR',
+        bookingId: booking.id,
+        isTransactional: true,
+      });
+    }
+
+    // Retourner le détail complet (BookingDetail per contract)
+    return this._formatBookingDetail(booking, seatCodes, seatDefinitionIds, seatSubtotalMga);
+  }
+
+  // ------------------------------------------------------------------
+  // POST /coop/bookings/:id/cancel-at-counter
+  // RG-03 : seul point d'annulation — pas de remboursement automatique
+  // ------------------------------------------------------------------
+
+  async cancelAtCounter(
+    bookingId: string,
+    staffUserId: string,
+    cooperativeId: string,
+    input: CancelAtCounterInput,
+  ): Promise<Record<string, unknown>> {
+    const { reason, refundedAtCounter } = input;
+
+    const booking = await this.db.booking.findFirst({
+      where: { id: bookingId, cooperativeId },
+      include: {
+        seats: { where: { isActive: true } },
+        payments: true,
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundError('Réservation introuvable');
+    }
+
+    if (
+      booking.status === BookingStatus.CANCELLED_AT_COUNTER ||
+      booking.status === BookingStatus.COMPLETED
+    ) {
+      throw new ConflictError('Réservation déjà annulée ou terminée');
+    }
+
+    const tripInstanceId = booking.tripInstanceId;
+    const seatDefinitionIds = booking.seats.map((s) => s.seatDefinitionId);
+
+    const updated = await this.db.$transaction(async (tx) => {
+      // Mettre à jour le statut Booking
+      const upd = await tx.booking.update({
+        where: { id: bookingId },
+        data: {
+          status: BookingStatus.CANCELLED_AT_COUNTER,
+          cancelledAt: new Date(),
+          cancelledReason: reason,
+          cancelledByStaffId: staffUserId,
+        },
+      });
+
+      // Désactiver les BookingSeats
+      await tx.bookingSeat.updateMany({
+        where: { bookingId, isActive: true },
+        data: { isActive: false },
+      });
+
+      // Traçabilité remboursement physique (sans mouvement financier automatique)
+      if (refundedAtCounter) {
+        await tx.payment.updateMany({
+          where: { bookingId, status: PaymentStatus.CONFIRMED },
+          data: { status: 'REFUNDED_AT_COUNTER' as PaymentStatus },
+        });
+      }
+
+      // AuditLog (RG-13)
+      await tx.auditLog.create({
+        data: {
+          actorUserId: staffUserId,
+          action: AuditAction.BOOKING_CANCELLED_AT_COUNTER,
+          entityType: 'Booking',
+          entityId: bookingId,
+          before: { status: booking.status },
+          after: {
+            status: BookingStatus.CANCELLED_AT_COUNTER,
+            reason,
+            refundedAtCounter,
+          },
+        },
+      });
+
+      return upd;
+    });
+
+    // Pub/Sub : SEAT_RELEASED
+    if (seatDefinitionIds.length > 0) {
+      await this.redis.publish(
+        `trip:${tripInstanceId}`,
+        JSON.stringify({
+          event: 'SEAT_RELEASED',
+          tripInstanceId,
+          seatDefinitionIds,
+          bookingId,
+        }),
+      );
+    }
+
+    return this._formatBooking(updated);
+  }
+
+  // ------------------------------------------------------------------
+  // POST /webhooks/mobile-money/:provider
+  // Idempotence : providerTransactionId déjà en base → 200 sans retraitement
+  // ------------------------------------------------------------------
+
+  async processWebhook(
+    provider: string,
+    rawBody: Buffer,
+    signature: string,
+    payload: WebhookPayload,
+  ): Promise<{ status: 'processed' | 'duplicate' | 'failed' }> {
+    // 1. Vérification signature HMAC (architecture §2.6)
+    const isValid = this.gateway.verifyWebhookSignature(provider, rawBody, signature);
+    if (!isValid) {
+      throw new WebhookSignatureError();
+    }
+
+    const { providerTransactionId, status, bookingReference } = payload;
+
+    // 2. Idempotence : déjà traité ?
+    const existingPayment = await this.db.payment.findFirst({
+      where: { providerTransactionId },
+    });
+
+    if (existingPayment) {
+      return { status: 'duplicate' };
+    }
+
+    // 3. Retrouver le Booking (via référence dans le payload ou via Payment PENDING)
+    let booking = null;
+    if (bookingReference) {
+      booking = await this.db.booking.findUnique({
+        where: { reference: bookingReference },
+        include: { seatHolds: { where: { expiresAt: { gt: new Date() } } }, payments: true },
+      });
+    } else {
+      // Fallback : payment PENDING le plus récent
+      const pendingPayment = await this.db.payment.findFirst({
+        where: { status: PaymentStatus.PENDING, provider: provider.toUpperCase() as PaymentProvider },
+        orderBy: { initiatedAt: 'desc' },
+        include: { booking: { include: { seatHolds: { where: { expiresAt: { gt: new Date() } } }, payments: true } } },
+      });
+      if (pendingPayment) booking = pendingPayment.booking;
+    }
+
+    if (!booking) {
+      // Webhook orphelin — on logue et on répond 200
+      return { status: 'failed' };
+    }
+
+    if (status === 'SUCCESS') {
+      return this._confirmPayment(booking, providerTransactionId, provider);
+    } else {
+      return this._failPayment(booking, providerTransactionId);
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Helpers privés — webhook
+  // ------------------------------------------------------------------
+
+  private async _confirmPayment(
+    booking: {
+      id: string;
+      reference: string;
+      tripInstanceId: string;
+      cooperativeId: string;
+      seatHolds: { seatDefinitionId: string; seatDefinition?: { code: string; category: string } | undefined }[];
+      payments: { id: string; amountMga: number }[];
+    },
+    providerTransactionId: string,
+    provider: string,
+  ): Promise<{ status: 'processed' }> {
+    await this.db.$transaction(async (tx) => {
+      const pendingPayment = await tx.payment.findFirst({
+        where: { bookingId: booking.id, status: PaymentStatus.PENDING },
+        include: { platformFee: true },
+      });
+
+      if (!pendingPayment) return;
+
+      // Mettre à jour le Payment
+      await tx.payment.update({
+        where: { id: pendingPayment.id },
+        data: {
+          status: PaymentStatus.CONFIRMED,
+          confirmedAt: new Date(),
+          providerTransactionId,
+        },
+      });
+
+      // Créer les BookingSeats actifs (SeatHold → BookingSeat)
+      for (const hold of booking.seatHolds) {
+        // Charger les infos du siège
+        const seatDef = await tx.seatDefinition.findUnique({
+          where: { id: hold.seatDefinitionId },
+          select: { id: true, code: true, category: true },
+        });
+        if (!seatDef) continue;
+
+        // Chercher le tarif
+        const fare = await tx.fare.findFirst({
+          where: {
+            tripInstanceId: booking.tripInstanceId,
+            OR: [
+              { seatDefinitionId: seatDef.id },
+              { seatDefinitionId: null, category: seatDef.category },
+            ],
+          },
+          orderBy: { seatDefinitionId: 'desc' }, // siège précis prime
+        });
+
+        await tx.bookingSeat.create({
+          data: {
+            bookingId: booking.id,
+            tripInstanceId: booking.tripInstanceId,
+            seatDefinitionId: seatDef.id,
+            seatCode: seatDef.code,
+            category: seatDef.category,
+            priceMga: fare?.priceMga ?? 0,
+            isActive: true,
+          },
+        });
+      }
+
+      // Confirmer le Booking
+      await tx.booking.update({
+        where: { id: booking.id },
+        data: {
+          status: BookingStatus.CONFIRMED,
+          confirmedAt: new Date(),
+        },
+      });
+
+      // Lier la commission au payment
+      await tx.commission.updateMany({
+        where: { bookingId: booking.id, paymentId: null },
+        data: { paymentId: pendingPayment.id },
+      });
+
+      // AuditLog (RG-13)
+      await tx.auditLog.create({
+        data: {
+          action: AuditAction.PAYMENT_CONFIRMED,
+          entityType: 'Payment',
+          entityId: pendingPayment.id,
+          after: { bookingId: booking.id, providerTransactionId, provider },
+        },
+      });
+    });
+
+    // Pub/Sub : SEAT_SOLD
+    const seatDefinitionIds = booking.seatHolds.map((h) => h.seatDefinitionId);
+    await this.redis.publish(
+      `trip:${booking.tripInstanceId}`,
+      JSON.stringify({
+        event: 'SEAT_SOLD',
+        tripInstanceId: booking.tripInstanceId,
+        seatDefinitionIds,
+        bookingId: booking.id,
+      }),
+    );
+
+    // SMS confirmation (transactionnel — immédiat, bypass silence VH-02)
+    await enqueueSms({
+      phone: '', // sera renseigné par le worker depuis le Passenger.phone
+      templateCode: 'BOOKING_CONFIRMED',
+      params: { reference: booking.reference },
+      lang: 'FR',
+      bookingId: booking.id,
+      isTransactional: true,
+    });
+
+    return { status: 'processed' };
+  }
+
+  private async _failPayment(
+    booking: { id: string; tripInstanceId: string; seatHolds: { seatDefinitionId: string }[] },
+    providerTransactionId: string,
+  ): Promise<{ status: 'failed' }> {
+    await this.db.$transaction(async (tx) => {
+      await tx.payment.updateMany({
+        where: { bookingId: booking.id, status: PaymentStatus.PENDING },
+        data: {
+          status: PaymentStatus.FAILED,
+          failedAt: new Date(),
+          providerTransactionId,
+        },
+      });
+
+      await tx.booking.update({
+        where: { id: booking.id },
+        data: { status: BookingStatus.PAYMENT_FAILED },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          action: AuditAction.PAYMENT_FAILED,
+          entityType: 'Booking',
+          entityId: booking.id,
+          after: { providerTransactionId, status: 'FAILED' },
+        },
+      });
+    });
+
+    // Pub/Sub : SEAT_RELEASED (les holds expireront naturellement)
+    const seatDefinitionIds = booking.seatHolds.map((h) => h.seatDefinitionId);
+    if (seatDefinitionIds.length > 0) {
+      await this.redis.publish(
+        `trip:${booking.tripInstanceId}`,
+        JSON.stringify({
+          event: 'SEAT_RELEASED',
+          tripInstanceId: booking.tripInstanceId,
+          seatDefinitionIds,
+          bookingId: booking.id,
+        }),
+      );
+    }
+
+    return { status: 'failed' };
+  }
+
+  // ------------------------------------------------------------------
+  // Formatage DTO
+  // ------------------------------------------------------------------
+
+  private _formatBooking(booking: {
+    id: string;
+    reference: string;
+    status: string;
+    channel: string;
+    totalAmountMga: number;
+    seatSubtotalMga: number;
+    platformFeeMga: number;
+    tripInstanceId: string;
+    createdAt: Date;
+  }): Record<string, unknown> {
+    return {
+      id: booking.id,
+      reference: booking.reference,
+      status: booking.status,
+      channel: booking.channel,
+      totalAmountMga: booking.totalAmountMga,
+      seatSubtotalMga: booking.seatSubtotalMga,
+      platformFeeMga: booking.platformFeeMga,
+      tripInstanceId: booking.tripInstanceId,
+      createdAt: booking.createdAt.toISOString(),
+    };
+  }
+
+  private _formatBookingDetail(
+    booking: { id: string; reference: string; status: string; channel: string; totalAmountMga: number; seatSubtotalMga: number; platformFeeMga: number; tripInstanceId: string; createdAt: Date; qrPayload: string; confirmedAt?: Date | null },
+    seatCodes: string[],
+    _seatDefinitionIds: string[],
+    _seatSubtotalMga: number,
+  ): Record<string, unknown> {
+    return {
+      ...this._formatBooking(booking),
+      ticket: {
+        reference: booking.reference,
+        qrPayload: booking.qrPayload,
+        qrImageUrl: null,
+        issuedAt: booking.confirmedAt?.toISOString() ?? booking.createdAt.toISOString(),
+      },
+      seatCodes,
+    };
+  }
+}
