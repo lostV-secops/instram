@@ -13,6 +13,9 @@ import catalogRoutes from './modules/catalog/catalog.routes';
 import searchRoutes from './modules/search/search.routes';
 import seatsRoutes from './modules/seats/seats.routes';
 import bookingsRoutes from './modules/bookings/bookings.routes';
+import cooperativeRoutes from './modules/cooperative/cooperative.routes';
+import { tripsCoopRoutes, tripsTravelerRoutes } from './modules/trips/trips.routes';
+import wsRoutes from './modules/ws/ws.routes';
 
 // =====================================================================
 // Déclaration d'augmentation de types Fastify pour authenticate
@@ -143,6 +146,14 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   // ------------------------------------------------------------------
+  // WebSocket temps réel — GET /ws?token=<jwt> (architecture §2.3)
+  // Hors préfixe /v1 : le versionnage du protocole WS passe par le champ
+  // `type` des événements, pas par l'URL.
+  // Doit être enregistré APRÈS @fastify/jwt (le handler valide le token).
+  // ------------------------------------------------------------------
+  await app.register(wsRoutes);
+
+  // ------------------------------------------------------------------
   // Routes versionnées /v1
   // ------------------------------------------------------------------
   await app.register(
@@ -161,6 +172,15 @@ export async function buildApp(): Promise<FastifyInstance> {
 
       // Bookings — /bookings, /payments, /coop/bookings/*, /webhooks/mobile-money/*
       await v1.register(bookingsRoutes);
+
+      // Cooperative back-office — /coop/cooperatives/current, /coop/members/*, /coop/vehicles/*
+      await v1.register(cooperativeRoutes, { prefix: '/coop' });
+
+      // Trips back-office — /coop/routes/*, /coop/schedules/*, /coop/trips/*
+      await v1.register(tripsCoopRoutes, { prefix: '/coop' });
+
+      // Trips voyageur — /trips/:tripInstanceId
+      await v1.register(tripsTravelerRoutes);
     },
     { prefix: '/v1' },
   );
