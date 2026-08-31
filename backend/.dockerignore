@@ -1,0 +1,26 @@
+# Ne jamais copier node_modules depuis l'hôte dans l'image.
+# Le Dockerfile exécute npm ci à l'intérieur du conteneur.
+node_modules/
+
+# Artefacts de compilation TypeScript
+dist/
+
+# Couverture de tests
+coverage/
+
+# Fichiers d'environnement — les secrets sont injectés par docker-compose
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+
+# Répertoire git (inutile dans l'image)
+.git/
+.gitignore

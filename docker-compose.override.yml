@@ -1,0 +1,12 @@
+# docker-compose.override.yml — dev uniquement, jamais committé avec de vrais secrets.
+#
+# Ce fichier est chargé automatiquement par docker compose en développement.
+# Il monte le code source en volume pour activer le hot-reload de ts-node
+# sans modifier docker-compose.yml (qui reste utilisable tel quel en CI).
+version: "3.9"
+
+services:
+  backend:
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/package.json:/app/package.json

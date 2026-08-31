@@ -4,3 +4,12 @@ node_modules/
 .next/
 dist/
 *.log
+
+# Backend — artefacts spécifiques au sous-répertoire
+backend/node_modules/
+backend/dist/
+backend/coverage/
+
+# Toute variante de fichier d'environnement sauf les exemples
+*.env
+!*.env.example
