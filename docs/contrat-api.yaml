@@ -1,0 +1,2876 @@
+openapi: 3.1.0
+info:
+  title: InsTRAM API
+  version: 1.0.0
+  description: |
+    Contrat API InsTRAM — plateforme de réservation de transport terrestre pour Madagascar.
+    Toutes les routes sont préfixées `/v1/` pour préserver la compatibilité future
+    (V2 pourra ajouter GPS temps réel, abonnements voyageur, API tierces sans casser V1).
+
+    Règles de gestion critiques imposées par le cahier des charges :
+      - Zéro double réservation : la sélection d'un siège émet un hold court, la vente est atomique côté DB.
+      - Aucun endpoint d'annulation ni de remboursement côté voyageur : annulation strictement physique via `/v1/coop/bookings/{id}/cancel-at-counter`.
+      - Walk-in gratuit : `POST /v1/coop/bookings/walk-in` ne facture ni frais voyageur ni commission plateforme.
+      - Souveraineté coopérative : les endpoints tarifs / horaires n'appliquent aucune validation côté InsTRAM.
+      - Bilinguisme FR/MG : les endpoints acceptent `Accept-Language` (fr / mg) et retournent le contenu localisé.
+      - Public 3G lente : réponses paginées, compression obligatoire côté serveur, projections légères.
+  contact:
+    name: CODEL Technologies Co. — Projet InsTRAM
+    email: contact@codel.mg
+  license:
+    name: Propriétaire — Usage interne
+
+servers:
+  - url: https://api.instram.mg/v1
+    description: Production
+  - url: https://staging.api.instram.mg/v1
+    description: Staging
+  - url: http://localhost:4000/v1
+    description: Développement local
+
+tags:
+  - name: Auth
+    description: Authentification, refresh, invitations
+  - name: Users
+    description: Profil utilisateur, suppression compte (RGPD-like)
+  - name: Catalog
+    description: Villes, catalogue public
+  - name: Search
+    description: Recherche de trajets voyageur
+  - name: Traveler-Trips
+    description: Consultation détaillée d'un trajet et de ses sièges
+  - name: Traveler-Bookings
+    description: Réservation voyageur, paiement Mobile Money, historique, billet, notation
+  - name: Cooperative
+    description: Back-office coopérative (routes, véhicules, sièges, horaires, tarifs, membres, exports)
+  - name: Cooperative-Bookings
+    description: Suivi et walk-in coopérative
+  - name: Driver
+    description: Application conducteur (manifeste, embarquement, absents, départ)
+  - name: Admin
+    description: Console d'administration InsTRAM
+  - name: Directory
+    description: Annuaire public des coopératives
+  - name: Notifications
+    description: Templates, préférences, historique
+  - name: Payments-Webhooks
+    description: Webhooks entrants Mobile Money
+  - name: Exports
+    description: Génération et téléchargement d'exports
+  - name: Realtime
+    description: Documentation des canaux WebSocket (non REST)
+
+security:
+  - bearerAuth: []
+
+paths:
+  # =====================================================================
+  # AUTH
+  # =====================================================================
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Créer un compte voyageur
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Compte créé, tokens émis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: Email ou téléphone déjà utilisé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Connexion (voyageur, coopérative, conducteur, admin)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authentifié
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rafraîchir les tokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: Nouveaux tokens
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthTokens' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Déconnexion (révoque le refresh token courant)
+      responses:
+        '204': { description: Déconnecté }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/invitations/{token}/accept:
+    post:
+      tags: [Auth]
+      summary: Accepter une invitation (membre coopérative, admin InsTRAM)
+      security: []
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string, format: password, minLength: 10 }
+                firstName: { type: string }
+                lastName: { type: string }
+      responses:
+        '200':
+          description: Invitation acceptée, session ouverte
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthTokens' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Invitation déjà acceptée / révoquée }
+
+  /auth/password/forgot:
+    post:
+      tags: [Auth]
+      summary: Demander une réinitialisation de mot de passe
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+                phone: { type: string }
+      responses:
+        '204': { description: Instructions envoyées si compte existant }
+
+  /auth/password/reset:
+    post:
+      tags: [Auth]
+      summary: Réinitialiser le mot de passe via jeton
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string }
+                password: { type: string, format: password, minLength: 10 }
+      responses:
+        '204': { description: Mot de passe mis à jour }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  # =====================================================================
+  # USERS
+  # =====================================================================
+  /me:
+    get:
+      tags: [Users]
+      summary: Récupérer le profil courant
+      responses:
+        '200':
+          description: Profil courant
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    patch:
+      tags: [Users]
+      summary: Mettre à jour son profil ou sa langue préférée
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateMeRequest' }
+      responses:
+        '200':
+          description: Profil mis à jour
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    delete:
+      tags: [Users]
+      summary: Supprimer son compte (déclenche anonymisation immédiate)
+      description: |
+        Anonymisation immédiate des données personnelles.
+        Les données financières et d'audit restent conservées (règle CDC §7).
+      responses:
+        '204': { description: Compte marqué pour suppression, sessions révoquées }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # =====================================================================
+  # CATALOG
+  # =====================================================================
+  /catalog/cities:
+    get:
+      tags: [Catalog]
+      summary: Lister les villes / districts du catalogue national
+      security: []
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+          description: Recherche par nom (FR ou MG)
+        - in: query
+          name: region
+          schema: { type: string }
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Liste paginée des villes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CityList'
+          headers:
+            Cache-Control:
+              schema: { type: string, example: 'public, max-age=3600' }
+
+  # =====================================================================
+  # SEARCH VOYAGEUR
+  # =====================================================================
+  /search/trips:
+    get:
+      tags: [Search]
+      summary: Rechercher des trajets voyageur
+      description: |
+        Recherche cachée 60 s côté serveur (Redis). Réponse projetée légère (< 20 kB gzip pour 20 résultats).
+      security: []
+      parameters:
+        - in: query
+          name: originCityId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: destinationCityId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: date
+          required: true
+          schema: { type: string, format: date }
+        - in: query
+          name: passengers
+          schema: { type: integer, minimum: 1, maximum: 20, default: 1 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, maximum: 50 }
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Résultats de recherche
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TripSearchResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  # =====================================================================
+  # TRAVELER — TRIP DETAILS
+  # =====================================================================
+  /trips/{tripInstanceId}:
+    get:
+      tags: [Traveler-Trips]
+      summary: Détail d'un trajet (route, coopérative, politique, tarifs par catégorie)
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/TripInstanceId'
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Détail du trajet
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TripInstanceDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /trips/{tripInstanceId}/seats:
+    get:
+      tags: [Traveler-Trips]
+      summary: Carte des sièges — état temps réel
+      description: |
+        Ne pas polluer avec du polling. Après le premier GET, le client s'abonne
+        au canal WebSocket `trip:{tripInstanceId}` pour recevoir les changements.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/TripInstanceId'
+      responses:
+        '200':
+          description: Plan des sièges
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TripSeatMap' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /trips/{tripInstanceId}/seats/hold:
+    post:
+      tags: [Traveler-Trips]
+      summary: Poser un hold sur un ou plusieurs sièges (2 minutes)
+      description: |
+        Zéro double réservation : traité en transaction PG avec `SELECT ... FOR UPDATE`
+        + contrainte unique partielle `uniq_active_seat_hold`. En cas de course,
+        retourne 409 SEAT_UNAVAILABLE avec la liste des sièges rejetés.
+      parameters:
+        - $ref: '#/components/parameters/TripInstanceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [seatDefinitionIds]
+              properties:
+                seatDefinitionIds:
+                  type: array
+                  items: { type: string, format: uuid }
+                  minItems: 1
+                  maxItems: 20
+      responses:
+        '201':
+          description: Hold posé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SeatHoldResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Un ou plusieurs sièges indisponibles
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SeatConflictResponse' }
+
+  /trips/{tripInstanceId}/seats/hold/{holdId}:
+    delete:
+      tags: [Traveler-Trips]
+      summary: Libérer un hold volontairement (annulation avant paiement uniquement)
+      parameters:
+        - $ref: '#/components/parameters/TripInstanceId'
+        - in: path
+          name: holdId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Hold libéré }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # =====================================================================
+  # TRAVELER — BOOKINGS
+  # =====================================================================
+  /bookings:
+    post:
+      tags: [Traveler-Bookings]
+      summary: Créer une réservation en ligne (à partir d'un hold)
+      description: |
+        Crée un `Booking` en `PENDING_PAYMENT`. Étape suivante : `POST /payments`.
+        Aucune annulation via cette API (règle CDC §7).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateBookingRequest' }
+      responses:
+        '201':
+          description: Booking en attente de paiement
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: Hold expiré ou siège volé entre-temps
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+    get:
+      tags: [Traveler-Bookings]
+      summary: Historique des réservations du voyageur
+      parameters:
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/BookingStatus' }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, maximum: 50 }
+      responses:
+        '200':
+          description: Historique paginé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /bookings/{bookingId}:
+    get:
+      tags: [Traveler-Bookings]
+      summary: Détail d'une réservation (billet numérique inclus)
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Détail booking + billet
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /bookings/{bookingId}/ticket:
+    get:
+      tags: [Traveler-Bookings]
+      summary: Récupérer le billet (QR + référence courte)
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Billet
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ticket' }
+            image/png:
+              schema:
+                type: string
+                format: binary
+                description: QR code en PNG si Accept:image/png
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /bookings/{bookingId}/resend-ticket:
+    post:
+      tags: [Traveler-Bookings]
+      summary: Renvoyer le billet par SMS
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '202': { description: Renvoi programmé (immédiat, transactionnel) }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /bookings/{bookingId}/rating:
+    post:
+      tags: [Traveler-Bookings]
+      summary: Noter la coopérative après un voyage terminé
+      description: |
+        Autorisé uniquement si `Booking.status = COMPLETED` (RG-11).
+        Une note unique par voyage (RG-12).
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RatingRequest' }
+      responses:
+        '201':
+          description: Note enregistrée (en attente modération)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Rating' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Voyage pas encore terminé
+        '409':
+          description: Déjà noté
+
+  # =====================================================================
+  # PAYMENTS
+  # =====================================================================
+  /payments:
+    post:
+      tags: [Traveler-Bookings]
+      summary: Initier le paiement Mobile Money d'une réservation en attente
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InitiatePaymentRequest' }
+      responses:
+        '201':
+          description: Paiement initié, instructions renvoyées
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentInitiation' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Booking déjà payé ou expiré
+
+  /payments/{paymentId}:
+    get:
+      tags: [Traveler-Bookings]
+      summary: Statut d'un paiement
+      parameters:
+        - in: path
+          name: paymentId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Statut du paiement
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /webhooks/mobile-money/{provider}:
+    post:
+      tags: [Payments-Webhooks]
+      summary: Webhook entrant Mobile Money (MVola, Orange Money, Airtel V2)
+      description: |
+        Signature vérifiée obligatoirement. Idempotence par `providerTransactionId`.
+      security: []
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema: { type: string, enum: [mvola, orange-money, airtel-money] }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Traité }
+        '400': { description: Payload invalide }
+        '401': { description: Signature invalide }
+        '409': { description: Duplication ignorée }
+
+  # =====================================================================
+  # COOPÉRATIVE — BACK-OFFICE
+  # =====================================================================
+  /coop/cooperatives/current:
+    get:
+      tags: [Cooperative]
+      summary: Coopérative de l'utilisateur connecté
+      responses:
+        '200':
+          description: Détail coopérative
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cooperative' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    patch:
+      tags: [Cooperative]
+      summary: Mettre à jour les infos coopérative (nom, logo, description, contact)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CooperativeUpdate' }
+      responses:
+        '200':
+          description: Coopérative mise à jour
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cooperative' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /coop/policies:
+    get:
+      tags: [Cooperative]
+      summary: Politique d'annulation active
+      responses:
+        '200':
+          description: Politique
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Policy' }
+    post:
+      tags: [Cooperative]
+      summary: Publier une nouvelle version de la politique d'annulation (bilingue)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PolicyRequest' }
+      responses:
+        '201':
+          description: Politique publiée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Policy' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /coop/members:
+    get:
+      tags: [Cooperative]
+      summary: Lister les membres (admin, assistants, conducteurs, contrôleurs)
+      responses:
+        '200':
+          description: Liste des membres
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Member' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Cooperative]
+      summary: Inviter un nouveau membre (par email ou téléphone)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvitationRequest' }
+      responses:
+        '201':
+          description: Invitation envoyée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invitation' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Membre déjà présent }
+
+  /coop/members/{memberId}:
+    patch:
+      tags: [Cooperative]
+      summary: Modifier le rôle ou l'état d'un membre
+      parameters:
+        - in: path
+          name: memberId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: { $ref: '#/components/schemas/CooperativeRole' }
+                active: { type: boolean }
+      responses:
+        '200':
+          description: Membre mis à jour
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Cooperative]
+      summary: Retirer un membre
+      parameters:
+        - in: path
+          name: memberId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Membre retiré }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /coop/vehicles:
+    get:
+      tags: [Cooperative]
+      summary: Lister les véhicules de la coopérative
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Vehicle' }
+    post:
+      tags: [Cooperative]
+      summary: Ajouter un véhicule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VehicleRequest' }
+      responses:
+        '201':
+          description: Véhicule créé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Vehicle' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { description: Immatriculation déjà utilisée }
+
+  /coop/vehicles/{vehicleId}:
+    get:
+      tags: [Cooperative]
+      summary: Détail d'un véhicule
+      parameters:
+        - $ref: '#/components/parameters/VehicleId'
+      responses:
+        '200':
+          description: Détail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Vehicle' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Cooperative]
+      summary: Modifier un véhicule
+      parameters:
+        - $ref: '#/components/parameters/VehicleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VehicleRequest' }
+      responses:
+        '200':
+          description: Véhicule mis à jour
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Vehicle' }
+    delete:
+      tags: [Cooperative]
+      summary: Désactiver un véhicule
+      parameters:
+        - $ref: '#/components/parameters/VehicleId'
+      responses:
+        '204': { description: Désactivé }
+
+  /coop/seat-maps:
+    get:
+      tags: [Cooperative]
+      summary: Lister les plans de sièges
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SeatMap' }
+    post:
+      tags: [Cooperative]
+      summary: Créer un plan de sièges (avec catégories VIP/Premium/Classic/Standard)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SeatMapRequest' }
+      responses:
+        '201':
+          description: Plan créé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SeatMap' }
+
+  /coop/seat-maps/{seatMapId}:
+    get:
+      tags: [Cooperative]
+      summary: Détail d'un plan de sièges
+      parameters:
+        - in: path
+          name: seatMapId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Détail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SeatMap' }
+    patch:
+      tags: [Cooperative]
+      summary: Mettre à jour un plan de sièges
+      parameters:
+        - in: path
+          name: seatMapId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SeatMapRequest' }
+      responses:
+        '200': { description: Mis à jour, content: { application/json: { schema: { $ref: '#/components/schemas/SeatMap' } } } }
+    delete:
+      tags: [Cooperative]
+      summary: Supprimer un plan de sièges (si non utilisé)
+      parameters:
+        - in: path
+          name: seatMapId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Supprimé }
+        '409': { description: Plan utilisé par des véhicules actifs }
+
+  /coop/routes:
+    get:
+      tags: [Cooperative]
+      summary: Lister les routes de la coopérative
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Route' }
+    post:
+      tags: [Cooperative]
+      summary: Créer une route
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RouteRequest' }
+      responses:
+        '201':
+          description: Route créée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Route' }
+
+  /coop/routes/{routeId}:
+    get:
+      tags: [Cooperative]
+      summary: Détail d'une route
+      parameters:
+        - $ref: '#/components/parameters/RouteId'
+      responses:
+        '200': { description: Détail, content: { application/json: { schema: { $ref: '#/components/schemas/Route' } } } }
+    patch:
+      tags: [Cooperative]
+      summary: Modifier une route (arrêts, distance, durée)
+      parameters:
+        - $ref: '#/components/parameters/RouteId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RouteRequest' }
+      responses:
+        '200': { description: Mise à jour, content: { application/json: { schema: { $ref: '#/components/schemas/Route' } } } }
+    delete:
+      tags: [Cooperative]
+      summary: Désactiver une route
+      parameters:
+        - $ref: '#/components/parameters/RouteId'
+      responses:
+        '204': { description: Désactivée }
+
+  /coop/schedules:
+    get:
+      tags: [Cooperative]
+      summary: Lister les horaires récurrents (gabarits)
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Schedule' }
+    post:
+      tags: [Cooperative]
+      summary: Créer un horaire récurrent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScheduleRequest' }
+      responses:
+        '201':
+          description: Horaire créé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Schedule' }
+
+  /coop/schedules/{scheduleId}:
+    patch:
+      tags: [Cooperative]
+      summary: Modifier un horaire
+      parameters:
+        - in: path
+          name: scheduleId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScheduleRequest' }
+      responses:
+        '200': { description: Mise à jour, content: { application/json: { schema: { $ref: '#/components/schemas/Schedule' } } } }
+    delete:
+      tags: [Cooperative]
+      summary: Désactiver un horaire
+      parameters:
+        - in: path
+          name: scheduleId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Désactivé }
+
+  /coop/trips:
+    get:
+      tags: [Cooperative]
+      summary: Lister les trajets datés (TripInstance) de la coopérative
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/TripStatus' }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        '200':
+          description: Liste paginée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TripInstanceList' }
+    post:
+      tags: [Cooperative]
+      summary: Créer un trajet daté (à partir d'un schedule ou ad-hoc)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TripInstanceRequest' }
+      responses:
+        '201':
+          description: Trajet créé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TripInstance' }
+
+  /coop/trips/{tripInstanceId}:
+    get:
+      tags: [Cooperative]
+      summary: Détail d'un trajet (côté coop, avec statistiques temps réel)
+      parameters:
+        - $ref: '#/components/parameters/TripInstanceId'
+      responses:
+        '200':
+          description: Détail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TripInstanceCoopDetail' }
+    patch:
+      tags: [Cooperative]
+      summary: Modifier un trajet (horaire, véhicule, notes)
+      parameters:
+        - $ref: '#/components/parameters/TripInstanceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TripInstanceRequest' }
+      responses:
+        '200': { description: Mis à jour, content: { application/json: { schema: { $ref: '#/components/schemas/TripInstance' } } } }
+    delete:
+      tags: [Cooperative]
+      summary: Annuler un trajet (statut CANCELLED)
+      parameters:
+        - $ref: '#/components/parameters/TripInstanceId'
+      responses:
+        '204': { description: Trajet annulé }
+        '409': { description: Trajet contient des bookings confirmés — traitement guichet requis }
+
+  /coop/trips/{tripInstanceId}/open:
+    post:
+      tags: [Cooperative]
+      summary: Ouvrir un trajet à la réservation
+      parameters:
+        - $ref: '#/components/parameters/TripInstanceId'
+      responses:
+        '200': { description: Trajet ouvert, content: { application/json: { schema: { $ref: '#/components/schemas/TripInstance' } } } }
+
+  /coop/trips/{tripInstanceId}/close:
+    post:
+      tags: [Cooperative]
+      summary: Fermer manuellement un trajet à la réservation
+      parameters:
+        - $ref: '#/components/parameters/TripInstanceId'
+      responses:
+        '200': { description: Trajet fermé, content: { application/json: { schema: { $ref: '#/components/schemas/TripInstance' } } } }
+
+  /coop/trips/{tripInstanceId}/fares:
+    get:
+      tags: [Cooperative]
+      summary: Lister les tarifs configurés pour ce trajet
+      parameters:
+        - $ref: '#/components/parameters/TripInstanceId'
+      responses:
+        '200':
+          description: Tarifs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Fare' }
+    put:
+      tags: [Cooperative]
+      summary: Définir les tarifs (par catégorie ou par siège) — souveraineté coopérative
+      parameters:
+        - $ref: '#/components/parameters/TripInstanceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: { $ref: '#/components/schemas/FareRequest' }
+      responses:
+        '200':
+          description: Tarifs enregistrés
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Fare' }
+
+  # =====================================================================
+  # COOPÉRATIVE — BOOKINGS
+  # =====================================================================
+  /coop/bookings:
+    get:
+      tags: [Cooperative-Bookings]
+      summary: Lister les réservations de la coopérative
+      parameters:
+        - in: query
+          name: tripInstanceId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/BookingStatus' }
+        - in: query
+          name: channel
+          schema: { $ref: '#/components/schemas/BookingChannel' }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        '200':
+          description: Liste paginée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingList' }
+
+  /coop/bookings/{bookingId}:
+    get:
+      tags: [Cooperative-Bookings]
+      summary: Détail d'une réservation (vue coop)
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Détail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /coop/bookings/walk-in:
+    post:
+      tags: [Cooperative-Bookings]
+      summary: Créer une réservation walk-in (guichet)
+      description: |
+        Réservation faite par le personnel coopérative. GRATUITE, sans exception (RG-02) :
+        `platformFeeMga = 0`, `commissionMga = 0`. Paiement `CASH`, `MVOLA` ou `ORANGE_MONEY`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WalkInBookingRequest' }
+      responses:
+        '201':
+          description: Réservation confirmée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingDetail' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: Siège déjà pris
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SeatConflictResponse' }
+
+  /coop/bookings/{bookingId}/cancel-at-counter:
+    post:
+      tags: [Cooperative-Bookings]
+      summary: Annuler une réservation au guichet (processus physique)
+      description: |
+        Seul point d'annulation autorisé. Nécessite un motif et un membre coop (RG-03).
+        Un remboursement éventuel est traqué séparément (`Payment.status = REFUNDED_AT_COUNTER`)
+        mais il n'y a AUCUN mouvement d'argent automatique côté plateforme.
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+                refundedAtCounter: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Réservation annulée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Booking déjà annulé ou terminé }
+
+  # =====================================================================
+  # COOPÉRATIVE — REVENUS, STATS, EXPORTS
+  # =====================================================================
+  /coop/dashboard:
+    get:
+      tags: [Cooperative]
+      summary: Tableau de bord temps réel (revenus, taux de remplissage)
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: KPIs
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CooperativeDashboard' }
+
+  /coop/exports:
+    get:
+      tags: [Exports]
+      summary: Lister les exports demandés par la coopérative
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ExportJob' }
+    post:
+      tags: [Exports]
+      summary: Demander un export (manifeste, rapport financier, etc.)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExportRequest' }
+      responses:
+        '202':
+          description: Export en file
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExportJob' }
+
+  /coop/exports/{exportJobId}:
+    get:
+      tags: [Exports]
+      summary: Statut / URL de téléchargement d'un export
+      parameters:
+        - in: path
+          name: exportJobId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Export
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExportJob' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /coop/pricing-plan:
+    get:
+      tags: [Cooperative]
+      summary: Plan tarifaire actif (COMMISSION ou SUBSCRIPTION)
+      responses:
+        '200':
+          description: Plan
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PricingPlan' }
+
+  /coop/subscriptions:
+    get:
+      tags: [Cooperative]
+      summary: Suivi des abonnements coopérative (facturation manuelle V1)
+      responses:
+        '200':
+          description: Historique abonnements
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Subscription' }
+
+  # =====================================================================
+  # DRIVER — APP CONDUCTEUR
+  # =====================================================================
+  /driver/trips/today:
+    get:
+      tags: [Driver]
+      summary: Trajets du conducteur pour aujourd'hui
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DriverTripSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /driver/trips/{tripInstanceId}/manifest:
+    get:
+      tags: [Driver]
+      summary: Manifeste passagers du trajet
+      description: Réponse projetée légère pour 3G (nom, siège, statut embarquement, référence).
+      parameters:
+        - $ref: '#/components/parameters/TripInstanceId'
+      responses:
+        '200':
+          description: Manifeste
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Manifest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /driver/trips/{tripInstanceId}/board:
+    post:
+      tags: [Driver]
+      summary: Valider un embarquement (scan QR ou saisie référence)
+      parameters:
+        - $ref: '#/components/parameters/TripInstanceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BoardingRequest' }
+      responses:
+        '200':
+          description: Embarquement validé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BoardingEvent' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Billet inconnu }
+        '409': { description: Déjà embarqué ou annulé }
+
+  /driver/trips/{tripInstanceId}/depart:
+    post:
+      tags: [Driver]
+      summary: Signaler le départ effectif du véhicule
+      parameters:
+        - $ref: '#/components/parameters/TripInstanceId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes: { type: string }
+      responses:
+        '200':
+          description: Départ enregistré
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TripInstance' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /driver/trips/{tripInstanceId}/no-show:
+    post:
+      tags: [Driver]
+      summary: Marquer un passager absent (après départ)
+      parameters:
+        - $ref: '#/components/parameters/TripInstanceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bookingId]
+              properties:
+                bookingId: { type: string, format: uuid }
+                reason: { type: string }
+      responses:
+        '200':
+          description: Absence enregistrée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AbsenceEvent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # =====================================================================
+  # ADMIN — CONSOLE INSTRAM (FR ONLY)
+  # =====================================================================
+  /admin/cooperatives:
+    get:
+      tags: [Admin]
+      summary: Lister les coopératives (avec filtres statut)
+      parameters:
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/CooperativeStatus' }
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Cooperative' }
+                  nextCursor: { type: string, nullable: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/cooperatives/{cooperativeId}:
+    get:
+      tags: [Admin]
+      summary: Détail d'une coopérative (vue admin)
+      parameters:
+        - in: path
+          name: cooperativeId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Détail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cooperative' }
+
+  /admin/cooperatives/{cooperativeId}/validate:
+    post:
+      tags: [Admin]
+      summary: Valider une coopérative (activation)
+      parameters:
+        - in: path
+          name: cooperativeId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Validée, content: { application/json: { schema: { $ref: '#/components/schemas/Cooperative' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/cooperatives/{cooperativeId}/suspend:
+    post:
+      tags: [Admin]
+      summary: Suspendre une coopérative
+      parameters:
+        - in: path
+          name: cooperativeId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        '200': { description: Suspendue, content: { application/json: { schema: { $ref: '#/components/schemas/Cooperative' } } } }
+
+  /admin/cooperatives/{cooperativeId}/pricing-plan:
+    put:
+      tags: [Admin]
+      summary: Définir le plan tarifaire d'une coopérative
+      parameters:
+        - in: path
+          name: cooperativeId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PricingPlanRequest' }
+      responses:
+        '200':
+          description: Plan appliqué
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PricingPlan' }
+
+  /admin/cooperatives/{cooperativeId}/subscriptions:
+    get:
+      tags: [Admin]
+      summary: Historique d'abonnements coopérative
+      parameters:
+        - in: path
+          name: cooperativeId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Subscription' }
+    post:
+      tags: [Admin]
+      summary: Enregistrer manuellement une période d'abonnement (V1)
+      parameters:
+        - in: path
+          name: cooperativeId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SubscriptionRequest' }
+      responses:
+        '201':
+          description: Créé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscription' }
+
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: Rechercher un utilisateur
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: role
+          schema: { type: string, enum: [TRAVELER, COOP_ADMIN, COOP_ASSISTANT, COOP_DRIVER, COOP_CONTROLLER, ADMIN_SUPER, ADMIN_OPS, ADMIN_MODERATOR] }
+        - in: query
+          name: cursor
+          schema: { type: string }
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AdminUserSummary' }
+
+  /admin/users/{userId}/suspend:
+    post:
+      tags: [Admin]
+      summary: Suspendre un compte utilisateur
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        '200': { description: Suspendu, content: { application/json: { schema: { $ref: '#/components/schemas/AdminUserSummary' } } } }
+
+  /admin/ratings:
+    get:
+      tags: [Admin]
+      summary: Modérer les avis en attente
+      parameters:
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/RatingStatus' }
+        - in: query
+          name: cursor
+          schema: { type: string }
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Rating' }
+
+  /admin/ratings/{ratingId}:
+    patch:
+      tags: [Admin]
+      summary: Publier ou rejeter un avis
+      parameters:
+        - in: path
+          name: ratingId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/RatingStatus' }
+                moderationNote: { type: string }
+      responses:
+        '200': { description: Modéré, content: { application/json: { schema: { $ref: '#/components/schemas/Rating' } } } }
+
+  /admin/payments:
+    get:
+      tags: [Admin]
+      summary: Superviser les paiements (recherche, statut, litiges)
+      parameters:
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/PaymentStatus' }
+        - in: query
+          name: provider
+          schema: { $ref: '#/components/schemas/PaymentProvider' }
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Payment' }
+
+  /admin/dashboard:
+    get:
+      tags: [Admin]
+      summary: Supervision globale (volumes, revenus plateforme, incidents)
+      responses:
+        '200':
+          description: KPIs plateforme
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminDashboard' }
+
+  /admin/audit-logs:
+    get:
+      tags: [Admin]
+      summary: Consultation du journal d'audit
+      parameters:
+        - in: query
+          name: action
+          schema: { type: string }
+        - in: query
+          name: entityType
+          schema: { type: string }
+        - in: query
+          name: actorUserId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+        - in: query
+          name: cursor
+          schema: { type: string }
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AuditLogEntry' }
+
+  # =====================================================================
+  # DIRECTORY — ANNUAIRE PUBLIC
+  # =====================================================================
+  /directory/cooperatives:
+    get:
+      tags: [Directory]
+      summary: Annuaire public des coopératives
+      security: []
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: region
+          schema: { type: string }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DirectoryEntry' }
+          headers:
+            Cache-Control:
+              schema: { type: string, example: 'public, max-age=300' }
+
+  /directory/cooperatives/{slug}:
+    get:
+      tags: [Directory]
+      summary: Fiche publique d'une coopérative
+      security: []
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Fiche
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DirectoryEntryDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # =====================================================================
+  # NOTIFICATIONS
+  # =====================================================================
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: Historique de mes notifications
+      parameters:
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, maximum: 50 }
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Notification' }
+
+  /notifications/preferences:
+    get:
+      tags: [Notifications]
+      summary: Récupérer mes préférences de notifications
+      responses:
+        '200':
+          description: Préférences
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationPreferences' }
+    put:
+      tags: [Notifications]
+      summary: Mettre à jour mes préférences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationPreferences' }
+      responses:
+        '200': { description: Préférences mises à jour, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPreferences' } } } }
+
+  /admin/notifications/templates:
+    get:
+      tags: [Admin]
+      summary: Lister les templates de notifications (bilingues)
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/NotificationTemplate' }
+    post:
+      tags: [Admin]
+      summary: Créer un template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationTemplateRequest' }
+      responses:
+        '201': { description: Créé, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationTemplate' } } } }
+
+  /admin/notifications/templates/{templateId}:
+    patch:
+      tags: [Admin]
+      summary: Modifier un template
+      parameters:
+        - in: path
+          name: templateId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationTemplateRequest' }
+      responses:
+        '200': { description: Mis à jour, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationTemplate' } } } }
+
+  # =====================================================================
+  # SANTÉ ET REALTIME
+  # =====================================================================
+  /healthz:
+    get:
+      tags: [Realtime]
+      summary: Liveness probe
+      security: []
+      responses:
+        '200': { description: OK }
+
+  /readyz:
+    get:
+      tags: [Realtime]
+      summary: Readiness probe (DB + Redis + workers)
+      security: []
+      responses:
+        '200': { description: OK }
+        '503': { description: Service non prêt }
+
+  /realtime/ws-endpoint:
+    get:
+      tags: [Realtime]
+      summary: Renvoie l'URL WSS et le ticket court d'authentification WebSocket
+      description: |
+        Documentation des canaux WebSocket exposés (les canaux eux-mêmes ne sont pas REST) :
+          - `trip:{tripInstanceId}` : events SEAT_HELD, SEAT_SOLD, SEAT_RELEASED
+          - `booking:{userId}` : PAYMENT_CONFIRMED, PAYMENT_FAILED, BOOKING_CANCELLED
+          - `cooperative:{cooperativeId}` : dashboard temps réel
+          - `driver:{tripInstanceId}` : embarquement, départ
+      responses:
+        '200':
+          description: URL WSS + ticket
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  wsUrl: { type: string, format: uri }
+                  ticket: { type: string, description: JWT court (60 s) à passer en query string }
+
+# =====================================================================
+# COMPONENTS
+# =====================================================================
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    AcceptLanguage:
+      in: header
+      name: Accept-Language
+      schema: { type: string, enum: [fr, mg], default: fr }
+    TripInstanceId:
+      in: path
+      name: tripInstanceId
+      required: true
+      schema: { type: string, format: uuid }
+    VehicleId:
+      in: path
+      name: vehicleId
+      required: true
+      schema: { type: string, format: uuid }
+    RouteId:
+      in: path
+      name: routeId
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    BadRequest:
+      description: Requête invalide
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unauthorized:
+      description: Non authentifié
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Permissions insuffisantes
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: Ressource inconnue
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    ServerError:
+      description: Erreur serveur
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  schemas:
+    # -------------------- Communs
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, example: SEAT_UNAVAILABLE }
+        message: { type: string }
+        details: { type: object, additionalProperties: true }
+
+    Lang:
+      type: string
+      enum: [fr, mg]
+
+    Money:
+      type: object
+      properties:
+        amount: { type: integer, description: Montant en Ariary (MGA), entier }
+        currency: { type: string, enum: [MGA], default: MGA }
+
+    # -------------------- Auth
+    RegisterRequest:
+      type: object
+      required: [password, firstName, lastName]
+      properties:
+        email: { type: string, format: email }
+        phone: { type: string, description: Format international, ex. +2613xxxxxxxx }
+        password: { type: string, format: password, minLength: 10 }
+        firstName: { type: string }
+        lastName: { type: string }
+        preferredLang: { $ref: '#/components/schemas/Lang' }
+
+    LoginRequest:
+      type: object
+      required: [password]
+      properties:
+        email: { type: string, format: email }
+        phone: { type: string }
+        password: { type: string, format: password }
+
+    AuthTokens:
+      type: object
+      required: [accessToken, refreshToken, expiresIn]
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        expiresIn: { type: integer, description: Secondes }
+        user: { $ref: '#/components/schemas/Me' }
+
+    Me:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        preferredLang: { $ref: '#/components/schemas/Lang' }
+        roles:
+          type: array
+          items: { type: string, description: Ex. TRAVELER, COOP_ADMIN, ADMIN_SUPER }
+        cooperatives:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              displayName: { type: string }
+              role: { $ref: '#/components/schemas/CooperativeRole' }
+        traveler:
+          type: object
+          nullable: true
+          properties:
+            firstName: { type: string }
+            lastName: { type: string }
+            mobileMoneyPhone: { type: string, nullable: true }
+
+    UpdateMeRequest:
+      type: object
+      properties:
+        firstName: { type: string }
+        lastName: { type: string }
+        preferredLang: { $ref: '#/components/schemas/Lang' }
+        mobileMoneyPhone: { type: string }
+        currentPassword: { type: string, format: password }
+        newPassword: { type: string, format: password, minLength: 10 }
+
+    # -------------------- Catalog
+    City:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string, description: Localisé selon Accept-Language }
+        district: { type: string }
+        region: { type: string }
+
+    CityList:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/City' }
+        nextCursor: { type: string, nullable: true }
+
+    # -------------------- Search
+    TripSearchResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TripSearchResult' }
+        nextCursor: { type: string, nullable: true }
+
+    TripSearchResult:
+      type: object
+      properties:
+        tripInstanceId: { type: string, format: uuid }
+        cooperative:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            displayName: { type: string }
+            ratingAverage: { type: number, format: float }
+            ratingCount: { type: integer }
+        route:
+          type: object
+          properties:
+            originCity: { $ref: '#/components/schemas/City' }
+            destinationCity: { $ref: '#/components/schemas/City' }
+            estimatedDurationMin: { type: integer }
+        departureAt: { type: string, format: date-time }
+        arrivalEstimatedAt: { type: string, format: date-time, nullable: true }
+        fareMinMga: { type: integer }
+        fareMaxMga: { type: integer }
+        seatsAvailable: { type: integer }
+        vehicle:
+          type: object
+          properties:
+            model: { type: string, nullable: true }
+            capacity: { type: integer }
+
+    # -------------------- Trip / Seats
+    TripInstanceDetail:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        cooperative: { $ref: '#/components/schemas/Cooperative' }
+        route: { $ref: '#/components/schemas/Route' }
+        vehicle: { $ref: '#/components/schemas/Vehicle' }
+        departureAt: { type: string, format: date-time }
+        arrivalEstimatedAt: { type: string, format: date-time, nullable: true }
+        status: { $ref: '#/components/schemas/TripStatus' }
+        policy: { $ref: '#/components/schemas/Policy' }
+        fares:
+          type: array
+          items: { $ref: '#/components/schemas/Fare' }
+
+    TripInstanceCoopDetail:
+      allOf:
+        - $ref: '#/components/schemas/TripInstanceDetail'
+        - type: object
+          properties:
+            stats:
+              type: object
+              properties:
+                seatsSold: { type: integer }
+                seatsHeld: { type: integer }
+                revenueMga: { type: integer }
+
+    TripSeatMap:
+      type: object
+      properties:
+        tripInstanceId: { type: string, format: uuid }
+        layout: { type: object, description: Schéma géométrique JSON }
+        seats:
+          type: array
+          items:
+            type: object
+            properties:
+              seatDefinitionId: { type: string, format: uuid }
+              code: { type: string }
+              category: { $ref: '#/components/schemas/SeatCategory' }
+              row: { type: integer, nullable: true }
+              column: { type: integer, nullable: true }
+              status:
+                type: string
+                enum: [AVAILABLE, HELD, SOLD]
+              priceMga: { type: integer }
+
+    SeatHoldResponse:
+      type: object
+      properties:
+        holdId: { type: string, format: uuid }
+        tripInstanceId: { type: string, format: uuid }
+        seats:
+          type: array
+          items:
+            type: object
+            properties:
+              seatDefinitionId: { type: string, format: uuid }
+              code: { type: string }
+              priceMga: { type: integer }
+        expiresAt: { type: string, format: date-time }
+
+    SeatConflictResponse:
+      type: object
+      properties:
+        code: { type: string, enum: [SEAT_UNAVAILABLE] }
+        message: { type: string }
+        conflictingSeats:
+          type: array
+          items:
+            type: object
+            properties:
+              seatDefinitionId: { type: string, format: uuid }
+              code: { type: string }
+              status:
+                type: string
+                enum: [HELD, SOLD]
+
+    # -------------------- Bookings
+    BookingChannel:
+      type: string
+      enum: [ONLINE, WALK_IN]
+
+    BookingStatus:
+      type: string
+      enum: [PENDING_PAYMENT, CONFIRMED, PAYMENT_EXPIRED, PAYMENT_FAILED, CANCELLED_AT_COUNTER, COMPLETED, NO_SHOW]
+
+    BoardingStatus:
+      type: string
+      enum: [NOT_BOARDED, BOARDED, ABSENT]
+
+    CreateBookingRequest:
+      type: object
+      required: [holdId, passengers]
+      properties:
+        holdId: { type: string, format: uuid }
+        passengers:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/PassengerRequest' }
+        contactPhone: { type: string }
+        preferredLang: { $ref: '#/components/schemas/Lang' }
+
+    PassengerRequest:
+      type: object
+      required: [firstName, lastName, seatCode]
+      properties:
+        firstName: { type: string }
+        lastName: { type: string }
+        phone: { type: string }
+        nationalIdRef: { type: string }
+        seatCode: { type: string }
+
+    Booking:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        reference: { type: string }
+        status: { $ref: '#/components/schemas/BookingStatus' }
+        channel: { $ref: '#/components/schemas/BookingChannel' }
+        totalAmountMga: { type: integer }
+        seatSubtotalMga: { type: integer }
+        platformFeeMga: { type: integer, description: "0 pour WALK_IN (RG-02)" }
+        tripInstanceId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+
+    BookingList:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Booking' }
+        nextCursor: { type: string, nullable: true }
+
+    BookingDetail:
+      allOf:
+        - $ref: '#/components/schemas/Booking'
+        - type: object
+          properties:
+            trip: { $ref: '#/components/schemas/TripInstanceDetail' }
+            passengers:
+              type: array
+              items:
+                type: object
+                properties:
+                  firstName: { type: string }
+                  lastName: { type: string }
+                  seatCode: { type: string }
+                  boardingStatus: { $ref: '#/components/schemas/BoardingStatus' }
+            payments:
+              type: array
+              items: { $ref: '#/components/schemas/Payment' }
+            ticket: { $ref: '#/components/schemas/Ticket' }
+
+    WalkInBookingRequest:
+      type: object
+      required: [tripInstanceId, seatDefinitionIds, passengers, paymentMethod]
+      properties:
+        tripInstanceId: { type: string, format: uuid }
+        seatDefinitionIds:
+          type: array
+          items: { type: string, format: uuid }
+          minItems: 1
+        passengers:
+          type: array
+          items: { $ref: '#/components/schemas/PassengerRequest' }
+        paymentMethod:
+          type: string
+          enum: [CASH, MVOLA, ORANGE_MONEY]
+        buyerPhone: { type: string, description: Pour envoi SMS billet (optionnel) }
+        buyerLang: { $ref: '#/components/schemas/Lang' }
+
+    # -------------------- Ticket
+    Ticket:
+      type: object
+      properties:
+        reference: { type: string }
+        qrPayload: { type: string, description: JSON signé HMAC }
+        qrImageUrl: { type: string, format: uri }
+        issuedAt: { type: string, format: date-time }
+
+    # -------------------- Payments
+    PaymentProvider:
+      type: string
+      enum: [MVOLA, ORANGE_MONEY, AIRTEL_MONEY, CASH]
+
+    PaymentStatus:
+      type: string
+      enum: [INITIATED, PENDING, CONFIRMED, FAILED, EXPIRED, REFUNDED_AT_COUNTER]
+
+    InitiatePaymentRequest:
+      type: object
+      required: [bookingId, provider, payerPhone]
+      properties:
+        bookingId: { type: string, format: uuid }
+        provider: { $ref: '#/components/schemas/PaymentProvider' }
+        payerPhone: { type: string }
+
+    PaymentInitiation:
+      type: object
+      properties:
+        paymentId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/PaymentStatus' }
+        instructions:
+          type: object
+          properties:
+            messageFr: { type: string }
+            messageMg: { type: string }
+            ussdCode: { type: string, nullable: true }
+            expiresAt: { type: string, format: date-time }
+
+    Payment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        bookingId: { type: string, format: uuid }
+        provider: { $ref: '#/components/schemas/PaymentProvider' }
+        amountMga: { type: integer }
+        status: { $ref: '#/components/schemas/PaymentStatus' }
+        providerTransactionId: { type: string, nullable: true }
+        initiatedAt: { type: string, format: date-time }
+        confirmedAt: { type: string, format: date-time, nullable: true }
+
+    # -------------------- Cooperative
+    CooperativeStatus:
+      type: string
+      enum: [PENDING_VALIDATION, VALIDATED, SUSPENDED, REJECTED]
+
+    Cooperative:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        legalName: { type: string }
+        displayName: { type: string }
+        status: { $ref: '#/components/schemas/CooperativeStatus' }
+        contactEmail: { type: string, nullable: true }
+        contactPhone: { type: string, nullable: true }
+        logoUrl: { type: string, nullable: true }
+        description: { type: string, nullable: true, description: Localisé Accept-Language }
+        ratingAverage: { type: number, format: float }
+        ratingCount: { type: integer }
+
+    CooperativeUpdate:
+      type: object
+      properties:
+        displayName: { type: string }
+        contactEmail: { type: string, format: email }
+        contactPhone: { type: string }
+        logoUrl: { type: string, format: uri }
+        descriptionFr: { type: string }
+        descriptionMg: { type: string }
+        websiteUrl: { type: string, format: uri }
+
+    Policy:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        titleFr: { type: string }
+        titleMg: { type: string }
+        bodyFr: { type: string }
+        bodyMg: { type: string }
+        version: { type: integer }
+        isActive: { type: boolean }
+
+    PolicyRequest:
+      type: object
+      required: [titleFr, titleMg, bodyFr, bodyMg]
+      properties:
+        titleFr: { type: string }
+        titleMg: { type: string }
+        bodyFr: { type: string }
+        bodyMg: { type: string }
+
+    CooperativeRole:
+      type: string
+      enum: [COOP_ADMIN, COOP_ASSISTANT, COOP_DRIVER, COOP_CONTROLLER]
+
+    Member:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            email: { type: string, nullable: true }
+            phone: { type: string, nullable: true }
+            firstName: { type: string, nullable: true }
+            lastName: { type: string, nullable: true }
+        role: { $ref: '#/components/schemas/CooperativeRole' }
+        active: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    InvitationRequest:
+      type: object
+      required: [role]
+      properties:
+        email: { type: string, format: email }
+        phone: { type: string }
+        role: { $ref: '#/components/schemas/CooperativeRole' }
+
+    Invitation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        role: { $ref: '#/components/schemas/CooperativeRole' }
+        email: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        status: { type: string, enum: [PENDING, ACCEPTED, REVOKED, EXPIRED] }
+        expiresAt: { type: string, format: date-time }
+
+    # -------------------- Vehicles / SeatMaps
+    Vehicle:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        cooperativeId: { type: string, format: uuid }
+        seatMapId: { type: string, format: uuid }
+        registration: { type: string }
+        displayName: { type: string }
+        model: { type: string, nullable: true }
+        capacity: { type: integer }
+        isActive: { type: boolean }
+
+    VehicleRequest:
+      type: object
+      required: [seatMapId, registration, displayName, capacity]
+      properties:
+        seatMapId: { type: string, format: uuid }
+        registration: { type: string }
+        displayName: { type: string }
+        model: { type: string }
+        capacity: { type: integer }
+
+    SeatCategory:
+      type: string
+      enum: [VIP, PREMIUM, CLASSIC, STANDARD]
+
+    SeatMap:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        capacity: { type: integer }
+        layout: { type: object, description: Schéma géométrique }
+        seats:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              code: { type: string }
+              category: { $ref: '#/components/schemas/SeatCategory' }
+              row: { type: integer, nullable: true }
+              column: { type: integer, nullable: true }
+
+    SeatMapRequest:
+      type: object
+      required: [name, capacity, layout, seats]
+      properties:
+        name: { type: string }
+        capacity: { type: integer }
+        layout: { type: object }
+        seats:
+          type: array
+          items:
+            type: object
+            required: [code, category]
+            properties:
+              code: { type: string }
+              category: { $ref: '#/components/schemas/SeatCategory' }
+              row: { type: integer }
+              column: { type: integer }
+
+    # -------------------- Routes / Schedules / Trips
+    Route:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        cooperativeId: { type: string, format: uuid }
+        displayName: { type: string }
+        originCity: { $ref: '#/components/schemas/City' }
+        destinationCity: { $ref: '#/components/schemas/City' }
+        distanceKm: { type: integer, nullable: true }
+        estimatedDurationMin: { type: integer, nullable: true }
+        stops:
+          type: array
+          items:
+            type: object
+            properties:
+              cityId: { type: string, format: uuid }
+              orderIndex: { type: integer }
+              offsetMin: { type: integer }
+        isActive: { type: boolean }
+
+    RouteRequest:
+      type: object
+      required: [displayName, originCityId, destinationCityId]
+      properties:
+        displayName: { type: string }
+        originCityId: { type: string, format: uuid }
+        destinationCityId: { type: string, format: uuid }
+        distanceKm: { type: integer }
+        estimatedDurationMin: { type: integer }
+        stops:
+          type: array
+          items:
+            type: object
+            required: [cityId, orderIndex, offsetMin]
+            properties:
+              cityId: { type: string, format: uuid }
+              orderIndex: { type: integer }
+              offsetMin: { type: integer }
+
+    Schedule:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        routeId: { type: string, format: uuid }
+        daysOfWeek:
+          type: array
+          items: { type: integer, minimum: 0, maximum: 6 }
+        departureTime: { type: string, description: HH:mm (locale Madagascar UTC+3) }
+        isActive: { type: boolean }
+
+    ScheduleRequest:
+      type: object
+      required: [routeId, daysOfWeek, departureTime]
+      properties:
+        routeId: { type: string, format: uuid }
+        daysOfWeek:
+          type: array
+          items: { type: integer, minimum: 0, maximum: 6 }
+        departureTime: { type: string }
+
+    TripStatus:
+      type: string
+      enum: [DRAFT, OPEN_FOR_BOOKING, CLOSED_FOR_BOOKING, DEPARTED, COMPLETED, CANCELLED]
+
+    TripInstance:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        cooperativeId: { type: string, format: uuid }
+        routeId: { type: string, format: uuid }
+        scheduleId: { type: string, format: uuid, nullable: true }
+        vehicleId: { type: string, format: uuid }
+        departureAt: { type: string, format: date-time }
+        arrivalEstimatedAt: { type: string, format: date-time, nullable: true }
+        status: { $ref: '#/components/schemas/TripStatus' }
+        openedForBookingAt: { type: string, format: date-time, nullable: true }
+
+    TripInstanceRequest:
+      type: object
+      required: [routeId, vehicleId, departureAt]
+      properties:
+        routeId: { type: string, format: uuid }
+        scheduleId: { type: string, format: uuid }
+        vehicleId: { type: string, format: uuid }
+        departureAt: { type: string, format: date-time }
+        arrivalEstimatedAt: { type: string, format: date-time }
+        notesFr: { type: string }
+        notesMg: { type: string }
+
+    TripInstanceList:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TripInstance' }
+        nextCursor: { type: string, nullable: true }
+
+    Fare:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tripInstanceId: { type: string, format: uuid }
+        seatDefinitionId: { type: string, format: uuid, nullable: true }
+        category: { $ref: '#/components/schemas/SeatCategory', nullable: true }
+        priceMga: { type: integer }
+
+    FareRequest:
+      type: object
+      required: [priceMga]
+      properties:
+        seatDefinitionId: { type: string, format: uuid }
+        category: { $ref: '#/components/schemas/SeatCategory' }
+        priceMga: { type: integer }
+
+    # -------------------- Dashboard coop / admin
+    CooperativeDashboard:
+      type: object
+      properties:
+        periodStart: { type: string, format: date-time }
+        periodEnd: { type: string, format: date-time }
+        bookingsOnline: { type: integer }
+        bookingsWalkIn: { type: integer }
+        revenueGrossMga: { type: integer }
+        revenueNetMga: { type: integer, description: Après commission plateforme }
+        occupancyRate: { type: number, format: float, description: 0..1 }
+        upcomingTrips: { type: integer }
+
+    AdminDashboard:
+      type: object
+      properties:
+        cooperativesActive: { type: integer }
+        cooperativesPending: { type: integer }
+        bookingsToday: { type: integer }
+        revenueToday: { type: integer }
+        platformFeeToday: { type: integer }
+        incidents:
+          type: array
+          items:
+            type: object
+            properties:
+              type: { type: string }
+              severity: { type: string }
+              message: { type: string }
+
+    AdminUserSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        status: { type: string, enum: [ACTIVE, SUSPENDED, DELETED] }
+        roles:
+          type: array
+          items: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    # -------------------- Pricing plans / abonnements
+    PricingPlanType:
+      type: string
+      enum: [COMMISSION, SUBSCRIPTION]
+
+    PricingPlan:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/PricingPlanType' }
+        commissionRate: { type: number, format: float, nullable: true }
+        monthlyFeeMga: { type: integer, nullable: true }
+        effectiveFrom: { type: string, format: date-time }
+        effectiveUntil: { type: string, format: date-time, nullable: true }
+
+    PricingPlanRequest:
+      type: object
+      required: [type, effectiveFrom]
+      properties:
+        type: { $ref: '#/components/schemas/PricingPlanType' }
+        commissionRate: { type: number, format: float }
+        monthlyFeeMga: { type: integer }
+        effectiveFrom: { type: string, format: date-time }
+        effectiveUntil: { type: string, format: date-time }
+
+    Subscription:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        periodStart: { type: string, format: date }
+        periodEnd: { type: string, format: date }
+        amountMga: { type: integer }
+        status: { type: string, enum: [MANUAL, AUTO_BILLED, PAID, LATE, UNPAID] }
+        paidAt: { type: string, format: date-time, nullable: true }
+
+    SubscriptionRequest:
+      type: object
+      required: [periodStart, periodEnd, amountMga]
+      properties:
+        periodStart: { type: string, format: date }
+        periodEnd: { type: string, format: date }
+        amountMga: { type: integer }
+        status: { type: string, enum: [MANUAL, PAID, LATE, UNPAID] }
+
+    # -------------------- Ratings
+    RatingStatus:
+      type: string
+      enum: [PENDING_REVIEW, PUBLISHED, REJECTED]
+
+    RatingRequest:
+      type: object
+      required: [score]
+      properties:
+        score: { type: integer, minimum: 1, maximum: 5 }
+        commentFr: { type: string }
+        commentMg: { type: string }
+
+    Rating:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        bookingId: { type: string, format: uuid }
+        cooperativeId: { type: string, format: uuid }
+        score: { type: integer }
+        comment: { type: string, nullable: true, description: Localisé Accept-Language }
+        status: { $ref: '#/components/schemas/RatingStatus' }
+        createdAt: { type: string, format: date-time }
+
+    # -------------------- Directory
+    DirectoryEntry:
+      type: object
+      properties:
+        slug: { type: string }
+        displayName: { type: string }
+        description: { type: string, nullable: true }
+        logoUrl: { type: string, nullable: true }
+        regionsServed:
+          type: array
+          items: { type: string }
+        ratingAverage: { type: number, format: float }
+        ratingCount: { type: integer }
+
+    DirectoryEntryDetail:
+      allOf:
+        - $ref: '#/components/schemas/DirectoryEntry'
+        - type: object
+          properties:
+            routes:
+              type: array
+              items:
+                type: object
+                properties:
+                  displayName: { type: string }
+                  originCity: { $ref: '#/components/schemas/City' }
+                  destinationCity: { $ref: '#/components/schemas/City' }
+            policy: { $ref: '#/components/schemas/Policy' }
+            contactEmail: { type: string, nullable: true }
+            contactPhone: { type: string, nullable: true }
+
+    # -------------------- Driver
+    DriverTripSummary:
+      type: object
+      properties:
+        tripInstanceId: { type: string, format: uuid }
+        route:
+          type: object
+          properties:
+            originName: { type: string }
+            destinationName: { type: string }
+        departureAt: { type: string, format: date-time }
+        vehicleRegistration: { type: string }
+        passengersCount: { type: integer }
+        boardedCount: { type: integer }
+
+    Manifest:
+      type: object
+      properties:
+        tripInstanceId: { type: string, format: uuid }
+        departureAt: { type: string, format: date-time }
+        passengers:
+          type: array
+          items:
+            type: object
+            properties:
+              bookingId: { type: string, format: uuid }
+              bookingReference: { type: string }
+              firstName: { type: string }
+              lastName: { type: string }
+              seatCode: { type: string }
+              phone: { type: string, nullable: true }
+              boardingStatus: { $ref: '#/components/schemas/BoardingStatus' }
+              channel: { $ref: '#/components/schemas/BookingChannel' }
+
+    BoardingRequest:
+      type: object
+      properties:
+        qrPayload: { type: string, description: Payload signé scanné }
+        bookingReference: { type: string, description: Saisie manuelle fallback }
+      description: Un des deux champs est requis.
+
+    BoardingEvent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        bookingId: { type: string, format: uuid }
+        tripInstanceId: { type: string, format: uuid }
+        method: { type: string, enum: [SCAN, MANUAL_REF] }
+        boardedAt: { type: string, format: date-time }
+
+    AbsenceEvent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        bookingId: { type: string, format: uuid }
+        tripInstanceId: { type: string, format: uuid }
+        reason: { type: string, nullable: true }
+        markedAt: { type: string, format: date-time }
+
+    # -------------------- Exports
+    ExportType:
+      type: string
+      enum: [MANIFEST, FINANCIAL_REPORT, BOOKINGS, RATINGS]
+
+    ExportRequest:
+      type: object
+      required: [type, format]
+      properties:
+        type: { $ref: '#/components/schemas/ExportType' }
+        format: { type: string, enum: [CSV, PDF, XLSX] }
+        filters:
+          type: object
+          properties:
+            tripInstanceId: { type: string, format: uuid }
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+            status: { $ref: '#/components/schemas/BookingStatus' }
+
+    ExportJob:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/ExportType' }
+        format: { type: string }
+        status: { type: string, enum: [QUEUED, RUNNING, READY, FAILED, EXPIRED] }
+        resultUrl: { type: string, format: uri, nullable: true }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time, nullable: true }
+
+    # -------------------- Notifications
+    NotificationChannel:
+      type: string
+      enum: [SMS, PUSH, EMAIL]
+
+    NotificationCategory:
+      type: string
+      enum: [TRANSACTIONAL, REMINDER, SYSTEM]
+
+    Notification:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        channel: { $ref: '#/components/schemas/NotificationChannel' }
+        category: { $ref: '#/components/schemas/NotificationCategory' }
+        lang: { $ref: '#/components/schemas/Lang' }
+        toAddress: { type: string }
+        body: { type: string, description: Contenu rendu (localisé) }
+        status: { type: string, enum: [PENDING, SCHEDULED, SENT, FAILED, CANCELLED] }
+        scheduledFor: { type: string, format: date-time, nullable: true }
+        sentAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    NotificationPreferences:
+      type: object
+      properties:
+        smsEnabled: { type: boolean, default: true }
+        emailEnabled: { type: boolean, default: false }
+        pushEnabled: { type: boolean, default: false }
+        reminderEnabled: { type: boolean, default: true }
+        preferredLang: { $ref: '#/components/schemas/Lang' }
+
+    NotificationTemplate:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        category: { $ref: '#/components/schemas/NotificationCategory' }
+        bodyFr: { type: string }
+        bodyMg: { type: string }
+        version: { type: integer }
+        isActive: { type: boolean }
+
+    NotificationTemplateRequest:
+      type: object
+      required: [code, category, bodyFr, bodyMg]
+      properties:
+        code: { type: string }
+        category: { $ref: '#/components/schemas/NotificationCategory' }
+        bodyFr: { type: string }
+        bodyMg: { type: string }
+        isActive: { type: boolean, default: true }
+
+    # -------------------- Audit
+    AuditLogEntry:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        actorUserId: { type: string, format: uuid, nullable: true }
+        action: { type: string }
+        entityType: { type: string }
+        entityId: { type: string, nullable: true }
+        ipAddress: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }

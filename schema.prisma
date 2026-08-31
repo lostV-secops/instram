@@ -1,0 +1,982 @@
+// InsTRAM — Schéma Prisma / PostgreSQL
+// Source de vérité technique (avec docs/architecture.md et docs/contrat-api.yaml).
+// Toute modification doit être validée par l'Architecte avant merge.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions", "fullTextSearchPostgres"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [citext, pg_trgm, pgcrypto]
+}
+
+// =====================================================================
+// ENUMS
+// =====================================================================
+
+enum Lang {
+  FR
+  MG
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED // Anonymisé
+}
+
+enum PlatformRole {
+  ADMIN_SUPER
+  ADMIN_OPS
+  ADMIN_MODERATOR
+}
+
+enum CooperativeRole {
+  COOP_ADMIN
+  COOP_ASSISTANT
+  COOP_DRIVER
+  COOP_CONTROLLER
+}
+
+enum CooperativeStatus {
+  PENDING_VALIDATION
+  VALIDATED
+  SUSPENDED
+  REJECTED
+}
+
+enum PricingPlanType {
+  COMMISSION
+  SUBSCRIPTION
+}
+
+enum SubscriptionStatus {
+  MANUAL // V1 par défaut : suivi manuel (CDC §4.2)
+  AUTO_BILLED // V2 : ouvert architecturalement, non actif V1
+  PAID
+  LATE
+  UNPAID
+}
+
+enum SeatCategory {
+  VIP
+  PREMIUM
+  CLASSIC
+  STANDARD
+}
+
+enum TripStatus {
+  DRAFT
+  OPEN_FOR_BOOKING
+  CLOSED_FOR_BOOKING
+  DEPARTED
+  COMPLETED
+  CANCELLED
+}
+
+enum BookingChannel {
+  ONLINE
+  WALK_IN
+}
+
+enum BookingStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  PAYMENT_EXPIRED
+  PAYMENT_FAILED
+  CANCELLED_AT_COUNTER // Annulation physique au guichet uniquement
+  COMPLETED
+  NO_SHOW
+}
+
+enum BoardingStatus {
+  NOT_BOARDED
+  BOARDED
+  ABSENT
+}
+
+enum PaymentProvider {
+  MVOLA
+  ORANGE_MONEY
+  AIRTEL_MONEY // Réservé V2 (CDC §4.2)
+  CASH
+}
+
+enum PaymentStatus {
+  INITIATED
+  PENDING
+  CONFIRMED
+  FAILED
+  EXPIRED
+  REFUNDED_AT_COUNTER // Traçabilité d'un remboursement physique fait par la coop
+}
+
+enum NotificationChannel {
+  SMS
+  PUSH
+  EMAIL
+}
+
+enum NotificationStatus {
+  PENDING
+  SCHEDULED // Différé pour cause silence nocturne
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum NotificationCategory {
+  TRANSACTIONAL // Envoi immédiat, bypass silence nocturne
+  REMINDER
+  MARKETING // Interdit V1
+  SYSTEM
+}
+
+enum RatingStatus {
+  PENDING_REVIEW
+  PUBLISHED
+  REJECTED
+}
+
+enum ExportType {
+  MANIFEST
+  FINANCIAL_REPORT
+  BOOKINGS
+  RATINGS
+}
+
+enum ExportStatus {
+  QUEUED
+  RUNNING
+  READY
+  FAILED
+  EXPIRED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+enum AuditAction {
+  LOGIN
+  LOGIN_FAILED
+  LOGOUT
+  USER_CREATED
+  USER_DELETED
+  COOP_VALIDATED
+  COOP_SUSPENDED
+  COOP_PLAN_CHANGED
+  FARE_CHANGED
+  SCHEDULE_CHANGED
+  BOOKING_CREATED
+  BOOKING_CANCELLED_AT_COUNTER
+  PAYMENT_INITIATED
+  PAYMENT_CONFIRMED
+  PAYMENT_FAILED
+  RATING_MODERATED
+  ADMIN_ACCESS
+  EXPORT_REQUESTED
+  SEAT_HELD
+  SEAT_RELEASED
+  DEPARTURE_SIGNALED
+}
+
+// =====================================================================
+// IDENTITÉ ET UTILISATEURS
+// =====================================================================
+
+model User {
+  id                    String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                 String?       @unique @db.Citext
+  phone                 String?       @unique
+  passwordHash          String?
+  preferredLang         Lang          @default(FR)
+  status                UserStatus    @default(ACTIVE)
+  emailVerifiedAt       DateTime?
+  phoneVerifiedAt       DateTime?
+  deletionRequestedAt   DateTime?
+  anonymizedAt          DateTime?
+  lastLoginAt           DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  travelerProfile       TravelerProfile?
+  adminProfile          AdminProfile?
+  memberships           Membership[]
+  authSessions          AuthSession[]
+  bookings              Booking[]     @relation("BookingBuyer")
+  ratings               Rating[]
+  notifications         Notification[]
+  auditLogs             AuditLog[]    @relation("AuditActor")
+  invitationsSent       Invitation[]  @relation("InvitationSender")
+  exportJobs            ExportJob[]
+  seatHolds             SeatHold[]
+
+  @@index([status])
+  @@index([preferredLang])
+}
+
+model TravelerProfile {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String   @unique @db.Uuid
+  firstName     String
+  lastName      String
+  nationalIdRef String?  // Optionnel, chiffré si présent
+  mobileMoneyPhone String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AdminProfile {
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String       @unique @db.Uuid
+  role      PlatformRole
+  mfaEnabled Boolean     @default(false)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([role])
+}
+
+model AuthSession {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String    @db.Uuid
+  refreshTokenHash  String    @unique
+  userAgent         String?
+  ipAddress         String?
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  createdAt         DateTime  @default(now())
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Membership {
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String          @db.Uuid
+  cooperativeId  String          @db.Uuid
+  role           CooperativeRole
+  active         Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cooperative    Cooperative     @relation(fields: [cooperativeId], references: [id], onDelete: Cascade)
+  boardingEvents BoardingEvent[]
+
+  @@unique([userId, cooperativeId, role])
+  @@index([cooperativeId, role])
+}
+
+model Invitation {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cooperativeId   String            @db.Uuid
+  role            CooperativeRole
+  email           String?           @db.Citext
+  phone           String?
+  tokenHash       String            @unique
+  status          InvitationStatus  @default(PENDING)
+  senderUserId    String            @db.Uuid
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  createdAt       DateTime          @default(now())
+
+  cooperative     Cooperative       @relation(fields: [cooperativeId], references: [id], onDelete: Cascade)
+  sender          User              @relation("InvitationSender", fields: [senderUserId], references: [id])
+
+  @@index([cooperativeId, status])
+}
+
+// =====================================================================
+// CATALOGUE (VILLES / DISTRICTS)
+// =====================================================================
+
+model City {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code      String   @unique // Code district (ex. ANT-01)
+  nameFr    String
+  nameMg    String
+  district  String
+  region    String
+  lat       Float?
+  lng       Float?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  originRoutes      Route[] @relation("RouteOrigin")
+  destinationRoutes Route[] @relation("RouteDestination")
+  routeStops        RouteStop[]
+
+  @@index([nameFr])
+  @@index([nameMg])
+  @@index([region])
+}
+
+// =====================================================================
+// COOPÉRATIVE ET FLOTTE
+// =====================================================================
+
+model Cooperative {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug              String              @unique
+  legalName         String
+  displayName       String
+  status            CooperativeStatus   @default(PENDING_VALIDATION)
+  contactEmail      String?             @db.Citext
+  contactPhone      String?
+  headOfficeCityId  String?             @db.Uuid
+  logoUrl           String?
+  descriptionFr     String?
+  descriptionMg     String?
+  websiteUrl        String?
+  ratingAverage     Float               @default(0)
+  ratingCount       Int                 @default(0)
+  validatedAt       DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  pricingPlans      CooperativePricingPlan[]
+  subscriptions     CooperativeSubscription[]
+  policies          CooperativePolicy[]
+  memberships       Membership[]
+  invitations       Invitation[]
+  vehicles          Vehicle[]
+  routes            Route[]
+  schedules         Schedule[]
+  tripInstances     TripInstance[]
+  bookings          Booking[]
+  ratings           Rating[]
+  directoryEntry    DirectoryEntry?
+  exportJobs        ExportJob[]
+
+  @@index([status])
+  @@index([displayName])
+}
+
+model CooperativePricingPlan {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cooperativeId    String          @db.Uuid
+  type             PricingPlanType
+  commissionRate   Float?          // % si type = COMMISSION
+  monthlyFeeMga    Int?            // Montant MGA si type = SUBSCRIPTION
+  effectiveFrom    DateTime
+  effectiveUntil   DateTime?
+  createdAt        DateTime        @default(now())
+
+  cooperative      Cooperative     @relation(fields: [cooperativeId], references: [id], onDelete: Cascade)
+
+  @@index([cooperativeId, effectiveFrom])
+}
+
+model CooperativeSubscription {
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cooperativeId  String              @db.Uuid
+  periodStart    DateTime
+  periodEnd      DateTime
+  amountMga      Int
+  status         SubscriptionStatus  @default(MANUAL)
+  paidAt         DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  cooperative    Cooperative         @relation(fields: [cooperativeId], references: [id], onDelete: Cascade)
+
+  @@index([cooperativeId, periodStart])
+  @@index([status])
+}
+
+model CooperativePolicy {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cooperativeId  String       @db.Uuid
+  titleFr        String
+  titleMg        String
+  bodyFr         String       // Politique d'annulation en FR
+  bodyMg         String       // Politique d'annulation en MG
+  version        Int          @default(1)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  cooperative    Cooperative  @relation(fields: [cooperativeId], references: [id], onDelete: Cascade)
+
+  @@index([cooperativeId, isActive])
+}
+
+model SeatMap {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cooperativeId   String            @db.Uuid
+  name            String
+  capacity        Int
+  layout          Json              // Schéma géométrique (rangées, allée, roues, etc.)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  seats           SeatDefinition[]
+  vehicles        Vehicle[]
+
+  @@index([cooperativeId])
+}
+
+model Vehicle {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cooperativeId   String       @db.Uuid
+  seatMapId       String       @db.Uuid
+  registration    String       // Immatriculation
+  displayName     String
+  model           String?
+  capacity        Int
+  gpsDeviceId     String?      // Réservé V2 (CDC §4.2) — nullable en V1
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  cooperative     Cooperative  @relation(fields: [cooperativeId], references: [id], onDelete: Cascade)
+  seatMap         SeatMap      @relation(fields: [seatMapId], references: [id])
+  tripInstances   TripInstance[]
+
+  @@unique([cooperativeId, registration])
+  @@index([cooperativeId, isActive])
+}
+
+model SeatDefinition {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seatMapId  String       @db.Uuid
+  code       String       // ex. 12A, 4B
+  category   SeatCategory
+  row        Int?
+  column     Int?
+  metadata   Json?        // Position pixel, orientation, notes
+  createdAt  DateTime     @default(now())
+
+  seatMap    SeatMap      @relation(fields: [seatMapId], references: [id], onDelete: Cascade)
+  bookingSeats BookingSeat[]
+  seatHolds  SeatHold[]
+  fares      Fare[]
+
+  @@unique([seatMapId, code])
+  @@index([seatMapId, category])
+}
+
+// =====================================================================
+// ROUTES ET TRAJETS
+// =====================================================================
+
+model Route {
+  id                  String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cooperativeId       String        @db.Uuid
+  originCityId        String        @db.Uuid
+  destinationCityId   String        @db.Uuid
+  displayName         String
+  distanceKm          Int?
+  estimatedDurationMin Int?
+  isActive            Boolean       @default(true)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  cooperative         Cooperative   @relation(fields: [cooperativeId], references: [id], onDelete: Cascade)
+  origin              City          @relation("RouteOrigin", fields: [originCityId], references: [id])
+  destination         City          @relation("RouteDestination", fields: [destinationCityId], references: [id])
+  stops               RouteStop[]
+  schedules           Schedule[]
+  tripInstances       TripInstance[]
+
+  @@index([cooperativeId, isActive])
+  @@index([originCityId, destinationCityId])
+}
+
+model RouteStop {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  routeId     String   @db.Uuid
+  cityId      String   @db.Uuid
+  orderIndex  Int
+  offsetMin   Int      // Décalage temps depuis origine
+  createdAt   DateTime @default(now())
+
+  route       Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  city        City     @relation(fields: [cityId], references: [id])
+
+  @@unique([routeId, orderIndex])
+}
+
+model Schedule {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cooperativeId   String       @db.Uuid
+  routeId         String       @db.Uuid
+  daysOfWeek      Int[]        // 0=Dim ... 6=Sam
+  departureTime   String       // "HH:mm" locale Madagascar
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  cooperative     Cooperative  @relation(fields: [cooperativeId], references: [id], onDelete: Cascade)
+  route           Route        @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  tripInstances   TripInstance[]
+
+  @@index([cooperativeId, isActive])
+}
+
+model TripInstance {
+  id                    String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cooperativeId         String        @db.Uuid
+  routeId               String        @db.Uuid
+  scheduleId            String?       @db.Uuid
+  vehicleId             String        @db.Uuid
+  departureAt           DateTime      // Timestamp UTC
+  arrivalEstimatedAt    DateTime?
+  status                TripStatus    @default(DRAFT)
+  openedForBookingAt    DateTime?
+  closedForBookingAt    DateTime?
+  actualDepartedAt      DateTime?
+  completedAt           DateTime?
+  cancelledAt           DateTime?
+  notesFr               String?
+  notesMg               String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  cooperative           Cooperative   @relation(fields: [cooperativeId], references: [id], onDelete: Cascade)
+  route                 Route         @relation(fields: [routeId], references: [id])
+  schedule              Schedule?     @relation(fields: [scheduleId], references: [id])
+  vehicle               Vehicle       @relation(fields: [vehicleId], references: [id])
+  fares                 Fare[]
+  bookings              Booking[]
+  bookingSeats          BookingSeat[]
+  seatHolds             SeatHold[]
+  boardingEvents        BoardingEvent[]
+  absenceEvents         AbsenceEvent[]
+  departureEvents       TripDepartureEvent[]
+
+  @@index([cooperativeId, departureAt])
+  @@index([routeId, departureAt])
+  @@index([status, departureAt])
+  @@index([departureAt])
+}
+
+model Fare {
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tripInstanceId    String         @db.Uuid
+  seatDefinitionId  String?        @db.Uuid // Si null : prix par catégorie
+  category          SeatCategory?
+  priceMga          Int            // Prix en Ariary, souverain coopérative
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  tripInstance      TripInstance   @relation(fields: [tripInstanceId], references: [id], onDelete: Cascade)
+  seatDefinition    SeatDefinition? @relation(fields: [seatDefinitionId], references: [id])
+
+  @@unique([tripInstanceId, seatDefinitionId])
+  @@index([tripInstanceId, category])
+}
+
+// =====================================================================
+// ZÉRO DOUBLE RÉSERVATION — HOLDS ET SIÈGES
+// =====================================================================
+
+// Hold provisoire pendant la sélection + le paiement.
+// Contrainte critique : unique partiel sur (tripInstanceId, seatDefinitionId)
+// où expiresAt > NOW(), à créer via migration SQL brute :
+//
+//   CREATE UNIQUE INDEX "uniq_active_seat_hold"
+//     ON "SeatHold" ("tripInstanceId", "seatDefinitionId")
+//     WHERE "expiresAt" > NOW();
+//
+model SeatHold {
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tripInstanceId    String         @db.Uuid
+  seatDefinitionId  String         @db.Uuid
+  heldByUserId      String?        @db.Uuid // Voyageur si ONLINE
+  heldByStaffId     String?        @db.Uuid // Agent coop si walk-in
+  channel           BookingChannel
+  bookingId         String?        @db.Uuid @unique // Rattaché à un booking pendant paiement
+  expiresAt         DateTime
+  releasedAt        DateTime?
+  createdAt         DateTime       @default(now())
+
+  tripInstance      TripInstance   @relation(fields: [tripInstanceId], references: [id], onDelete: Cascade)
+  seatDefinition    SeatDefinition @relation(fields: [seatDefinitionId], references: [id])
+  heldByUser        User?          @relation(fields: [heldByUserId], references: [id])
+  booking           Booking?       @relation(fields: [bookingId], references: [id])
+
+  @@index([tripInstanceId, expiresAt])
+  @@index([expiresAt])
+}
+
+// =====================================================================
+// RÉSERVATIONS
+// =====================================================================
+
+model Booking {
+  id                 String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reference          String          @unique // ex. IT-A7X9B (short, lisible)
+  tripInstanceId     String          @db.Uuid
+  cooperativeId      String          @db.Uuid
+  buyerUserId        String?         @db.Uuid // Null si walk-in sans compte
+  createdByStaffId   String?         @db.Uuid // Agent coop si walk-in
+  channel            BookingChannel
+  status             BookingStatus   @default(PENDING_PAYMENT)
+  boardingStatus     BoardingStatus  @default(NOT_BOARDED)
+  totalAmountMga     Int             // Total payé (siège + frais si ONLINE)
+  seatSubtotalMga    Int
+  platformFeeMga     Int             @default(0) // 0 pour WALK_IN
+  qrPayload          String          @unique // JSON signé HMAC
+  cancelledAt        DateTime?
+  cancelledReason    String?
+  cancelledByStaffId String?         @db.Uuid
+  confirmedAt        DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  tripInstance       TripInstance    @relation(fields: [tripInstanceId], references: [id])
+  cooperative        Cooperative     @relation(fields: [cooperativeId], references: [id])
+  buyer              User?           @relation("BookingBuyer", fields: [buyerUserId], references: [id])
+  passengers         Passenger[]
+  seats              BookingSeat[]
+  seatHolds          SeatHold[]
+  payments           Payment[]
+  commissions        Commission[]
+  boardingEvents     BoardingEvent[]
+  absenceEvents      AbsenceEvent[]
+  rating             Rating?
+  notifications      Notification[]
+
+  @@index([tripInstanceId, status])
+  @@index([cooperativeId, createdAt])
+  @@index([buyerUserId, createdAt])
+  @@index([status])
+  @@index([channel])
+}
+
+// Contrainte critique zéro double réservation :
+// Unique partiel sur (tripInstanceId, seatDefinitionId) WHERE isActive = true.
+// À créer via migration SQL brute :
+//
+//   CREATE UNIQUE INDEX "uniq_active_booking_seat"
+//     ON "BookingSeat" ("tripInstanceId", "seatDefinitionId")
+//     WHERE "isActive" = true;
+//
+model BookingSeat {
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId         String         @db.Uuid
+  tripInstanceId    String         @db.Uuid
+  seatDefinitionId  String         @db.Uuid
+  seatCode          String         // Copie de SeatDefinition.code au moment de la vente
+  category          SeatCategory
+  priceMga          Int            // Prix figé au moment de la vente
+  isActive          Boolean        @default(true)
+  createdAt         DateTime       @default(now())
+
+  booking           Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  tripInstance      TripInstance   @relation(fields: [tripInstanceId], references: [id])
+  seatDefinition    SeatDefinition @relation(fields: [seatDefinitionId], references: [id])
+
+  @@index([bookingId])
+  @@index([tripInstanceId, isActive])
+}
+
+model Passenger {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId      String    @db.Uuid
+  firstName      String
+  lastName       String
+  phone          String?
+  nationalIdRef  String?
+  seatCode       String?   // Association siège précis passager
+  createdAt      DateTime  @default(now())
+
+  booking        Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+}
+
+// =====================================================================
+// PAIEMENTS
+// =====================================================================
+
+model Payment {
+  id                    String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId             String          @db.Uuid
+  provider              PaymentProvider
+  amountMga             Int
+  status                PaymentStatus   @default(INITIATED)
+  providerTransactionId String?         @unique
+  providerRawPayload    Json?
+  errorMessage          String?
+  initiatedAt           DateTime        @default(now())
+  confirmedAt           DateTime?
+  failedAt              DateTime?
+
+  booking               Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  platformFee           PlatformFee?
+  commission            Commission?
+
+  @@index([bookingId])
+  @@index([status])
+  @@index([provider, status])
+}
+
+model PlatformFee {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  paymentId    String    @unique @db.Uuid
+  amountMga    Int       // 0 pour walk-in (RG-02)
+  policyRef    String?   // Référence de la politique appliquée
+  createdAt    DateTime  @default(now())
+
+  payment      Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+}
+
+model Commission {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId          String   @db.Uuid
+  paymentId          String?  @unique @db.Uuid
+  cooperativeId      String   @db.Uuid
+  amountMga          Int      // 0 pour walk-in ou plan SUBSCRIPTION (RG-02)
+  pricingPlanRef     String?
+  createdAt          DateTime @default(now())
+
+  booking            Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  payment            Payment? @relation(fields: [paymentId], references: [id])
+
+  @@index([cooperativeId, createdAt])
+  @@index([bookingId])
+}
+
+// Réservé V2 (CDC §4.2) — non utilisé en V1
+model PlatformFeePolicy {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String
+  ratePercent    Float?
+  fixedAmountMga Int?
+  minAmountMga   Int?
+  effectiveFrom  DateTime
+  effectiveUntil DateTime?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+}
+
+// =====================================================================
+// OPÉRATIONS CONDUCTEUR
+// =====================================================================
+
+model BoardingEvent {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId       String       @db.Uuid
+  tripInstanceId  String       @db.Uuid
+  driverMembershipId String    @db.Uuid
+  method          String       // SCAN | MANUAL_REF
+  boardedAt       DateTime     @default(now())
+
+  booking         Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  tripInstance    TripInstance @relation(fields: [tripInstanceId], references: [id])
+  driver          Membership   @relation(fields: [driverMembershipId], references: [id])
+
+  @@unique([bookingId])
+  @@index([tripInstanceId])
+}
+
+model AbsenceEvent {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId       String       @db.Uuid @unique
+  tripInstanceId  String       @db.Uuid
+  markedByMembershipId String  @db.Uuid
+  reason          String?
+  markedAt        DateTime     @default(now())
+
+  booking         Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  tripInstance    TripInstance @relation(fields: [tripInstanceId], references: [id])
+}
+
+model TripDepartureEvent {
+  id                    String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tripInstanceId        String       @db.Uuid
+  reportedByMembershipId String      @db.Uuid
+  departedAt            DateTime     @default(now())
+  notes                 String?
+
+  tripInstance          TripInstance @relation(fields: [tripInstanceId], references: [id], onDelete: Cascade)
+
+  @@index([tripInstanceId])
+}
+
+// =====================================================================
+// NOTIFICATIONS
+// =====================================================================
+
+model NotificationTemplate {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String   @unique // ex. BOOKING_CONFIRMED, DEPARTURE_REMINDER
+  category    NotificationCategory
+  bodyFr      String   // Peut contenir {{variable}}
+  bodyMg      String
+  version     Int      @default(1)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  notifications Notification[]
+}
+
+model Notification {
+  id            String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String?               @db.Uuid
+  bookingId     String?               @db.Uuid
+  templateId    String                @db.Uuid
+  channel       NotificationChannel
+  category      NotificationCategory
+  lang          Lang
+  toAddress     String                // Téléphone ou email
+  payload       Json                  // Variables du template rendues
+  status        NotificationStatus    @default(PENDING)
+  scheduledFor  DateTime?             // Différé si silence nocturne
+  sentAt        DateTime?
+  failedAt      DateTime?
+  errorMessage  String?
+  providerRef   String?
+  createdAt     DateTime              @default(now())
+
+  user          User?                 @relation(fields: [userId], references: [id])
+  booking       Booking?              @relation(fields: [bookingId], references: [id])
+  template      NotificationTemplate  @relation(fields: [templateId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([status, scheduledFor])
+  @@index([bookingId])
+}
+
+// =====================================================================
+// NOTATION / ANNUAIRE
+// =====================================================================
+
+model Rating {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId      String        @unique @db.Uuid // RG-12 : une note par voyage
+  cooperativeId  String        @db.Uuid
+  userId         String        @db.Uuid
+  score          Int           // 1 à 5
+  commentFr      String?
+  commentMg      String?
+  status         RatingStatus  @default(PENDING_REVIEW)
+  moderatedAt    DateTime?
+  moderatedBy    String?       @db.Uuid
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  booking        Booking       @relation(fields: [bookingId], references: [id])
+  cooperative    Cooperative   @relation(fields: [cooperativeId], references: [id])
+  user           User          @relation(fields: [userId], references: [id])
+
+  @@index([cooperativeId, status])
+  @@index([userId])
+}
+
+// Cache dénormalisé pour l'annuaire public (SEO, faible temps de rendu)
+model DirectoryEntry {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cooperativeId  String       @unique @db.Uuid
+  slug           String       @unique
+  displayName    String
+  descriptionFr  String?
+  descriptionMg  String?
+  logoUrl        String?
+  regionsServed  String[]
+  ratingAverage  Float        @default(0)
+  ratingCount    Int          @default(0)
+  updatedAt      DateTime     @updatedAt
+
+  cooperative    Cooperative  @relation(fields: [cooperativeId], references: [id], onDelete: Cascade)
+
+  @@index([displayName])
+}
+
+// =====================================================================
+// EXPORTS
+// =====================================================================
+
+model ExportJob {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requestedById  String        @db.Uuid
+  cooperativeId  String?       @db.Uuid
+  type           ExportType
+  filters        Json
+  format         String        // CSV | PDF | XLSX
+  status         ExportStatus  @default(QUEUED)
+  resultUrl      String?
+  resultBytes    Int?
+  expiresAt      DateTime?
+  errorMessage   String?
+  createdAt      DateTime      @default(now())
+  completedAt    DateTime?
+
+  requestedBy    User          @relation(fields: [requestedById], references: [id])
+  cooperative    Cooperative?  @relation(fields: [cooperativeId], references: [id])
+
+  @@index([requestedById, createdAt])
+  @@index([cooperativeId, createdAt])
+  @@index([status])
+}
+
+// =====================================================================
+// AUDIT
+// =====================================================================
+
+model AuditLog {
+  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorUserId   String?      @db.Uuid
+  action        AuditAction
+  entityType    String
+  entityId      String?
+  before        Json?
+  after         Json?
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime     @default(now())
+
+  actor         User?        @relation("AuditActor", fields: [actorUserId], references: [id])
+
+  @@index([actorUserId, createdAt])
+  @@index([entityType, entityId])
+  @@index([action, createdAt])
+}
+
+// =====================================================================
+// OUVERTURE V2 — RÉSERVÉES ARCHITECTURALEMENT (non actives V1)
+// =====================================================================
+
+// Abonnements voyageur / pass multi-trajets (CDC §4.2)
+model TravelerSubscription {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String   @db.Uuid
+  planName      String
+  enabled       Boolean  @default(false) // Désactivé V1
+  activeFrom    DateTime?
+  activeUntil   DateTime?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Clients API tiers (agences de voyage — CDC §4.2)
+model ApiClient {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  clientIdHash  String    @unique
+  clientSecretHash String
+  scopes        String[]
+  isActive      Boolean   @default(false) // Désactivé V1
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
