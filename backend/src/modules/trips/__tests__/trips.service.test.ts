@@ -214,17 +214,17 @@ describe('TripsService.createTrip', () => {
 
   it('lève ConflictError si ni scheduleId ni routeId n\'est fourni', async () => {
     const db = makeMockPrisma();
-    db.schedule.findFirst.mockResolvedValue(null);
-
     const service = new TripsService(db);
-    // Appel avec un input qui passe Zod mais sans routeId résolu
-    // On force le scheduleId invalide pour simuler l'absence de route
+
+    // Le Zod refine interdit ce cas à la couche route, mais le service
+    // le gère lui-même. On passe l'input sans scheduleId ni routeId
+    // en contournant TypeScript pour tester la garde service isolément.
     await expect(
       service.createTrip(COOP_ID, ACTOR_ID, {
-        scheduleId: SCHEDULE_ID, // schedule introuvable → resolvedRouteId reste undefined
         vehicleId: VEHICLE_ID,
         departureAt: '2026-09-01T06:00:00.000Z',
-      }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any),
     ).rejects.toThrow(ConflictError);
   });
 });
