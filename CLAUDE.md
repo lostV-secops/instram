@@ -2,6 +2,9 @@
 
 Plateforme de réservation de transport terrestre pour Madagascar (voyageur, coopérative, conducteur, admin InsTRAM).
 
+## Périmètre
+Le projet complet du cahier des charges (docs/cahier-des-charges.md) est à réaliser — pas de réduction de périmètre ni de version simplifiée. Toutes les fonctionnalités de la section 4.1 sont dans le périmètre : back-office coopérative complet, application conducteur, console admin InsTRAM, bilinguisme complet FR/MG, annuaire public, notation, notifications SMS avec plage de silence nocturne, exports.
+
 ## Stack imposée, non négociable
 - Backend : Node.js
 - Base de données : PostgreSQL
@@ -20,4 +23,4 @@ Plateforme de réservation de transport terrestre pour Madagascar (voyageur, coo
 - Vert #9CC43D réservé EXCLUSIVEMENT aux actions transactionnelles (réserver, payer, confirmer).
 
 ## Contrat de référence
-Tout agent doit respecter `docs/contrat-api.yaml` et `schema.prisma` une fois validés par l'Architecte — ne jamais improviser un endpoint ou un champ hors contrat sans le signaler.
+`docs/cahier-des-charges.md` est la source de vérité fonctionnelle. Une fois validés par l'Architecte, `docs/contrat-api.yaml` et `schema.prisma` deviennent la source de vérité technique. Ne jamais improviser une fonctionnalité ou un endpoint hors de ces documents sans le signaler.
