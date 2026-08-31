@@ -5,8 +5,6 @@
  */
 
 import { SeatsService, SeatConflictError, NotFoundError } from '../seats.service';
-import { BookingChannel } from '@prisma/client';
-
 // =====================================================================
 // Mocks
 // =====================================================================

@@ -6,7 +6,6 @@ import {
   PaymentStatus,
   PaymentProvider,
   AuditAction,
-  BookingChannel as BC,
 } from '@prisma/client';
 import type { Redis } from 'ioredis';
 import type { MobileMoneyGateway } from '../../infra/mobileMoney/gateway';

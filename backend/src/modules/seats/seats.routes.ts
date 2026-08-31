@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { ZodError } from 'zod';
-import { SeatsService, SeatConflictError, NotFoundError } from './seats.service';
+import { SeatsService, SeatConflictError } from './seats.service';
 import { HoldSeatsSchema } from './seats.schema';
 import prisma from '../../infra/db/prisma';
 import redis from '../../infra/cache/redis';
@@ -28,7 +28,7 @@ export default async function seatsRoutes(fastify: FastifyInstance): Promise<voi
   // Auth optionnelle : si présente, les propres holds deviennent HELD_BY_ME
   // Cache-Control: no-store (temps réel, architecture §7.1)
   // ------------------------------------------------------------------
-  fastify.get(
+  fastify.get<{ Params: { tripInstanceId: string } }>(
     '/trips/:tripInstanceId/seats',
     async (req: FastifyRequest<{ Params: { tripInstanceId: string } }>, reply: FastifyReply) => {
       reply.header('Cache-Control', 'no-store');
@@ -59,7 +59,7 @@ export default async function seatsRoutes(fastify: FastifyInstance): Promise<voi
   // POST /trips/:tripInstanceId/seats/hold
   // Auth requise (architecture §6.2)
   // ------------------------------------------------------------------
-  fastify.post(
+  fastify.post<{ Params: { tripInstanceId: string } }>(
     '/trips/:tripInstanceId/seats/hold',
     { onRequest: [fastify.authenticate] },
     async (
@@ -104,7 +104,7 @@ export default async function seatsRoutes(fastify: FastifyInstance): Promise<voi
   // DELETE /trips/:tripInstanceId/seats/hold/:holdId
   // Libération explicite avant paiement — Auth requise
   // ------------------------------------------------------------------
-  fastify.delete(
+  fastify.delete<{ Params: { tripInstanceId: string; holdId: string } }>(
     '/trips/:tripInstanceId/seats/hold/:holdId',
     { onRequest: [fastify.authenticate] },
     async (

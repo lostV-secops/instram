@@ -11,6 +11,8 @@ import redis from './infra/cache/redis';
 import authRoutes from './modules/auth/auth.routes';
 import catalogRoutes from './modules/catalog/catalog.routes';
 import searchRoutes from './modules/search/search.routes';
+import seatsRoutes from './modules/seats/seats.routes';
+import bookingsRoutes from './modules/bookings/bookings.routes';
 
 // =====================================================================
 // Déclaration d'augmentation de types Fastify pour authenticate
@@ -153,6 +155,12 @@ export async function buildApp(): Promise<FastifyInstance> {
 
       // Search (public, no auth)
       await v1.register(searchRoutes, { prefix: '/search' });
+
+      // Seats — GET/POST/DELETE /trips/:tripInstanceId/seats/*
+      await v1.register(seatsRoutes);
+
+      // Bookings — /bookings, /payments, /coop/bookings/*, /webhooks/mobile-money/*
+      await v1.register(bookingsRoutes);
     },
     { prefix: '/v1' },
   );

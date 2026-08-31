@@ -2,8 +2,6 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { ZodError } from 'zod';
 import {
   BookingsService,
-  NotFoundError,
-  ForbiddenError,
   ConflictError,
   WebhookSignatureError,
 } from './bookings.service';
@@ -114,7 +112,7 @@ export default async function bookingsRoutes(fastify: FastifyInstance): Promise<
   // GET /bookings/:bookingId — Détail + billet (QR si CONFIRMED)
   // Auth obligatoire. Cache-Control: no-store.
   // ------------------------------------------------------------------
-  fastify.get(
+  fastify.get<{ Params: { bookingId: string } }>(
     '/bookings/:bookingId',
     { onRequest: [fastify.authenticate] },
     async (
@@ -266,7 +264,7 @@ export default async function bookingsRoutes(fastify: FastifyInstance): Promise<
   // Auth obligatoire + rôle COOP_ADMIN ou COOP_ASSISTANT.
   // Pas de remboursement automatique — processus physique uniquement.
   // ------------------------------------------------------------------
-  fastify.post(
+  fastify.post<{ Params: { bookingId: string } }>(
     '/coop/bookings/:bookingId/cancel-at-counter',
     { onRequest: [fastify.authenticate] },
     async (
@@ -335,7 +333,7 @@ export default async function bookingsRoutes(fastify: FastifyInstance): Promise<
   // Pas d'auth JWT — signature vérifiée via HMAC.
   // Idempotence garantie par providerTransactionId unique.
   // ------------------------------------------------------------------
-  fastify.post(
+  fastify.post<{ Params: { provider: string } }>(
     '/webhooks/mobile-money/:provider',
     {
       // Pas de authenticate — webhook entrant opérateur

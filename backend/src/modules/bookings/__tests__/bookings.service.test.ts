@@ -31,7 +31,7 @@ const STAFF_USER_ID = '00000000-0000-0000-0000-000000000002';
 const TRIP_ID = '00000000-0000-0000-0000-000000000010';
 const COOP_ID = '00000000-0000-0000-0000-000000000020';
 const SEAT_ID_1 = '00000000-0000-0000-0000-000000000030';
-const SEAT_ID_2 = '00000000-0000-0000-0000-000000000031';
+// SEAT_ID_2 réservé pour futures extensions de tests multi-sièges
 const HOLD_ID = '00000000-0000-0000-0000-000000000040';
 const BOOKING_ID = '00000000-0000-0000-0000-000000000050';
 const PAYMENT_ID = '00000000-0000-0000-0000-000000000060';
@@ -111,6 +111,10 @@ const mockTx = {
 };
 
 const mockPrisma = {
+  tripInstance: {
+    findFirst: jest.fn(),
+    findUnique: jest.fn(),
+  },
   seatHold: {
     findFirst: jest.fn(),
     findMany: jest.fn(),
@@ -349,7 +353,7 @@ describe('BookingsService.createWalkIn — RG-02', () => {
   });
 
   it('crée un trip si ce tripInstance appartient à la coopérative', async () => {
-    (mockPrisma.booking.findFirst as jest.Mock).mockResolvedValue({
+    (mockPrisma.tripInstance.findFirst as jest.Mock).mockResolvedValue({
       id: TRIP_ID,
       cooperativeId: COOP_ID,
       fares: [{ seatDefinitionId: null, category: 'STANDARD', priceMga: 25000 }],
@@ -357,7 +361,7 @@ describe('BookingsService.createWalkIn — RG-02', () => {
 
     await service.createWalkIn(STAFF_USER_ID, COOP_ID, walkInInput);
 
-    expect(mockPrisma.booking.findFirst).toHaveBeenCalledWith(
+    expect(mockPrisma.tripInstance.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ cooperativeId: COOP_ID }),
       }),
@@ -365,7 +369,7 @@ describe('BookingsService.createWalkIn — RG-02', () => {
   });
 
   it('PlatformFee = 0 (RG-02 vérification explicite)', async () => {
-    (mockPrisma.booking.findFirst as jest.Mock).mockResolvedValue({
+    (mockPrisma.tripInstance.findFirst as jest.Mock).mockResolvedValue({
       id: TRIP_ID,
       cooperativeId: COOP_ID,
       fares: [{ seatDefinitionId: null, category: 'STANDARD', priceMga: 25000 }],
@@ -380,7 +384,7 @@ describe('BookingsService.createWalkIn — RG-02', () => {
   });
 
   it('Commission = 0 pour walk-in (RG-02)', async () => {
-    (mockPrisma.booking.findFirst as jest.Mock).mockResolvedValue({
+    (mockPrisma.tripInstance.findFirst as jest.Mock).mockResolvedValue({
       id: TRIP_ID,
       cooperativeId: COOP_ID,
       fares: [{ seatDefinitionId: null, category: 'STANDARD', priceMga: 25000 }],
@@ -394,7 +398,7 @@ describe('BookingsService.createWalkIn — RG-02', () => {
   });
 
   it('totalAmountMga = seatSubtotalMga (pas de frais ajoutés)', async () => {
-    (mockPrisma.booking.findFirst as jest.Mock).mockResolvedValue({
+    (mockPrisma.tripInstance.findFirst as jest.Mock).mockResolvedValue({
       id: TRIP_ID,
       cooperativeId: COOP_ID,
       fares: [{ seatDefinitionId: null, category: 'STANDARD', priceMga: 25000 }],
@@ -408,7 +412,7 @@ describe('BookingsService.createWalkIn — RG-02', () => {
   });
 
   it('émet SEAT_SOLD sur Redis Pub/Sub après walk-in', async () => {
-    (mockPrisma.booking.findFirst as jest.Mock).mockResolvedValue({
+    (mockPrisma.tripInstance.findFirst as jest.Mock).mockResolvedValue({
       id: TRIP_ID,
       cooperativeId: COOP_ID,
       fares: [{ seatDefinitionId: null, category: 'STANDARD', priceMga: 25000 }],
@@ -423,7 +427,7 @@ describe('BookingsService.createWalkIn — RG-02', () => {
   });
 
   it('enfile un SMS si buyerPhone est fourni', async () => {
-    (mockPrisma.booking.findFirst as jest.Mock).mockResolvedValue({
+    (mockPrisma.tripInstance.findFirst as jest.Mock).mockResolvedValue({
       id: TRIP_ID,
       cooperativeId: COOP_ID,
       fares: [{ seatDefinitionId: null, category: 'STANDARD', priceMga: 25000 }],
@@ -441,7 +445,7 @@ describe('BookingsService.createWalkIn — RG-02', () => {
   });
 
   it('crée un AuditLog pour le walk-in (RG-13)', async () => {
-    (mockPrisma.booking.findFirst as jest.Mock).mockResolvedValue({
+    (mockPrisma.tripInstance.findFirst as jest.Mock).mockResolvedValue({
       id: TRIP_ID,
       cooperativeId: COOP_ID,
       fares: [{ seatDefinitionId: null, category: 'STANDARD', priceMga: 25000 }],
@@ -460,7 +464,7 @@ describe('BookingsService.createWalkIn — RG-02', () => {
   });
 
   it('lève ConflictError si un siège est déjà vendu (SOLD)', async () => {
-    (mockPrisma.booking.findFirst as jest.Mock).mockResolvedValue({
+    (mockPrisma.tripInstance.findFirst as jest.Mock).mockResolvedValue({
       id: TRIP_ID,
       cooperativeId: COOP_ID,
       fares: [],
@@ -475,7 +479,7 @@ describe('BookingsService.createWalkIn — RG-02', () => {
   });
 
   it('lève ForbiddenError si le trajet appartient à une autre coopérative', async () => {
-    (mockPrisma.booking.findFirst as jest.Mock).mockResolvedValue(null);
+    (mockPrisma.tripInstance.findFirst as jest.Mock).mockResolvedValue(null);
 
     await expect(
       service.createWalkIn(STAFF_USER_ID, COOP_ID, walkInInput),

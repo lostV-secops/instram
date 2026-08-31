@@ -227,7 +227,7 @@ export class SeatsService {
       // ------- Niveau 1 : verrous Redis (rejet rapide) -------
       for (const seatId of seatDefinitionIds) {
         const lockKey = `lock:seat:${tripInstanceId}:${seatId}`;
-        const result = await this.redis.set(lockKey, '1', 'NX', 'PX', REDIS_LOCK_TTL_PX);
+        const result = await this.redis.set(lockKey, '1', 'PX', REDIS_LOCK_TTL_PX, 'NX');
         if (result === null) {
           // Siège verrouillé par une autre requête concurrente → conflit
           throw new SeatConflictError([
