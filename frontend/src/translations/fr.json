@@ -187,5 +187,313 @@
     "terms": "Conditions d'utilisation",
     "privacy": "Politique de confidentialité",
     "contact": "Contact"
+  },
+  "coop": {
+    "nav": {
+      "dashboard": "Tableau de bord",
+      "trips": "Trajets",
+      "routes": "Lignes",
+      "fares": "Tarifs",
+      "bookings": "Réservations",
+      "walkIn": "Walk-in guichet",
+      "members": "Équipe",
+      "exports": "Exports",
+      "settings": "Paramètres"
+    },
+    "layout": {
+      "backOffice": "Back-office coopérative",
+      "coopAdmin": "Administrateur",
+      "coopAssistant": "Assistant",
+      "coopDriver": "Conducteur",
+      "coopController": "Contrôleur",
+      "logout": "Déconnexion",
+      "openMenu": "Ouvrir le menu",
+      "closeMenu": "Fermer le menu"
+    },
+    "dashboard": {
+      "title": "Tableau de bord",
+      "subtitle": "Activité du jour",
+      "tripsToday": "Trajets du jour",
+      "bookingsToday": "Réservations du jour",
+      "revenueToday": "Recettes nettes",
+      "occupancyRate": "Taux de remplissage",
+      "recentBookings": "Dernières réservations",
+      "todayTrips": "Trajets aujourd'hui",
+      "viewAll": "Voir tout",
+      "noRecentBookings": "Aucune réservation récente",
+      "noTrips": "Aucun trajet aujourd'hui",
+      "online": "En ligne",
+      "walkIn": "Guichet",
+      "liveUpdates": "Mises à jour en temps réel"
+    },
+    "trips": {
+      "title": "Trajets",
+      "newTrip": "Nouveau trajet",
+      "route": "Ligne",
+      "departure": "Départ",
+      "status": "Statut",
+      "seats": "Sièges",
+      "actions": "Actions",
+      "see": "Voir",
+      "edit": "Modifier",
+      "noTrips": "Aucun trajet",
+      "filterFrom": "Du",
+      "filterTo": "Au",
+      "filterStatus": "Statut",
+      "allStatuses": "Tous les statuts",
+      "statuses": {
+        "DRAFT": "Brouillon",
+        "OPEN_FOR_BOOKING": "Ouvert",
+        "CLOSED_FOR_BOOKING": "Fermé",
+        "DEPARTED": "En route",
+        "COMPLETED": "Terminé",
+        "CANCELLED": "Annulé"
+      },
+      "new": {
+        "title": "Nouveau trajet",
+        "selectRoute": "Sélectionner une ligne",
+        "selectVehicle": "Sélectionner un véhicule",
+        "departureAt": "Date et heure de départ",
+        "arrivalEstimatedAt": "Arrivée estimée (optionnel)",
+        "notesFr": "Notes (optionnel)",
+        "submit": "Créer le trajet",
+        "submitting": "Création en cours...",
+        "success": "Trajet créé avec succès",
+        "errorNoRoutes": "Aucune ligne disponible. Créez une ligne d'abord.",
+        "errorNoVehicles": "Aucun véhicule disponible. Ajoutez un véhicule d'abord.",
+        "loadError": "Erreur lors du chargement des données"
+      },
+      "detail": {
+        "title": "Détail du trajet",
+        "passengers": "Passagers",
+        "revenue": "Revenus",
+        "seatsSold": "Sièges vendus",
+        "seatsHeld": "Sièges retenus",
+        "editTrip": "Modifier",
+        "openForBooking": "Ouvrir à la réservation",
+        "openingForBooking": "Ouverture...",
+        "closeForBooking": "Fermer la réservation",
+        "closingForBooking": "Fermeture...",
+        "noPassengers": "Aucun passager",
+        "actions": "Actions"
+      },
+      "edit": {
+        "title": "Modifier le trajet",
+        "submit": "Enregistrer",
+        "submitting": "Enregistrement...",
+        "success": "Trajet mis à jour"
+      }
+    },
+    "routes": {
+      "title": "Lignes",
+      "newRoute": "Nouvelle ligne",
+      "origin": "Départ",
+      "destination": "Arrivée",
+      "duration": "Durée estimée",
+      "distance": "Distance",
+      "km": "km",
+      "min": "min",
+      "active": "Active",
+      "inactive": "Inactive",
+      "noRoutes": "Aucune ligne configurée",
+      "new": {
+        "title": "Nouvelle ligne",
+        "displayName": "Nom de la ligne",
+        "originCity": "Ville de départ",
+        "destinationCity": "Ville d'arrivée",
+        "distanceKm": "Distance (km, optionnel)",
+        "durationMin": "Durée estimée (min, optionnel)",
+        "submit": "Créer la ligne",
+        "submitting": "Création en cours...",
+        "success": "Ligne créée",
+        "selectCity": "Sélectionner une ville",
+        "loadError": "Impossible de charger les villes"
+      }
+    },
+    "fares": {
+      "title": "Tarifs",
+      "selectTrip": "Sélectionner un trajet",
+      "noTrips": "Aucun trajet disponible",
+      "noFares": "Aucun tarif configuré pour ce trajet",
+      "sovereignty": "La coopérative fixe librement ses tarifs (RG-04). Aucune validation InsTRAM n'est appliquée.",
+      "category": "Catégorie",
+      "price": "Prix (Ar)",
+      "categories": {
+        "VIP": "VIP",
+        "PREMIUM": "Premium",
+        "CLASSIC": "Classique",
+        "STANDARD": "Standard"
+      },
+      "edit": {
+        "title": "Modifier les tarifs",
+        "trip": "Trajet",
+        "submit": "Enregistrer les tarifs",
+        "submitting": "Enregistrement...",
+        "success": "Tarifs enregistrés",
+        "addFare": "Ajouter une catégorie"
+      }
+    },
+    "bookings": {
+      "title": "Réservations",
+      "reference": "Référence",
+      "passenger": "Passager(s)",
+      "trip": "Trajet",
+      "channel": "Canal",
+      "amount": "Montant",
+      "status": "Statut",
+      "boarding": "Embarquement",
+      "noBookings": "Aucune réservation",
+      "filterDate": "Date",
+      "filterStatus": "Statut",
+      "filterChannel": "Canal",
+      "allStatuses": "Tous les statuts",
+      "allChannels": "Tous les canaux",
+      "channels": {
+        "ONLINE": "En ligne",
+        "WALK_IN": "Guichet"
+      },
+      "statuses": {
+        "PENDING_PAYMENT": "En attente",
+        "CONFIRMED": "Confirmée",
+        "PAYMENT_EXPIRED": "Expiré",
+        "PAYMENT_FAILED": "Échoué",
+        "CANCELLED_AT_COUNTER": "Annulée",
+        "COMPLETED": "Terminée",
+        "NO_SHOW": "Absent"
+      },
+      "boardingStatuses": {
+        "NOT_BOARDED": "Non embarqué",
+        "BOARDED": "Embarqué",
+        "ABSENT": "Absent"
+      },
+      "detail": {
+        "title": "Détail réservation",
+        "passengers": "Passagers",
+        "payment": "Paiement",
+        "cancellationNotice": "Annulation au guichet uniquement",
+        "noOnlineCancellation": "L'annulation en ligne n'est pas disponible. Le passager doit se présenter physiquement au guichet de la coopérative.",
+        "seatCode": "Siège",
+        "boardingStatus": "Statut embarquement",
+        "paymentMethod": "Méthode",
+        "paymentStatus": "Statut paiement",
+        "walkInFee": "Frais plateforme",
+        "walkInFeeValue": "Gratuit (walk-in)"
+      }
+    },
+    "walkIn": {
+      "title": "Réservation guichet (Walk-in)",
+      "subtitle": "Réservation gratuite — aucune commission, aucun frais plateforme (RG-02)",
+      "step1": "1. Sélectionner le trajet",
+      "step2": "2. Sélectionner les sièges",
+      "step3": "3. Informations passager(s)",
+      "selectTrip": "Trajet",
+      "selectTripPlaceholder": "Sélectionner un trajet...",
+      "loadingTrips": "Chargement des trajets...",
+      "noTrips": "Aucun trajet ouvert aujourd'hui",
+      "loadSeats": "Charger les sièges",
+      "loadingSeats": "Chargement des sièges...",
+      "availableSeats": "Sièges disponibles",
+      "noSeats": "Aucun siège disponible pour ce trajet",
+      "selectedSeats": "{count} siège(s) sélectionné(s)",
+      "passengerInfo": "Passager {n}",
+      "firstName": "Prénom",
+      "lastName": "Nom",
+      "phone": "Téléphone (optionnel, pour SMS billet)",
+      "paymentMethod": "Méthode de paiement",
+      "cash": "Espèces",
+      "mvola": "MVola",
+      "orangeMoney": "Orange Money",
+      "submit": "Enregistrer la réservation",
+      "submitting": "Enregistrement en cours...",
+      "success": "Réservation enregistrée",
+      "reference": "Référence :",
+      "newBooking": "Nouvelle réservation",
+      "errorSeatConflict": "Un ou plusieurs sièges sélectionnés viennent d'être pris. Veuillez choisir d'autres sièges.",
+      "errorNetwork": "Erreur réseau. Vérifiez votre connexion et réessayez.",
+      "seatCode": "Siège {code}"
+    },
+    "members": {
+      "title": "Équipe",
+      "inviteMember": "Inviter un membre",
+      "name": "Nom",
+      "contact": "Contact",
+      "role": "Rôle",
+      "memberStatus": "Statut",
+      "active": "Actif",
+      "inactive": "Inactif",
+      "noMembers": "Aucun membre",
+      "deactivate": "Désactiver",
+      "roles": {
+        "COOP_ADMIN": "Administrateur",
+        "COOP_ASSISTANT": "Assistant",
+        "COOP_DRIVER": "Conducteur",
+        "COOP_CONTROLLER": "Contrôleur"
+      },
+      "invite": {
+        "title": "Inviter un membre",
+        "phone": "Numéro de téléphone",
+        "email": "Email (optionnel)",
+        "role": "Rôle",
+        "selectRole": "Sélectionner un rôle",
+        "submit": "Envoyer l'invitation",
+        "submitting": "Envoi en cours...",
+        "success": "Invitation envoyée par SMS",
+        "smsNote": "Un SMS d'invitation COOP_INVITE sera envoyé automatiquement au numéro indiqué."
+      }
+    },
+    "exports": {
+      "title": "Exports",
+      "newManifest": "Nouveau manifeste",
+      "newReport": "Rapport financier",
+      "type": "Type",
+      "format": "Format",
+      "status": "Statut",
+      "createdAt": "Demandé le",
+      "download": "Télécharger",
+      "noExports": "Aucun export",
+      "types": {
+        "MANIFEST": "Manifeste passagers",
+        "FINANCIAL_REPORT": "Rapport financier",
+        "BOOKINGS": "Réservations",
+        "RATINGS": "Avis"
+      },
+      "statuses": {
+        "QUEUED": "En file",
+        "RUNNING": "En cours",
+        "READY": "Prêt",
+        "FAILED": "Échoué",
+        "EXPIRED": "Expiré"
+      },
+      "manifest": {
+        "title": "Nouveau manifeste passagers",
+        "selectTrip": "Sélectionner le trajet",
+        "format": "Format",
+        "submit": "Générer le manifeste",
+        "submitting": "Génération en cours..."
+      },
+      "report": {
+        "title": "Rapport financier",
+        "dateFrom": "Du",
+        "dateTo": "Au",
+        "format": "Format",
+        "submit": "Générer le rapport",
+        "submitting": "Génération en cours..."
+      },
+      "pollNote": "Le fichier est prêt dès que le statut passe à \"Prêt\"."
+    },
+    "settings": {
+      "title": "Paramètres coopérative",
+      "legalName": "Raison sociale",
+      "displayName": "Nom d'affichage",
+      "status": "Statut",
+      "contactEmail": "Email de contact",
+      "contactPhone": "Téléphone de contact",
+      "descriptionFr": "Description (français)",
+      "logoUrl": "URL du logo",
+      "submit": "Enregistrer",
+      "submitting": "Enregistrement...",
+      "success": "Paramètres enregistrés",
+      "infoOnly": "La raison sociale et le statut sont gérés par l'équipe InsTRAM."
+    }
   }
 }

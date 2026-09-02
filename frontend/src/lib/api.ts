@@ -147,6 +147,35 @@ export async function apiPost<T>(
 }
 
 /**
+ * PUT typé vers l'API (remplacement complet de ressource).
+ * Exemple : `await apiPut<Fare[]>('/coop/trips/uuid/fares', [...])`
+ */
+export async function apiPut<T>(
+  path: string,
+  body: unknown,
+  options?: RequestInit,
+): Promise<T> {
+  const authHeaders = await buildAuthHeaders();
+  const response = await fetch(buildUrl(path), {
+    method: 'PUT',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders,
+      ...(options?.headers as Record<string, string> | undefined),
+    },
+    body: JSON.stringify(body),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+/**
  * PATCH typé vers l'API.
  */
 export async function apiPatch<T>(

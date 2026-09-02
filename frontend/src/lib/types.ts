@@ -29,9 +29,9 @@ export type PaymentStatus =
 
 export type TripStatus =
   | 'DRAFT'
-  | 'OPEN'
-  | 'CLOSED'
-  | 'IN_PROGRESS'
+  | 'OPEN_FOR_BOOKING'
+  | 'CLOSED_FOR_BOOKING'
+  | 'DEPARTED'
   | 'COMPLETED'
   | 'CANCELLED';
 
@@ -289,4 +289,113 @@ export interface ApiErrorResponse {
   code: string;
   message: string;
   details?: unknown;
+}
+
+// ─── Coopérative — back-office ────────────────────────────────────────────────
+
+export type CooperativeRole =
+  | 'COOP_ADMIN'
+  | 'COOP_ASSISTANT'
+  | 'COOP_DRIVER'
+  | 'COOP_CONTROLLER';
+
+export interface Member {
+  id: string;
+  user: {
+    id: string;
+    email: string | null;
+    phone: string | null;
+    firstName: string | null;
+    lastName: string | null;
+  };
+  role: CooperativeRole;
+  active: boolean;
+  createdAt: string;
+}
+
+/** Route enrichie telle que retournée par GET /coop/routes */
+export interface CoopRouteDetail {
+  id: string;
+  cooperativeId: string;
+  displayName: string;
+  originCity: City;
+  destinationCity: City;
+  distanceKm: number | null;
+  estimatedDurationMin: number | null;
+  isActive: boolean;
+}
+
+/** Instance de trajet (TripInstance) telle que retournée par GET /coop/trips */
+export interface TripInstance {
+  id: string;
+  cooperativeId: string;
+  routeId: string;
+  scheduleId: string | null;
+  vehicleId: string;
+  departureAt: string;
+  arrivalEstimatedAt: string | null;
+  status: TripStatus;
+  openedForBookingAt: string | null;
+}
+
+export interface TripInstanceList {
+  items: TripInstance[];
+  nextCursor: string | null;
+}
+
+/** Détail d'un trajet avec statistiques — GET /coop/trips/{id} */
+export interface TripInstanceCoopDetail extends TripInstanceDetail {
+  stats: {
+    seatsSold: number;
+    seatsHeld: number;
+    revenueMga: number;
+  };
+}
+
+/** Tableau de bord coopérative — GET /coop/dashboard */
+export interface CooperativeDashboard {
+  periodStart: string;
+  periodEnd: string;
+  bookingsOnline: number;
+  bookingsWalkIn: number;
+  revenueGrossMga: number;
+  revenueNetMga: number;
+  occupancyRate: number;
+  upcomingTrips: number;
+}
+
+export type ExportType = 'MANIFEST' | 'FINANCIAL_REPORT' | 'BOOKINGS' | 'RATINGS';
+export type ExportJobStatus = 'QUEUED' | 'RUNNING' | 'READY' | 'FAILED' | 'EXPIRED';
+
+export interface ExportJob {
+  id: string;
+  type: ExportType;
+  format: string;
+  status: ExportJobStatus;
+  resultUrl: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface CoopVehicle {
+  id: string;
+  cooperativeId: string;
+  seatMapId: string;
+  registration: string;
+  displayName: string;
+  model: string | null;
+  capacity: number;
+  isActive: boolean;
+}
+
+/** Politique d'annulation enrichie (coop back-office) */
+export interface CoopPolicy {
+  id: string;
+  titleFr: string;
+  titleMg: string;
+  bodyFr: string;
+  bodyMg: string;
+  version: number;
+  isActive: boolean;
 }
