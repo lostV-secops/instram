@@ -20,6 +20,7 @@ import { tripsCoopRoutes, tripsTravelerRoutes } from './modules/trips/trips.rout
 import wsRoutes from './modules/ws/ws.routes';
 import notificationsRoutes from './modules/notifications/notifications.routes';
 import driverRoutes from './modules/driver/driver.routes';
+import adminRoutes from './modules/admin/admin.routes';
 
 // =====================================================================
 // Déclaration d'augmentation de types Fastify pour authenticate
@@ -198,6 +199,10 @@ export async function buildApp(): Promise<FastifyInstance> {
 
       // Driver — /driver/trips/today, /driver/trips/:id/manifest|board|no-show|depart
       await v1.register(driverRoutes);
+
+      // Admin — /admin/cooperatives, /admin/users, /admin/ratings,
+      //          /admin/dashboard, /admin/audit-logs, /admin/subscriptions
+      await v1.register(adminRoutes, { prefix: '/admin' });
     },
     { prefix: '/v1' },
   );
