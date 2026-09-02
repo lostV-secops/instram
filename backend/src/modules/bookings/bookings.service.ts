@@ -10,6 +10,7 @@ import {
 import type { Redis } from 'ioredis';
 import type { MobileMoneyGateway } from '../../infra/mobileMoney/gateway';
 import { enqueueSms } from '../../infra/queue/sms.queue';
+import type { NotificationsService } from '../notifications/notifications.service';
 import type {
   CreateBookingInput,
   InitiatePaymentInput,
@@ -134,6 +135,9 @@ export class BookingsService {
     private readonly db: PrismaClient,
     private readonly redis: Redis,
     private readonly gateway: MobileMoneyGateway,
+    /** Optionnel : si fourni, les SMS passent par NotificationsService.enqueue()
+     *  (crée un enregistrement Notification en DB). Sinon, fallback sur enqueueSms() direct. */
+    private readonly notifications?: NotificationsService | null,
   ) {}
 
   // ------------------------------------------------------------------
@@ -741,14 +745,34 @@ export class BookingsService {
     // SMS si téléphone fourni (transactionnel — bypass silence nocturne VH-02)
     const smsPhone = buyerPhone ?? passengers[0]?.phone;
     if (smsPhone) {
-      await enqueueSms({
-        phone: smsPhone,
-        templateCode: 'BOOKING_CONFIRMED',
-        params: { reference, seatCodes: seatCodes.join(', ') },
-        lang: (buyerLang as 'FR' | 'MG') ?? 'FR',
-        bookingId: booking.id,
-        isTransactional: true,
-      });
+      const smsLang = (buyerLang as 'FR' | 'MG') ?? 'FR';
+      if (this.notifications) {
+        await this.notifications.enqueue({
+          userId: staffUserId,
+          bookingId: booking.id,
+          templateKey: 'WALK_IN_CONFIRMED',
+          variables: {
+            reference,
+            seatCodes: seatCodes.join(', '),
+            departureAt: '',   // sera renseigné si trip inclus
+            origin: '',
+            destination: '',
+          },
+          lang: smsLang,
+          phone: smsPhone,
+          transactional: true,
+        });
+      } else {
+        // Fallback : enqueueSms direct (si notificationsService non injecté)
+        await enqueueSms({
+          phone: smsPhone,
+          templateCode: 'WALK_IN_CONFIRMED',
+          params: { reference, seatCodes: seatCodes.join(', '), departureAt: '', origin: '', destination: '' },
+          lang: smsLang,
+          bookingId: booking.id,
+          isTransactional: true,
+        });
+      }
     }
 
     // Retourner le détail complet (BookingDetail per contract)
@@ -1015,14 +1039,25 @@ export class BookingsService {
     );
 
     // SMS confirmation (transactionnel — immédiat, bypass silence VH-02)
-    await enqueueSms({
-      phone: '', // sera renseigné par le worker depuis le Passenger.phone
-      templateCode: 'BOOKING_CONFIRMED',
-      params: { reference: booking.reference },
-      lang: 'FR',
-      bookingId: booking.id,
-      isTransactional: true,
-    });
+    if (this.notifications) {
+      await this.notifications.enqueue({
+        bookingId: booking.id,
+        templateKey: 'BOOKING_CONFIRMED',
+        variables: { reference: booking.reference, departureAt: '', origin: '' },
+        lang: 'FR',
+        phone: '', // le worker récupère le phone depuis Passenger si vide
+        transactional: true,
+      });
+    } else {
+      await enqueueSms({
+        phone: '',
+        templateCode: 'BOOKING_CONFIRMED',
+        params: { reference: booking.reference, departureAt: '', origin: '' },
+        lang: 'FR',
+        bookingId: booking.id,
+        isTransactional: true,
+      });
+    }
 
     return { status: 'processed' };
   }

@@ -6,6 +6,7 @@ import fastifyHelmet from '@fastify/helmet';
 import fastifyRateLimit from '@fastify/rate-limit';
 import prisma from './infra/db/prisma';
 import redis from './infra/cache/redis';
+import { createSmsProvider } from './infra/sms/provider';
 
 // Routes
 import authRoutes from './modules/auth/auth.routes';
@@ -16,6 +17,7 @@ import bookingsRoutes from './modules/bookings/bookings.routes';
 import cooperativeRoutes from './modules/cooperative/cooperative.routes';
 import { tripsCoopRoutes, tripsTravelerRoutes } from './modules/trips/trips.routes';
 import wsRoutes from './modules/ws/ws.routes';
+import notificationsRoutes from './modules/notifications/notifications.routes';
 
 // =====================================================================
 // Déclaration d'augmentation de types Fastify pour authenticate
@@ -181,6 +183,13 @@ export async function buildApp(): Promise<FastifyInstance> {
 
       // Trips voyageur — /trips/:tripInstanceId
       await v1.register(tripsTravelerRoutes);
+
+      // Notifications — /notifications, /notifications/preferences
+      await v1.register(notificationsRoutes, {
+        db: prisma,
+        redis,
+        smsProvider: createSmsProvider(),
+      });
     },
     { prefix: '/v1' },
   );

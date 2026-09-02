@@ -1,0 +1,9 @@
+{
+  "BOOKING_CONFIRMED": "Voarakitra ny fangatahana! Ref: {{reference}}. Fandehanana amin'ny {{departureAt}} avy ao {{origin}}. Dia tsara!",
+  "PAYMENT_CONFIRMED": "Voaray ny fandoavana {{amount}} MGA ho an'ny ref {{reference}}. Vonona ny baolety anao.",
+  "WALK_IN_CONFIRMED": "Baolety nalefa: {{reference}}. Fandehanana {{departureAt}} - {{origin}} → {{destination}}. Asehoy ity SMS ity rehefa miondrana.",
+  "TRIP_REMINDER": "Tsahivina: ny dia {{origin}} → {{destination}} dia amin'ny rahampitso amin'ny {{departureAt}}. Ref: {{reference}}.",
+  "RATING_REQUEST": "Vita ny dianao. Omeo vahana ny traikefanao ao amin'ny InsTRAM: {{ratingUrl}}",
+  "BOOKING_CANCELLED": "Voafafa ny fangatahana {{reference}} tao amin'ny guichet. Mifandraisa amin'ny kooperatiava ho an'ny fanontaniana rehetra.",
+  "COOP_INVITE": "Voasatroka ho tonga any {{cooperativeName}} amin'ny InsTRAM. Rohy: {{inviteUrl}}"
+}

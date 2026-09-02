@@ -1,0 +1,9 @@
+{
+  "BOOKING_CONFIRMED": "Réservation confirmée ! Ref : {{reference}}. Départ le {{departureAt}} depuis {{origin}}. Bon voyage !",
+  "PAYMENT_CONFIRMED": "Paiement de {{amount}} MGA reçu pour la ref {{reference}}. Votre billet est prêt.",
+  "WALK_IN_CONFIRMED": "Billet émis : {{reference}}. Départ {{departureAt}} - {{origin}} → {{destination}}. Présentez ce SMS à l'embarquement.",
+  "TRIP_REMINDER": "Rappel : votre trajet {{origin}} → {{destination}} part demain à {{departureAt}}. Ref : {{reference}}.",
+  "RATING_REQUEST": "Votre trajet est terminé. Notez votre expérience sur InsTRAM : {{ratingUrl}}",
+  "BOOKING_CANCELLED": "Votre réservation {{reference}} a été annulée au guichet. Contactez la coopérative pour toute question.",
+  "COOP_INVITE": "Vous êtes invité(e) à rejoindre {{cooperativeName}} sur InsTRAM. Lien : {{inviteUrl}}"
+}
