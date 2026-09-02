@@ -201,7 +201,7 @@ async function generateFinancialReportXlsx(
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const ExcelJS = require('exceljs') as typeof import('exceljs');
 
-  const where: Parameters<PrismaClient['tripInstance']['findMany']>[0] = {
+  const trips = await prisma.tripInstance.findMany({
     where: {
       cooperativeId,
       ...(dateFrom || dateTo
@@ -222,9 +222,7 @@ async function generateFinancialReportXlsx(
       },
     },
     orderBy: { departureAt: 'asc' },
-  };
-
-  const trips = await prisma.tripInstance.findMany(where);
+  });
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'InsTRAM';

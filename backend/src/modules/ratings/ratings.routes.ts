@@ -51,8 +51,9 @@ export default async function ratingsRoutes(fastify: FastifyInstance): Promise<v
   fastify.post(
     '/bookings/:bookingId/rating',
     { onRequest: [fastify.authenticate] },
-    async (req: FastifyRequest<{ Params: { bookingId: string } }>, reply: FastifyReply) => {
+    async (req: FastifyRequest, reply: FastifyReply) => {
       reply.header('Cache-Control', 'no-store');
+      const { bookingId } = req.params as { bookingId: string };
 
       const parseResult = CreateRatingSchema.safeParse(req.body);
       if (!parseResult.success) {
@@ -65,7 +66,7 @@ export default async function ratingsRoutes(fastify: FastifyInstance): Promise<v
       try {
         const rating = await service.createRating(
           getUserId(req),
-          req.params.bookingId,
+          bookingId,
           parseResult.data,
         );
         return reply.status(201).send(rating);
@@ -94,7 +95,8 @@ export default async function ratingsRoutes(fastify: FastifyInstance): Promise<v
   // ------------------------------------------------------------------
   fastify.get(
     '/ratings/cooperative/:cooperativeId',
-    async (req: FastifyRequest<{ Params: { cooperativeId: string }; Querystring: Record<string, string> }>, reply: FastifyReply) => {
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const { cooperativeId } = req.params as { cooperativeId: string };
       const parseResult = RatingListQuerySchema.safeParse(req.query);
       if (!parseResult.success) {
         return reply.status(400).send({
@@ -105,7 +107,7 @@ export default async function ratingsRoutes(fastify: FastifyInstance): Promise<v
 
       try {
         const result = await service.listApprovedRatings(
-          req.params.cooperativeId,
+          cooperativeId,
           parseResult.data,
         );
         reply.header('Cache-Control', 'public, max-age=60');
@@ -149,7 +151,7 @@ export default async function ratingsRoutes(fastify: FastifyInstance): Promise<v
   fastify.get(
     '/admin/ratings',
     { onRequest: [fastify.authenticate] },
-    async (req: FastifyRequest<{ Querystring: Record<string, string> }>, reply: FastifyReply) => {
+    async (req: FastifyRequest, reply: FastifyReply) => {
       // Vérification du rôle admin (AdminProfile requis)
       const userId = getUserId(req);
       const adminProfile = await prisma.adminProfile.findUnique({ where: { userId } });
@@ -178,7 +180,8 @@ export default async function ratingsRoutes(fastify: FastifyInstance): Promise<v
   fastify.patch(
     '/admin/ratings/:ratingId',
     { onRequest: [fastify.authenticate] },
-    async (req: FastifyRequest<{ Params: { ratingId: string } }>, reply: FastifyReply) => {
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const { ratingId } = req.params as { ratingId: string };
       const userId = getUserId(req);
       const adminProfile = await prisma.adminProfile.findUnique({ where: { userId } });
       if (!adminProfile) {
@@ -194,7 +197,7 @@ export default async function ratingsRoutes(fastify: FastifyInstance): Promise<v
       }
 
       try {
-        const updated = await service.moderateRating(userId, req.params.ratingId, parseResult.data);
+        const updated = await service.moderateRating(userId, ratingId, parseResult.data);
         return reply.status(200).send(updated);
       } catch (err) {
         const code = (err as NodeJS.ErrnoException).code;

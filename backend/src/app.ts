@@ -20,6 +20,8 @@ import { tripsCoopRoutes, tripsTravelerRoutes } from './modules/trips/trips.rout
 import wsRoutes from './modules/ws/ws.routes';
 import notificationsRoutes from './modules/notifications/notifications.routes';
 import driverRoutes from './modules/driver/driver.routes';
+import ratingsRoutes from './modules/ratings/ratings.routes';
+import exportsRoutes from './modules/exports/exports.routes';
 import adminRoutes from './modules/admin/admin.routes';
 
 // =====================================================================
@@ -199,6 +201,13 @@ export async function buildApp(): Promise<FastifyInstance> {
 
       // Driver — /driver/trips/today, /driver/trips/:id/manifest|board|no-show|depart
       await v1.register(driverRoutes);
+
+      // Ratings — /bookings/:id/rating, /ratings/cooperative/:id,
+      //           /cooperatives/:id/rating-summary, /admin/ratings, /admin/ratings/:id
+      await v1.register(ratingsRoutes);
+
+      // Exports — /coop/exports, /coop/exports/:jobId, /admin/exports
+      await v1.register(exportsRoutes);
 
       // Admin — /admin/cooperatives, /admin/users, /admin/ratings,
       //          /admin/dashboard, /admin/audit-logs, /admin/subscriptions

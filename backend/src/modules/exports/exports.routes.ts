@@ -116,7 +116,8 @@ export default async function exportsRoutes(fastify: FastifyInstance): Promise<v
   fastify.get(
     '/coop/exports/:jobId',
     { onRequest: [fastify.authenticate] },
-    async (req: FastifyRequest<{ Params: { jobId: string } }>, reply: FastifyReply) => {
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const { jobId } = req.params as { jobId: string };
       const userId = getUserId(req);
       const cooperativeId = await resolveCooperativeId(userId);
 
@@ -124,7 +125,7 @@ export default async function exportsRoutes(fastify: FastifyInstance): Promise<v
       // (l'accès est validé côté service par isCreator)
       try {
         const job = await service.getExportJob(
-          req.params.jobId,
+          jobId,
           userId,
           cooperativeId ?? '',
         );
@@ -150,7 +151,7 @@ export default async function exportsRoutes(fastify: FastifyInstance): Promise<v
   fastify.get(
     '/admin/exports',
     { onRequest: [fastify.authenticate] },
-    async (req: FastifyRequest<{ Querystring: Record<string, string> }>, reply: FastifyReply) => {
+    async (req: FastifyRequest, reply: FastifyReply) => {
       const userId = getUserId(req);
       const adminProfile = await prisma.adminProfile.findUnique({ where: { userId } });
 
