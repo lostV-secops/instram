@@ -276,7 +276,12 @@ export type WsEventType =
   | 'SEAT_RELEASED'
   | 'PAYMENT_CONFIRMED'
   | 'PAYMENT_FAILED'
-  | 'BOOKING_CANCELLED';
+  | 'BOOKING_CANCELLED'
+  // Canaux driver (embarquement, départ) — noms d'événements du canal driver:{tripId}
+  | 'BOARDING_CONFIRMED'
+  | 'PASSENGER_BOARDED'
+  | 'PASSENGER_ABSENT'
+  | 'TRIP_DEPARTED';
 
 export interface WsEvent {
   event: WsEventType;
@@ -289,6 +294,66 @@ export interface ApiErrorResponse {
   code: string;
   message: string;
   details?: unknown;
+}
+
+// ─── Driver — App conducteur ──────────────────────────────────────────────────
+
+export interface DriverTripSummary {
+  tripInstanceId: string;
+  route: {
+    originName: string;
+    destinationName: string;
+  };
+  departureAt: string;
+  vehicleRegistration: string;
+  passengersCount: number;
+  boardedCount: number;
+  /** Extension optionnelle — peut être absent selon l'implémentation backend */
+  status?: TripStatus;
+}
+
+export interface ManifestPassenger {
+  bookingId: string;
+  bookingReference: string;
+  firstName: string;
+  lastName: string;
+  seatCode: string;
+  phone: string | null;
+  boardingStatus: BoardingStatus;
+  channel: BookingChannel;
+}
+
+export interface Manifest {
+  tripInstanceId: string;
+  departureAt: string;
+  passengers: ManifestPassenger[];
+}
+
+export interface BoardingRequest {
+  qrPayload?: string;
+  bookingReference?: string;
+}
+
+export interface BoardingEvent {
+  id: string;
+  bookingId: string;
+  tripInstanceId: string;
+  method: 'SCAN' | 'MANUAL_REF';
+  boardedAt: string;
+}
+
+export interface AbsenceEvent {
+  id: string;
+  bookingId: string;
+  tripInstanceId: string;
+  reason: string | null;
+  markedAt: string;
+}
+
+/** Retour minimal du endpoint /driver/trips/:id/depart */
+export interface TripInstanceStatus {
+  id: string;
+  status: TripStatus;
 }
 
 // ─── Coopérative — back-office ────────────────────────────────────────────────

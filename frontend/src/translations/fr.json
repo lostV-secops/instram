@@ -495,5 +495,123 @@
       "success": "Paramètres enregistrés",
       "infoOnly": "La raison sociale et le statut sont gérés par l'équipe InsTRAM."
     }
+  },
+  "driver": {
+    "appName": "InsTRAM Conducteur",
+    "nav": {
+      "trips": "Trajets",
+      "scan": "Scanner",
+      "profile": "Profil"
+    },
+    "header": {
+      "logout": "Déconnexion",
+      "driver": "Conducteur"
+    },
+    "auth": {
+      "checking": "Vérification de la session...",
+      "unauthorized": "Accès réservé aux conducteurs. Veuillez vous connecter avec un compte conducteur.",
+      "error": "Impossible de vérifier votre session."
+    },
+    "trips": {
+      "title": "Trajets du jour",
+      "noTrips": "Aucun trajet prévu aujourd'hui",
+      "refresh": "Actualiser",
+      "refreshing": "Actualisation...",
+      "loading": "Chargement des trajets...",
+      "errorLoad": "Impossible de charger les trajets. Vérifiez votre connexion.",
+      "passengers": "passager(s)",
+      "boarded": "embarqué(s)",
+      "departure": "Départ",
+      "vehicle": "Véhicule",
+      "seeDetail": "Voir le trajet",
+      "statuses": {
+        "DRAFT": "Brouillon",
+        "OPEN_FOR_BOOKING": "Ouvert",
+        "CLOSED_FOR_BOOKING": "Fermé",
+        "DEPARTED": "En route",
+        "COMPLETED": "Terminé",
+        "CANCELLED": "Annulé"
+      }
+    },
+    "tripDetail": {
+      "title": "Détail du trajet",
+      "loading": "Chargement...",
+      "errorLoad": "Impossible de charger ce trajet.",
+      "notFound": "Trajet introuvable.",
+      "departure": "Départ prévu",
+      "vehicle": "Véhicule",
+      "seatsReserved": "sièges réservés",
+      "seatsTotal": "places",
+      "scanPassenger": "Scanner un passager",
+      "viewManifest": "Voir le manifeste",
+      "alreadyDeparted": "Départ signalé"
+    },
+    "scan": {
+      "title": "Scanner un billet",
+      "instructions": "Pointez la caméra vers le QR code du billet",
+      "cameraError": "Autorisez l'accès à la caméra dans les paramètres de votre téléphone",
+      "cameraErrorRetry": "Réessayer",
+      "scanning": "Scan en cours...",
+      "processing": "Vérification du billet...",
+      "successTitle": "Embarquement validé",
+      "successSeat": "Siège",
+      "scanNext": "Scanner suivant",
+      "backToTrip": "Retour au trajet",
+      "manualEntry": "Saisie manuelle",
+      "manualPlaceholder": "Référence billet (ex: INST-XXXX)",
+      "manualSubmit": "Valider",
+      "manualSubmitting": "Validation...",
+      "errors": {
+        "INVALID_QR": "QR invalide — Ce billet n'est pas reconnu",
+        "WRONG_TRIP": "Ce billet n'est pas pour ce trajet",
+        "ALREADY_BOARDED": "Ce passager est déjà embarqué",
+        "NOT_FOUND": "Billet introuvable",
+        "NETWORK": "Erreur réseau. Vérifiez votre connexion.",
+        "GENERIC": "Une erreur est survenue. Réessayez."
+      }
+    },
+    "manifest": {
+      "title": "Manifeste passagers",
+      "loading": "Chargement du manifeste...",
+      "errorLoad": "Impossible de charger le manifeste. Vérifiez votre connexion.",
+      "refresh": "Actualiser",
+      "confirmed": "confirmé(s)",
+      "total": "total",
+      "filterAll": "Tous",
+      "filterBoarded": "Embarqués",
+      "filterAbsent": "Absents",
+      "noPassengers": "Aucun passager",
+      "noPassengersFiltered": "Aucun passager dans cette catégorie",
+      "seat": "Siège",
+      "boardingStatuses": {
+        "BOARDED": "Embarqué",
+        "ABSENT": "Absent",
+        "NOT_BOARDED": "En attente"
+      }
+    },
+    "departure": {
+      "button": "Signaler le départ",
+      "modalTitle": "Confirmer le départ ?",
+      "modalBody": "Cette action est irréversible. Le départ du véhicule sera enregistré à l'heure actuelle.",
+      "modalCancel": "Annuler",
+      "modalConfirm": "Confirmer le départ",
+      "loading": "Enregistrement du départ...",
+      "donePrefix": "Départ signalé à",
+      "errorMessage": "Impossible d'enregistrer le départ. Vérifiez votre connexion.",
+      "retry": "Réessayer"
+    },
+    "profile": {
+      "title": "Mon profil",
+      "loading": "Chargement du profil...",
+      "errorLoad": "Impossible de charger le profil.",
+      "name": "Nom",
+      "email": "Email",
+      "phone": "Téléphone",
+      "role": "Rôle",
+      "roleName": "Conducteur",
+      "cooperative": "Coopérative",
+      "logout": "Se déconnecter",
+      "loggingOut": "Déconnexion..."
+    }
   }
 }
