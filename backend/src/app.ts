@@ -18,6 +18,7 @@ import cooperativeRoutes from './modules/cooperative/cooperative.routes';
 import { tripsCoopRoutes, tripsTravelerRoutes } from './modules/trips/trips.routes';
 import wsRoutes from './modules/ws/ws.routes';
 import notificationsRoutes from './modules/notifications/notifications.routes';
+import driverRoutes from './modules/driver/driver.routes';
 
 // =====================================================================
 // Déclaration d'augmentation de types Fastify pour authenticate
@@ -190,6 +191,9 @@ export async function buildApp(): Promise<FastifyInstance> {
         redis,
         smsProvider: createSmsProvider(),
       });
+
+      // Driver — /driver/trips/today, /driver/trips/:id/manifest|board|no-show|depart
+      await v1.register(driverRoutes);
     },
     { prefix: '/v1' },
   );
