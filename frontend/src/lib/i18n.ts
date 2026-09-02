@@ -1,0 +1,43 @@
+import type { Lang } from './types';
+
+// Imports statiques pour permettre au bundler de les inclure dans le bundle
+import frTranslations from '../translations/fr.json';
+import mgTranslations from '../translations/mg.json';
+
+export type Translations = typeof frTranslations;
+
+const translationsMap: Record<Lang, Translations> = {
+  fr: frTranslations,
+  mg: mgTranslations as Translations,
+};
+
+/**
+ * Retourne l'objet de traductions pour une langue donnée.
+ * Compatible Server Components (pas d'import dynamique).
+ */
+export function getTranslations(lang: string): Translations {
+  const locale = (lang === 'mg' ? 'mg' : 'fr') as Lang;
+  return translationsMap[locale];
+}
+
+/**
+ * Résout une clé pointée (ex. "common.loading") dans un objet de traductions.
+ */
+export function t(translations: Translations, key: string): string {
+  const parts = key.split('.');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let current: any = translations;
+  for (const part of parts) {
+    if (current == null || typeof current !== 'object') return key;
+    current = current[part];
+  }
+  return typeof current === 'string' ? current : key;
+}
+
+/** Vérifie si la langue est valide */
+export function isValidLang(lang: string): lang is Lang {
+  return lang === 'fr' || lang === 'mg';
+}
+
+export const SUPPORTED_LANGS: Lang[] = ['fr', 'mg'];
+export const DEFAULT_LANG: Lang = 'fr';

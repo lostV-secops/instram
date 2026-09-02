@@ -1,0 +1,292 @@
+// Types TypeScript correspondant aux schémas du contrat-api.yaml
+
+export type Lang = 'fr' | 'mg';
+
+export type SeatCategory = 'VIP' | 'PREMIUM' | 'CLASSIC' | 'STANDARD';
+export type SeatStatus = 'AVAILABLE' | 'HELD' | 'SOLD';
+export type SeatDisplayStatus = SeatStatus | 'HELD_BY_ME';
+
+export type BookingStatus =
+  | 'PENDING_PAYMENT'
+  | 'CONFIRMED'
+  | 'PAYMENT_EXPIRED'
+  | 'PAYMENT_FAILED'
+  | 'CANCELLED_AT_COUNTER'
+  | 'COMPLETED'
+  | 'NO_SHOW';
+
+export type BookingChannel = 'ONLINE' | 'WALK_IN';
+export type BoardingStatus = 'NOT_BOARDED' | 'BOARDED' | 'ABSENT';
+
+export type PaymentProvider = 'MVOLA' | 'ORANGE_MONEY' | 'AIRTEL_MONEY' | 'CASH';
+export type PaymentStatus =
+  | 'INITIATED'
+  | 'PENDING'
+  | 'CONFIRMED'
+  | 'FAILED'
+  | 'EXPIRED'
+  | 'REFUNDED_AT_COUNTER';
+
+export type TripStatus =
+  | 'DRAFT'
+  | 'OPEN'
+  | 'CLOSED'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'CANCELLED';
+
+export type CooperativeStatus =
+  | 'PENDING_VALIDATION'
+  | 'VALIDATED'
+  | 'SUSPENDED'
+  | 'REJECTED';
+
+// ─── Catalog ─────────────────────────────────────────────────────────────────
+export interface City {
+  id: string;
+  code: string;
+  name: string;
+  district: string;
+  region: string;
+}
+
+export interface CityList {
+  items: City[];
+  nextCursor: string | null;
+}
+
+// ─── Auth ────────────────────────────────────────────────────────────────────
+export interface Me {
+  id: string;
+  email: string | null;
+  phone: string | null;
+  preferredLang: Lang;
+  roles: string[];
+  cooperatives: Array<{
+    id: string;
+    displayName: string;
+    role: string;
+  }>;
+  traveler: {
+    firstName: string;
+    lastName: string;
+    mobileMoneyPhone: string | null;
+  } | null;
+}
+
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  user: Me;
+}
+
+// ─── Cooperative ──────────────────────────────────────────────────────────────
+export interface Cooperative {
+  id: string;
+  slug: string;
+  legalName: string;
+  displayName: string;
+  status: CooperativeStatus;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  logoUrl: string | null;
+  description: string | null;
+  ratingAverage: number;
+  ratingCount: number;
+}
+
+// ─── Route / Trip ─────────────────────────────────────────────────────────────
+export interface Route {
+  id: string;
+  originCity: City;
+  destinationCity: City;
+  estimatedDurationMin?: number;
+}
+
+export interface Fare {
+  category: SeatCategory;
+  priceMga: number;
+}
+
+export interface Policy {
+  textFr: string;
+  textMg: string;
+}
+
+export interface Vehicle {
+  id: string;
+  model: string | null;
+  capacity: number;
+  plate?: string;
+}
+
+export interface TripInstanceDetail {
+  id: string;
+  cooperative: Cooperative;
+  route: Route;
+  vehicle: Vehicle;
+  departureAt: string;
+  arrivalEstimatedAt: string | null;
+  status: TripStatus;
+  policy: Policy | null;
+  fares: Fare[];
+}
+
+// ─── Search ───────────────────────────────────────────────────────────────────
+export interface TripSearchResult {
+  tripInstanceId: string;
+  cooperative: {
+    id: string;
+    displayName: string;
+    ratingAverage: number;
+    ratingCount: number;
+  };
+  route: {
+    originCity: City;
+    destinationCity: City;
+    estimatedDurationMin: number;
+  };
+  departureAt: string;
+  arrivalEstimatedAt: string | null;
+  fareMinMga: number;
+  fareMaxMga: number;
+  seatsAvailable: number;
+  vehicle: {
+    model: string | null;
+    capacity: number;
+  };
+}
+
+export interface TripSearchResponse {
+  items: TripSearchResult[];
+  nextCursor: string | null;
+}
+
+// ─── Seats ────────────────────────────────────────────────────────────────────
+export interface Seat {
+  seatDefinitionId: string;
+  code: string;
+  category: SeatCategory;
+  row: number | null;
+  column: number | null;
+  status: SeatStatus;
+  priceMga: number;
+}
+
+export interface TripSeatMap {
+  tripInstanceId: string;
+  layout: Record<string, unknown>;
+  seats: Seat[];
+}
+
+export interface SeatHoldResponse {
+  holdId: string;
+  tripInstanceId: string;
+  seats: Array<{
+    seatDefinitionId: string;
+    code: string;
+    priceMga: number;
+  }>;
+  expiresAt: string;
+}
+
+export interface SeatConflictResponse {
+  code: 'SEAT_UNAVAILABLE';
+  message: string;
+  conflictingSeats: Array<{
+    seatDefinitionId: string;
+    code: string;
+    status: 'HELD' | 'SOLD';
+  }>;
+}
+
+// ─── Bookings ─────────────────────────────────────────────────────────────────
+export interface PassengerRequest {
+  firstName: string;
+  lastName: string;
+  phone?: string;
+  nationalIdRef?: string;
+  seatCode: string;
+}
+
+export interface Booking {
+  id: string;
+  reference: string;
+  status: BookingStatus;
+  channel: BookingChannel;
+  totalAmountMga: number;
+  seatSubtotalMga: number;
+  platformFeeMga: number;
+  tripInstanceId: string;
+  createdAt: string;
+}
+
+export interface BookingList {
+  items: Booking[];
+  nextCursor: string | null;
+}
+
+export interface Ticket {
+  reference: string;
+  qrPayload: string;
+  qrImageUrl: string;
+  issuedAt: string;
+}
+
+export interface Payment {
+  id: string;
+  bookingId: string;
+  provider: PaymentProvider;
+  amountMga: number;
+  status: PaymentStatus;
+  providerTransactionId: string | null;
+  initiatedAt: string;
+  confirmedAt: string | null;
+}
+
+export interface BookingDetail extends Booking {
+  trip: TripInstanceDetail;
+  passengers: Array<{
+    firstName: string;
+    lastName: string;
+    seatCode: string;
+    boardingStatus: BoardingStatus;
+  }>;
+  payments: Payment[];
+  ticket: Ticket | null;
+}
+
+// ─── Paiement ─────────────────────────────────────────────────────────────────
+export interface PaymentInitiation {
+  paymentId: string;
+  status: PaymentStatus;
+  instructions: {
+    messageFr: string;
+    messageMg: string;
+    ussdCode: string | null;
+    expiresAt: string;
+  };
+}
+
+// ─── WebSocket events ─────────────────────────────────────────────────────────
+export type WsEventType =
+  | 'SEAT_HELD'
+  | 'SEAT_SOLD'
+  | 'SEAT_RELEASED'
+  | 'PAYMENT_CONFIRMED'
+  | 'PAYMENT_FAILED'
+  | 'BOOKING_CANCELLED';
+
+export interface WsEvent {
+  event: WsEventType;
+  channel: string;
+  payload: Record<string, unknown>;
+}
+
+// ─── Erreurs ──────────────────────────────────────────────────────────────────
+export interface ApiErrorResponse {
+  code: string;
+  message: string;
+  details?: unknown;
+}
