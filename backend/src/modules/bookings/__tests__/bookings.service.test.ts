@@ -171,6 +171,7 @@ const mockGateway: MobileMoneyGateway = {
     expiresAt: new Date(Date.now() + 5 * 60 * 1000),
   }),
   verifyWebhookSignature: jest.fn().mockReturnValue(true),
+  queryStatus: jest.fn().mockResolvedValue({ providerTransactionId: 'stub-tx', status: 'PENDING' }),
 };
 
 // =====================================================================

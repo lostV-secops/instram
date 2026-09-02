@@ -14,6 +14,7 @@ import catalogRoutes from './modules/catalog/catalog.routes';
 import searchRoutes from './modules/search/search.routes';
 import seatsRoutes from './modules/seats/seats.routes';
 import bookingsRoutes from './modules/bookings/bookings.routes';
+import paymentsRoutes from './modules/payments/payments.routes';
 import cooperativeRoutes from './modules/cooperative/cooperative.routes';
 import { tripsCoopRoutes, tripsTravelerRoutes } from './modules/trips/trips.routes';
 import wsRoutes from './modules/ws/ws.routes';
@@ -173,8 +174,11 @@ export async function buildApp(): Promise<FastifyInstance> {
       // Seats — GET/POST/DELETE /trips/:tripInstanceId/seats/*
       await v1.register(seatsRoutes);
 
-      // Bookings — /bookings, /payments, /coop/bookings/*, /webhooks/mobile-money/*
+      // Bookings — /bookings, /coop/bookings/*, /webhooks/mobile-money/*
       await v1.register(bookingsRoutes);
+
+      // Payments — /payments (POST + GET) ; rate-limit renforcé 30 req/min/user (§7.4)
+      await v1.register(paymentsRoutes);
 
       // Cooperative back-office — /coop/cooperatives/current, /coop/members/*, /coop/vehicles/*
       await v1.register(cooperativeRoutes, { prefix: '/coop' });

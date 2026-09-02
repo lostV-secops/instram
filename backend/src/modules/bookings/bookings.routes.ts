@@ -3,11 +3,9 @@ import { ZodError } from 'zod';
 import {
   BookingsService,
   ConflictError,
-  WebhookSignatureError,
 } from './bookings.service';
 import {
   CreateBookingSchema,
-  InitiatePaymentSchema,
   WalkInBookingSchema,
   CancelAtCounterSchema,
   BookingListQuerySchema,
@@ -16,6 +14,7 @@ import {
 import prisma from '../../infra/db/prisma';
 import redis from '../../infra/cache/redis';
 import { mobileMoneyGateway } from '../../infra/mobileMoney/gateway';
+import { WebhookSignatureError, createPaymentsService } from '../payments/payments.routes';
 
 // =====================================================================
 // Plugin Fastify — module bookings
@@ -23,10 +22,12 @@ import { mobileMoneyGateway } from '../../infra/mobileMoney/gateway';
 //   POST   /v1/bookings
 //   GET    /v1/bookings
 //   GET    /v1/bookings/:bookingId
-//   POST   /v1/payments
 //   POST   /v1/coop/bookings/walk-in
 //   POST   /v1/coop/bookings/:bookingId/cancel-at-counter
 //   POST   /v1/webhooks/mobile-money/:provider
+//
+// POST /v1/payments et GET /v1/payments/:paymentId sont dans payments.routes.ts.
+// Le webhook délègue à PaymentsService.handleWebhook() (refactoring §3 architecture).
 //
 // Contrat : docs/contrat-api.yaml §Traveler-Bookings, §Cooperative-Bookings
 // RG-03 : PAS de DELETE /bookings côté voyageur — endpoint délibérément absent
@@ -43,6 +44,8 @@ function getUserId(req: FastifyRequest): string {
 
 export default async function bookingsRoutes(fastify: FastifyInstance): Promise<void> {
   const bookingsService = new BookingsService(prisma, redis, mobileMoneyGateway);
+  // PaymentsService pour le webhook (délégation — POST /payments est dans payments.routes.ts)
+  const paymentsService = createPaymentsService();
 
   // ------------------------------------------------------------------
   // POST /bookings — Créer une réservation en ligne (PENDING_PAYMENT)
@@ -141,46 +144,7 @@ export default async function bookingsRoutes(fastify: FastifyInstance): Promise<
     },
   );
 
-  // ------------------------------------------------------------------
-  // POST /payments — Initier le paiement Mobile Money
-  // Auth obligatoire. Rate-limit renforcé (architecture §7.4 : 30 req/min/user).
-  // ------------------------------------------------------------------
-  fastify.post(
-    '/payments',
-    {
-      onRequest: [fastify.authenticate],
-      config: { rateLimit: { max: 30, timeWindow: '1m' } },
-    },
-    async (req: FastifyRequest, reply: FastifyReply) => {
-      reply.header('Cache-Control', 'no-store');
-
-      const parseResult = InitiatePaymentSchema.safeParse(req.body);
-      if (!parseResult.success) {
-        return reply.status(400).send({
-          code: 'VALIDATION_ERROR',
-          message: formatZodError(parseResult.error),
-        });
-      }
-
-      try {
-        const result = await bookingsService.initiatePayment(
-          getUserId(req),
-          parseResult.data,
-        );
-        return reply.status(201).send(result);
-      } catch (err) {
-        const code = (err as NodeJS.ErrnoException).code;
-        if (code === 'NOT_FOUND') {
-          return reply.status(404).send({ code: 'NOT_FOUND', message: (err as Error).message });
-        }
-        if (code === 'CONFLICT') {
-          return reply.status(409).send({ code: 'PAYMENT_ALREADY_EXISTS', message: (err as Error).message });
-        }
-        req.log.error(err, 'initiatePayment error');
-        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
-      }
-    },
-  );
+  // NOTE : POST /payments est dans payments.routes.ts (refactoring PaymentsService §3)
 
   // ------------------------------------------------------------------
   // POST /coop/bookings/walk-in
@@ -330,20 +294,25 @@ export default async function bookingsRoutes(fastify: FastifyInstance): Promise<
 
   // ------------------------------------------------------------------
   // POST /webhooks/mobile-money/:provider
-  // Pas d'auth JWT — signature vérifiée via HMAC.
-  // Idempotence garantie par providerTransactionId unique.
+  // Pas d'auth JWT — signature vérifiée via HMAC (architecture §7.4).
+  // Délègue à PaymentsService.handleWebhook() (refactoring architecture §3).
+  // Idempotence garantie par providerTransactionId unique en base.
   // ------------------------------------------------------------------
   fastify.post<{ Params: { provider: string } }>(
     '/webhooks/mobile-money/:provider',
     {
-      // Pas de authenticate — webhook entrant opérateur
+      // Pas de authenticate — webhook entrant opérateur Mobile Money
       config: { rateLimit: { max: 100, timeWindow: '1m' } },
     },
     async (
       req: FastifyRequest<{ Params: { provider: string } }>,
       reply: FastifyReply,
     ) => {
-      const signature = req.headers['x-signature'] as string | undefined;
+      // Vérifier présence signature (X-Signature ou X-Orange-Signature)
+      const signature =
+        (req.headers['x-signature'] as string | undefined) ??
+        (req.headers['x-orange-signature'] as string | undefined);
+
       if (!signature) {
         return reply.status(400).send({
           code: 'MISSING_SIGNATURE',
@@ -351,7 +320,7 @@ export default async function bookingsRoutes(fastify: FastifyInstance): Promise<
         });
       }
 
-      // rawBody pour la vérification HMAC (Fastify doit être configuré pour le préserver)
+      // rawBody pour la vérification HMAC (avant parsing JSON)
       const rawBody = Buffer.from(JSON.stringify(req.body));
 
       const parseResult = WebhookPayloadSchema.safeParse(req.body);
@@ -363,12 +332,13 @@ export default async function bookingsRoutes(fastify: FastifyInstance): Promise<
       }
 
       try {
-        const result = await bookingsService.processWebhook(
-          req.params.provider,
+        // Délégation à PaymentsService.handleWebhook() (refactoring §3)
+        const result = await paymentsService.handleWebhook({
+          provider: req.params.provider,
           rawBody,
           signature,
-          parseResult.data,
-        );
+          payload: parseResult.data,
+        });
 
         if (result.status === 'duplicate') {
           return reply.status(200).send({ code: 'DUPLICATE', message: 'Déjà traité' });
@@ -382,7 +352,7 @@ export default async function bookingsRoutes(fastify: FastifyInstance): Promise<
             message: 'Signature webhook invalide',
           });
         }
-        req.log.error(err, 'processWebhook error');
+        req.log.error(err, 'handleWebhook error');
         return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
       }
     },
