@@ -438,7 +438,7 @@ describe('BookingsService.createWalkIn — RG-02', () => {
     expect(enqueueSms).toHaveBeenCalledWith(
       expect.objectContaining({
         phone: '+261320000000',
-        templateCode: 'BOOKING_CONFIRMED',
+        templateCode: 'WALK_IN_CONFIRMED', // Walk-in utilise le template WALK_IN_CONFIRMED (pas BOOKING_CONFIRMED)
         isTransactional: true,
       }),
     );

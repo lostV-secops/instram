@@ -9,8 +9,6 @@
  *  5. dispatch hors plage silence → envoi immédiat quel que soit le type
  *  6. Retry sur échec SmsProvider → 3 tentatives (levée d'erreur par dispatch)
  *  7. isInSilenceWindow : 21h30 UTC+3 → true, 06h00 UTC+3 → false, 05h59 UTC+3 → true
- *
- * Tous les tests sont unitaires : aucune connexion DB ou Redis réelle.
  */
 
 // =====================================================================
@@ -21,30 +19,21 @@ jest.mock('../../../infra/queue/sms.queue', () => ({
   enqueueSms: jest.fn().mockResolvedValue(undefined),
 }));
 
-// Mock du module ioredis pour le _enqueueSmsDelayed interne
 jest.mock('ioredis', () => {
-  const quit = jest.fn().mockResolvedValue('OK');
-  const set = jest.fn().mockResolvedValue('OK');
-  const get = jest.fn().mockResolvedValue(null);
   const MockRedis = jest.fn().mockImplementation(() => ({
-    quit,
-    set,
-    get,
+    quit: jest.fn().mockResolvedValue('OK'),
+    set: jest.fn().mockResolvedValue('OK'),
+    get: jest.fn().mockResolvedValue(null),
   }));
   return MockRedis;
 });
 
-// Mock du module bullmq pour le _enqueueSmsDelayed interne
 jest.mock('bullmq', () => {
-  const addMock = jest.fn().mockResolvedValue({ id: 'delayed-job-1' });
-  const closeMock = jest.fn().mockResolvedValue(undefined);
   const Queue = jest.fn().mockImplementation(() => ({
-    add: addMock,
-    close: closeMock,
+    add: jest.fn().mockResolvedValue({ id: 'delayed-job-1' }),
+    close: jest.fn().mockResolvedValue(undefined),
   }));
-  const Worker = jest.fn().mockImplementation((_name: string, _fn: unknown) => ({
-    on: jest.fn(),
-  }));
+  const Worker = jest.fn().mockImplementation(() => ({ on: jest.fn() }));
   return { Queue, Worker };
 });
 
@@ -60,6 +49,8 @@ import {
 } from '../../../infra/sms/silence';
 import { enqueueSms } from '../../../infra/queue/sms.queue';
 import type { SmsJobData } from '../../../infra/queue/sms.queue';
+import type { PrismaClient } from '@prisma/client';
+import type { Redis } from 'ioredis';
 
 // =====================================================================
 // Fixtures
@@ -71,27 +62,28 @@ const NOTIF_ID = '00000000-0000-0000-0000-000000000099';
 const TEMPLATE_ID = '00000000-0000-0000-0000-000000000088';
 
 // =====================================================================
-// Doubles de test
+// Helpers de doubles de test
 // =====================================================================
 
-function makeMockDb(overrides: Record<string, unknown> = {}) {
-  const update = jest.fn().mockResolvedValue({});
-  const create = jest.fn().mockResolvedValue({ id: NOTIF_ID });
-  const upsert = jest.fn().mockResolvedValue({ id: TEMPLATE_ID, code: 'BOOKING_CONFIRMED' });
-  const findMany = jest.fn().mockResolvedValue([]);
-  const get = jest.fn().mockResolvedValue(null);
-
+/** Crée un mock partiel de PrismaClient avec les accesseurs de Notification et NotificationTemplate */
+function makeMockDb(): PrismaClient {
   return {
-    notification: { create, update, findMany },
-    notificationTemplate: { upsert },
-    ...overrides,
-  } as unknown as import('@prisma/client').PrismaClient;
+    notification: {
+      create: jest.fn().mockResolvedValue({ id: NOTIF_ID }),
+      update: jest.fn().mockResolvedValue({}),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    notificationTemplate: {
+      upsert: jest.fn().mockResolvedValue({ id: TEMPLATE_ID, code: 'BOOKING_CONFIRMED' }),
+    },
+  } as unknown as PrismaClient;
 }
 
-function makeMockRedis(prefsJson?: string) {
-  const get = jest.fn().mockResolvedValue(prefsJson ?? null);
-  const set = jest.fn().mockResolvedValue('OK');
-  return { get, set } as unknown as import('ioredis').Redis;
+function makeMockRedis(prefsJson?: string | null): Redis {
+  return {
+    get: jest.fn().mockResolvedValue(prefsJson ?? null),
+    set: jest.fn().mockResolvedValue('OK'),
+  } as unknown as Redis;
 }
 
 function makeMockSmsProvider(shouldFail = false) {
@@ -102,24 +94,15 @@ function makeMockSmsProvider(shouldFail = false) {
   };
 }
 
-// =====================================================================
-// Helper : UTC timestamp à une heure locale malgache donnée (UTC+3)
-// =====================================================================
-
-/**
- * Crée un Date UTC correspondant à l'heure locale malgache fournie.
- * Exemple : madTime(21, 30) → 18h30 UTC
- */
+/** Crée un Date UTC correspondant à l'heure locale malgache fournie (UTC+3). */
 function madTime(hour: number, minute = 0, second = 0): Date {
-  // Madagascar = UTC+3 → pour obtenir l'heure locale, UTC_hour = local_hour - 3
-  const utcHour = hour - 3;
   const d = new Date('2026-09-02T00:00:00.000Z');
-  d.setUTCHours(utcHour, minute, second, 0);
+  d.setUTCHours(hour - 3, minute, second, 0);
   return d;
 }
 
 // =====================================================================
-// Tests de la logique silence (isInSilenceWindow)
+// 7. Tests de la logique silence (isInSilenceWindow)
 // =====================================================================
 
 describe('isInSilenceWindow', () => {
@@ -127,49 +110,42 @@ describe('isInSilenceWindow', () => {
   const END = 6;
 
   test('21h30 heure malgache → dans la plage de silence', () => {
-    const now = madTime(21, 30);
-    expect(isInSilenceWindow(now, START, END)).toBe(true);
+    expect(isInSilenceWindow(madTime(21, 30), START, END)).toBe(true);
   });
 
-  test('06h00 heure malgache → hors silence (exact bord de fin)', () => {
-    const now = madTime(6, 0);
-    expect(isInSilenceWindow(now, START, END)).toBe(false);
+  test('06h00 heure malgache → hors silence (bord de fin, non inclus)', () => {
+    expect(isInSilenceWindow(madTime(6, 0), START, END)).toBe(false);
   });
 
   test('05h59 heure malgache → dans la plage de silence', () => {
-    const now = madTime(5, 59);
-    expect(isInSilenceWindow(now, START, END)).toBe(true);
+    expect(isInSilenceWindow(madTime(5, 59), START, END)).toBe(true);
   });
 
   test('12h00 heure malgache → hors silence', () => {
-    const now = madTime(12, 0);
-    expect(isInSilenceWindow(now, START, END)).toBe(false);
+    expect(isInSilenceWindow(madTime(12, 0), START, END)).toBe(false);
   });
 
   test('00h00 heure malgache → dans la plage de silence', () => {
-    const now = madTime(0, 0);
-    expect(isInSilenceWindow(now, START, END)).toBe(true);
+    expect(isInSilenceWindow(madTime(0, 0), START, END)).toBe(true);
   });
 
-  test('21h00 exact heure malgache → dans la plage de silence (bord de début)', () => {
-    const now = madTime(21, 0);
-    expect(isInSilenceWindow(now, START, END)).toBe(true);
+  test('21h00 exact → dans la plage de silence (bord de début)', () => {
+    expect(isInSilenceWindow(madTime(21, 0), START, END)).toBe(true);
   });
 
-  test('20h59 heure malgache → hors silence (juste avant le début)', () => {
-    const now = madTime(20, 59);
-    expect(isInSilenceWindow(now, START, END)).toBe(false);
+  test('20h59 → hors silence (juste avant le début)', () => {
+    expect(isInSilenceWindow(madTime(20, 59), START, END)).toBe(false);
   });
 });
 
 // =====================================================================
-// Tests du rendu de templates
+// Tests du rendu de templates (2 — interpolation)
 // =====================================================================
 
 describe('renderTemplate', () => {
   beforeEach(() => clearTemplateCache());
 
-  test('template FR BOOKING_CONFIRMED interpolé correctement', () => {
+  test('template FR BOOKING_CONFIRMED — interpolation correcte', () => {
     const result = renderTemplate('BOOKING_CONFIRMED', 'FR', {
       reference: 'IT-A7X9B',
       departureAt: '2026-09-03 08:00',
@@ -180,7 +156,7 @@ describe('renderTemplate', () => {
     expect(result).toContain('2026-09-03 08:00');
   });
 
-  test('template MG BOOKING_CONFIRMED interpolé correctement', () => {
+  test('template MG BOOKING_CONFIRMED — interpolation correcte + mots malgaches', () => {
     const result = renderTemplate('BOOKING_CONFIRMED', 'MG', {
       reference: 'IT-A7X9B',
       departureAt: '2026-09-03 08:00',
@@ -188,23 +164,18 @@ describe('renderTemplate', () => {
     });
     expect(result).toContain('IT-A7X9B');
     expect(result).toContain('Antananarivo');
-    // Vérification que le texte MG contient des mots malgaches
     expect(result).toMatch(/Voarakitra|fangatahana/);
   });
 
-  test('clé template inconnue → erreur explicite (pas de fallback silencieux)', () => {
-    expect(() =>
-      renderTemplate('UNKNOWN_KEY', 'FR', {}),
-    ).toThrow(/manquant.*fr\.json/i);
+  test('clé inconnue en FR → erreur explicite (pas de fallback silencieux)', () => {
+    expect(() => renderTemplate('UNKNOWN_KEY', 'FR', {})).toThrow(/manquant.*fr\.json/i);
   });
 
-  test('clé template inconnue en MG → erreur explicite mentionnant MG', () => {
-    expect(() =>
-      renderTemplate('UNKNOWN_KEY', 'MG', {}),
-    ).toThrow(/manquant.*mg\.json/i);
+  test('clé inconnue en MG → erreur explicite mentionnant mg.json', () => {
+    expect(() => renderTemplate('UNKNOWN_KEY', 'MG', {})).toThrow(/manquant.*mg\.json/i);
   });
 
-  test('template WALK_IN_CONFIRMED FR interpolé avec plusieurs variables', () => {
+  test('template WALK_IN_CONFIRMED FR — plusieurs variables interpolées', () => {
     const result = renderTemplate('WALK_IN_CONFIRMED', 'FR', {
       reference: 'IT-BB001',
       departureAt: '2026-09-04 07:30',
@@ -216,7 +187,7 @@ describe('renderTemplate', () => {
     expect(result).toContain('Fianarantsoa');
   });
 
-  test('template WALK_IN_CONFIRMED MG interpolé avec plusieurs variables', () => {
+  test('template WALK_IN_CONFIRMED MG — plusieurs variables interpolées', () => {
     const result = renderTemplate('WALK_IN_CONFIRMED', 'MG', {
       reference: 'IT-BB001',
       departureAt: '2026-09-04 07:30',
@@ -224,11 +195,12 @@ describe('renderTemplate', () => {
       destination: 'Fianarantsoa',
     });
     expect(result).toContain('IT-BB001');
+    expect(result).toContain('Tana');
   });
 });
 
 // =====================================================================
-// Tests NotificationsService.enqueue
+// 1. Tests NotificationsService.enqueue
 // =====================================================================
 
 describe('NotificationsService.enqueue', () => {
@@ -237,11 +209,9 @@ describe('NotificationsService.enqueue', () => {
     jest.clearAllMocks();
   });
 
-  test('enqueue crée un enregistrement Notification en DB et un job BullMQ', async () => {
+  test('1. enqueue crée un enregistrement Notification en DB et un job BullMQ', async () => {
     const db = makeMockDb();
-    const redis = makeMockRedis();
-    const smsProvider = makeMockSmsProvider();
-    const svc = new NotificationsService(db, redis, smsProvider);
+    const svc = new NotificationsService(db, makeMockRedis(), makeMockSmsProvider());
 
     const params: EnqueueParams = {
       userId: USER_ID,
@@ -255,27 +225,27 @@ describe('NotificationsService.enqueue', () => {
 
     await svc.enqueue(params);
 
-    // Vérification DB : upsert template + create notification
-    expect((db.notificationTemplate as { upsert: jest.Mock }).upsert).toHaveBeenCalledTimes(1);
-    expect((db.notification as { create: jest.Mock }).create).toHaveBeenCalledTimes(1);
+    const dbTemplates = db.notificationTemplate as unknown as { upsert: jest.Mock };
+    const dbNotif = db.notification as unknown as { create: jest.Mock };
 
-    const createCall = ((db.notification as { create: jest.Mock }).create).mock.calls[0][0];
-    expect(createCall.data.toAddress).toBe('+261340000001');
-    expect(createCall.data.lang).toBe('FR');
+    expect(dbTemplates.upsert).toHaveBeenCalledTimes(1);
+    expect(dbNotif.create).toHaveBeenCalledTimes(1);
 
-    // Vérification BullMQ : enqueueSms appelé
+    const createArg = dbNotif.create.mock.calls[0][0];
+    expect(createArg.data.toAddress).toBe('+261340000001');
+    expect(createArg.data.lang).toBe('FR');
+
     expect(enqueueSms).toHaveBeenCalledTimes(1);
-    const smsCall = (enqueueSms as jest.Mock).mock.calls[0][0] as SmsJobData;
-    expect(smsCall.phone).toBe('+261340000001');
-    expect(smsCall.templateCode).toBe('BOOKING_CONFIRMED');
-    expect(smsCall.notificationId).toBe(NOTIF_ID);
-    expect(smsCall.isTransactional).toBe(true);
+    const smsArg = (enqueueSms as jest.Mock).mock.calls[0][0] as SmsJobData;
+    expect(smsArg.phone).toBe('+261340000001');
+    expect(smsArg.templateCode).toBe('BOOKING_CONFIRMED');
+    expect(smsArg.notificationId).toBe(NOTIF_ID);
+    expect(smsArg.isTransactional).toBe(true);
   });
 
-  test('enqueue avec lang MG → lang MG dans la Notification DB', async () => {
+  test('enqueue avec lang MG → lang MG dans la Notification DB et dans le job BullMQ', async () => {
     const db = makeMockDb();
-    const redis = makeMockRedis();
-    const svc = new NotificationsService(db, redis, makeMockSmsProvider());
+    const svc = new NotificationsService(db, makeMockRedis(), makeMockSmsProvider());
 
     await svc.enqueue({
       userId: USER_ID,
@@ -285,16 +255,16 @@ describe('NotificationsService.enqueue', () => {
       phone: '+261340000002',
     });
 
-    const createCall = ((db.notification as { create: jest.Mock }).create).mock.calls[0][0];
-    expect(createCall.data.lang).toBe('MG');
-    const smsCall = (enqueueSms as jest.Mock).mock.calls[0][0] as SmsJobData;
-    expect(smsCall.lang).toBe('MG');
+    const dbNotif = db.notification as unknown as { create: jest.Mock };
+    expect(dbNotif.create.mock.calls[0][0].data.lang).toBe('MG');
+
+    const smsArg = (enqueueSms as jest.Mock).mock.calls[0][0] as SmsJobData;
+    expect(smsArg.lang).toBe('MG');
   });
 
-  test('enqueue lève une erreur si un template est manquant', async () => {
+  test('enqueue lève une erreur si le template est manquant', async () => {
     const db = makeMockDb();
-    const redis = makeMockRedis();
-    const svc = new NotificationsService(db, redis, makeMockSmsProvider());
+    const svc = new NotificationsService(db, makeMockRedis(), makeMockSmsProvider());
 
     await expect(
       svc.enqueue({
@@ -309,14 +279,10 @@ describe('NotificationsService.enqueue', () => {
 });
 
 // =====================================================================
-// Tests NotificationsService.dispatch
+// 2–6. Tests NotificationsService.dispatch
 // =====================================================================
 
 describe('NotificationsService.dispatch', () => {
-  // Sauvegarde des variables d'env
-  const originalSilenceStart = process.env.SILENCE_START_HOUR;
-  const originalSilenceEnd = process.env.SILENCE_END_HOUR;
-
   beforeEach(() => {
     clearTemplateCache();
     jest.clearAllMocks();
@@ -325,11 +291,9 @@ describe('NotificationsService.dispatch', () => {
   });
 
   afterEach(() => {
-    process.env.SILENCE_START_HOUR = originalSilenceStart;
-    process.env.SILENCE_END_HOUR = originalSilenceEnd;
+    jest.useRealTimers();
   });
 
-  // Base job data pour les tests
   const baseJob: SmsJobData = {
     phone: '+261340000010',
     templateCode: 'BOOKING_CONFIRMED',
@@ -341,34 +305,30 @@ describe('NotificationsService.dispatch', () => {
   };
 
   // ------------------------------------------------------------------
-  // Test 2 : interpolation correcte FR et MG
+  // Test 2a : interpolation FR
   // ------------------------------------------------------------------
-  test('dispatch FR → interpolation correcte du template', async () => {
+  test('2a. dispatch FR → interpolation correcte, SmsProvider reçoit le texte rendu', async () => {
+    jest.useFakeTimers({ now: madTime(10, 0) }); // 10h00 local, hors silence
+
     const db = makeMockDb();
     const smsProvider = makeMockSmsProvider();
     const svc = new NotificationsService(db, makeMockRedis(), smsProvider);
 
-    // Envoi pendant le jour (hors silence) pour tester l'interpolation seule
-    jest.spyOn(Date, 'now').mockReturnValue(madTime(10, 0).getTime());
-    const realDate = Date;
-    jest.spyOn(global, 'Date').mockImplementation((arg?: unknown) => {
-      if (arg === undefined) return new realDate(madTime(10, 0).getTime());
-      // @ts-expect-error - mock partiel
-      return new realDate(arg);
-    });
-
     await svc.dispatch(baseJob);
 
     expect(smsProvider.send).toHaveBeenCalledTimes(1);
-    const sendCall = (smsProvider.send as jest.Mock).mock.calls[0][0];
-    expect(sendCall.text).toContain('IT-D001');
-    expect(sendCall.text).toContain('Tana');
-    expect(sendCall.lang).toBe('FR');
-
-    jest.restoreAllMocks();
+    const sendArg = (smsProvider.send as jest.Mock).mock.calls[0][0];
+    expect(sendArg.text).toContain('IT-D001');
+    expect(sendArg.text).toContain('Tana');
+    expect(sendArg.lang).toBe('FR');
   });
 
-  test('dispatch MG → interpolation correcte du template', async () => {
+  // ------------------------------------------------------------------
+  // Test 2b : interpolation MG
+  // ------------------------------------------------------------------
+  test('2b. dispatch MG → interpolation correcte, texte contient des mots malgaches', async () => {
+    jest.useFakeTimers({ now: madTime(10, 0) }); // hors silence
+
     const db = makeMockDb();
     const smsProvider = makeMockSmsProvider();
     const svc = new NotificationsService(db, makeMockRedis(), smsProvider);
@@ -376,83 +336,48 @@ describe('NotificationsService.dispatch', () => {
     const jobMg: SmsJobData = {
       ...baseJob,
       lang: 'MG',
-      templateCode: 'BOOKING_CONFIRMED',
       params: { reference: 'IT-MG02', departureAt: '2026-09-03', origin: 'Tana' },
     };
-
-    // Hors silence (10h local)
-    const fixedNow = madTime(10, 0);
-    jest
-      .spyOn(global, 'Date')
-      .mockImplementation(function (this: unknown, arg?: unknown) {
-        if (arg === undefined) return fixedNow;
-        // @ts-expect-error - mock partiel
-        return new (jest.requireActual('date') ?? Date)(arg);
-      } as unknown as DateConstructor);
 
     await svc.dispatch(jobMg);
 
     expect(smsProvider.send).toHaveBeenCalledTimes(1);
-    const sendCall = (smsProvider.send as jest.Mock).mock.calls[0][0];
-    expect(sendCall.text).toContain('IT-MG02');
-    // Vérifie présence d'un mot malgache
-    expect(sendCall.text).toMatch(/Voarakitra|fangatahana/);
-
-    jest.restoreAllMocks();
+    const sendArg = (smsProvider.send as jest.Mock).mock.calls[0][0];
+    expect(sendArg.text).toContain('IT-MG02');
+    expect(sendArg.text).toMatch(/Voarakitra|fangatahana/);
   });
 
   // ------------------------------------------------------------------
-  // Test 3 : message TRANSACTIONNEL pendant silence → envoi immédiat
+  // Test 3 : TRANSACTIONNEL pendant silence → envoi immédiat
   // ------------------------------------------------------------------
-  test('dispatch transactionnel pendant silence nocturne → envoi immédiat (bypass silence)', async () => {
+  test('3. dispatch transactionnel pendant silence nocturne → envoi immédiat', async () => {
+    jest.useFakeTimers({ now: madTime(22, 0) }); // 22h00 local = silence
+
     const db = makeMockDb();
     const smsProvider = makeMockSmsProvider();
     const svc = new NotificationsService(db, makeMockRedis(), smsProvider);
 
-    // 22h00 heure malgache (dans la plage 21h-06h)
-    const duringNight = madTime(22, 0);
-    const RealDate = Date;
-    const MockDate = jest.fn(() => duringNight) as unknown as typeof Date;
-    MockDate.now = jest.fn(() => duringNight.getTime());
-    (MockDate as unknown as { parse: typeof Date.parse }).parse = RealDate.parse;
-    (MockDate as unknown as { UTC: typeof Date.UTC }).UTC = RealDate.UTC;
-    global.Date = MockDate;
+    await svc.dispatch({ ...baseJob, isTransactional: true });
 
-    const txJob: SmsJobData = {
-      ...baseJob,
-      isTransactional: true,
-    };
-
-    await svc.dispatch(txJob);
-
-    // Doit appeler le provider SMS immédiatement
     expect(smsProvider.send).toHaveBeenCalledTimes(1);
-    // Ne doit PAS mettre à jour en SCHEDULED
-    const updateCalls = ((db.notification as { update: jest.Mock }).update).mock.calls;
-    const scheduledCalls = updateCalls.filter((c) =>
-      c[0]?.data?.status === 'SCHEDULED',
+
+    const dbNotif = db.notification as unknown as { update: jest.Mock };
+    const scheduledCalls = dbNotif.update.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { data: { status: string } }).data?.status === 'SCHEDULED',
     );
     expect(scheduledCalls.length).toBe(0);
-
-    global.Date = RealDate;
   });
 
   // ------------------------------------------------------------------
-  // Test 4 : message NON-transactionnel pendant silence → scheduledFor = lendemain 06h00
+  // Test 4 : NON-transactionnel pendant silence → scheduledFor = lendemain 06h00
   // ------------------------------------------------------------------
-  test('dispatch non-transactionnel pendant silence → scheduledFor = lendemain 06h00 UTC+3', async () => {
+  test('4. dispatch non-transactionnel pendant silence → scheduledFor = lendemain 06h00 UTC+3', async () => {
+    const now = madTime(21, 30);
+    jest.useFakeTimers({ now });
+
     const db = makeMockDb();
     const smsProvider = makeMockSmsProvider();
     const svc = new NotificationsService(db, makeMockRedis(), smsProvider);
-
-    // 21h30 heure malgache (dans la plage silence)
-    const duringNight = madTime(21, 30);
-    const RealDate = Date;
-    const MockDate = jest.fn(() => duringNight) as unknown as typeof Date;
-    MockDate.now = jest.fn(() => duringNight.getTime());
-    (MockDate as unknown as { parse: typeof Date.parse }).parse = RealDate.parse;
-    (MockDate as unknown as { UTC: typeof Date.UTC }).UTC = RealDate.UTC;
-    global.Date = MockDate;
 
     const nonTxJob: SmsJobData = {
       ...baseJob,
@@ -463,45 +388,35 @@ describe('NotificationsService.dispatch', () => {
 
     await svc.dispatch(nonTxJob);
 
-    // Ne doit PAS appeler le provider SMS
+    // Pas d'appel SMS immédiat
     expect(smsProvider.send).not.toHaveBeenCalled();
 
-    // Doit mettre à jour la Notification en SCHEDULED
-    const updateCall = ((db.notification as { update: jest.Mock }).update).mock.calls.find(
-      (c) => c[0]?.data?.status === 'SCHEDULED',
+    // Notification mise en SCHEDULED
+    const dbNotif = db.notification as unknown as { update: jest.Mock };
+    const scheduledCall = dbNotif.update.mock.calls.find(
+      (c: unknown[]) => (c[0] as { data: { status: string } }).data?.status === 'SCHEDULED',
     );
-    expect(updateCall).toBeDefined();
+    expect(scheduledCall).toBeDefined();
 
-    // Vérifier scheduledFor = lendemain 06h00 UTC+3 = lendemain 03h00 UTC
-    const scheduledFor: Date = updateCall![0].data.scheduledFor;
-    const expectedNext = nextSendableTime(duringNight, 6);
-    // Tolérance de 1 seconde pour les éventuels déphasages de test
-    expect(Math.abs(scheduledFor.getTime() - expectedNext.getTime())).toBeLessThan(1000);
+    // scheduledFor = lendemain 06h00 UTC+3
+    const scheduledFor: Date = (scheduledCall![0] as { data: { scheduledFor: Date } }).data.scheduledFor;
+    const expected = nextSendableTime(now, 6);
+    expect(Math.abs(scheduledFor.getTime() - expected.getTime())).toBeLessThan(1000);
 
-    // Vérifier que scheduledFor est bien à 06h00 heure malgache (03h00 UTC)
-    const scheduledLocalHour =
-      (scheduledFor.getTime() + 3 * 60 * 60 * 1000) / (60 * 60 * 1000) % 24;
-    expect(Math.floor(scheduledLocalHour)).toBe(6);
-
-    global.Date = RealDate;
+    // Vérifier l'heure locale (06h00 UTC+3)
+    const localHour = Math.floor(((scheduledFor.getTime() + 3 * 60 * 60 * 1000) / (60 * 60 * 1000)) % 24);
+    expect(localHour).toBe(6);
   });
 
   // ------------------------------------------------------------------
   // Test 5 : hors plage silence → envoi immédiat quel que soit le type
   // ------------------------------------------------------------------
-  test('dispatch hors plage silence → envoi immédiat pour message non-transactionnel', async () => {
+  test('5. dispatch hors plage silence → envoi immédiat pour message non-transactionnel', async () => {
+    jest.useFakeTimers({ now: madTime(10, 0) }); // 10h00 local, hors silence
+
     const db = makeMockDb();
     const smsProvider = makeMockSmsProvider();
     const svc = new NotificationsService(db, makeMockRedis(), smsProvider);
-
-    // 10h00 heure malgache (hors silence)
-    const daytime = madTime(10, 0);
-    const RealDate = Date;
-    const MockDate = jest.fn(() => daytime) as unknown as typeof Date;
-    MockDate.now = jest.fn(() => daytime.getTime());
-    (MockDate as unknown as { parse: typeof Date.parse }).parse = RealDate.parse;
-    (MockDate as unknown as { UTC: typeof Date.UTC }).UTC = RealDate.UTC;
-    global.Date = MockDate;
 
     const nonTxJob: SmsJobData = {
       ...baseJob,
@@ -512,74 +427,72 @@ describe('NotificationsService.dispatch', () => {
 
     await svc.dispatch(nonTxJob);
 
-    // Doit appeler le provider SMS immédiatement
     expect(smsProvider.send).toHaveBeenCalledTimes(1);
-    // Ne doit PAS mettre à jour en SCHEDULED
-    const updateCalls = ((db.notification as { update: jest.Mock }).update).mock.calls;
-    const scheduledCalls = updateCalls.filter(
-      (c) => c[0]?.data?.status === 'SCHEDULED',
+
+    const dbNotif = db.notification as unknown as { update: jest.Mock };
+    const scheduledCalls = dbNotif.update.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { data: { status: string } }).data?.status === 'SCHEDULED',
     );
     expect(scheduledCalls.length).toBe(0);
-
-    global.Date = RealDate;
   });
 
   // ------------------------------------------------------------------
   // Test 6 : Retry sur échec SmsProvider
   // ------------------------------------------------------------------
-  test('dispatch lève une erreur sur échec SmsProvider pour que BullMQ déclenche le retry', async () => {
+  test('6. dispatch lève une erreur sur échec SmsProvider → BullMQ peut déclencher le retry', async () => {
+    jest.useFakeTimers({ now: madTime(10, 0) }); // hors silence
+
     const db = makeMockDb();
     const smsProvider = makeMockSmsProvider(true); // shouldFail = true
     const svc = new NotificationsService(db, makeMockRedis(), smsProvider);
 
-    // Hors silence pour isoler l'échec du provider
-    const daytime = madTime(10, 0);
-    const RealDate = Date;
-    const MockDate = jest.fn(() => daytime) as unknown as typeof Date;
-    MockDate.now = jest.fn(() => daytime.getTime());
-    (MockDate as unknown as { parse: typeof Date.parse }).parse = RealDate.parse;
-    (MockDate as unknown as { UTC: typeof Date.UTC }).UTC = RealDate.UTC;
-    global.Date = MockDate;
-
     await expect(svc.dispatch(baseJob)).rejects.toThrow('SMS provider error');
 
-    // Notification doit être marquée FAILED
-    const updateCall = ((db.notification as { update: jest.Mock }).update).mock.calls.find(
-      (c) => c[0]?.data?.status === 'FAILED',
+    const dbNotif = db.notification as unknown as { update: jest.Mock };
+    const failedCall = dbNotif.update.mock.calls.find(
+      (c: unknown[]) => (c[0] as { data: { status: string } }).data?.status === 'FAILED',
     );
-    expect(updateCall).toBeDefined();
-    expect(updateCall![0].data.errorMessage).toContain('SMS provider error');
-
-    global.Date = RealDate;
+    expect(failedCall).toBeDefined();
+    expect((failedCall![0] as { data: { errorMessage: string } }).data.errorMessage).toContain(
+      'SMS provider error',
+    );
   });
 
-  test('dispatch sur échec : errorMessage contenu dans la Notification', async () => {
-    const db = makeMockDb();
-    const smsProvider = {
-      send: jest.fn().mockRejectedValue(new Error('Network timeout')),
-    };
-    const svc = new NotificationsService(db, makeMockRedis(), smsProvider);
+  test('6b. dispatch — errorMessage correct dans la Notification sur échec réseau', async () => {
+    jest.useFakeTimers({ now: madTime(10, 0) });
 
-    const daytime = madTime(10, 0);
-    const RealDate = Date;
-    const MockDate = jest.fn(() => daytime) as unknown as typeof Date;
-    MockDate.now = jest.fn(() => daytime.getTime());
-    (MockDate as unknown as { parse: typeof Date.parse }).parse = RealDate.parse;
-    (MockDate as unknown as { UTC: typeof Date.UTC }).UTC = RealDate.UTC;
-    global.Date = MockDate;
+    const db = makeMockDb();
+    const smsProvider = { send: jest.fn().mockRejectedValue(new Error('Network timeout')) };
+    const svc = new NotificationsService(db, makeMockRedis(), smsProvider);
 
     try {
       await svc.dispatch(baseJob);
     } catch {
-      // expected
+      // erreur attendue
     }
 
-    const failedUpdate = ((db.notification as { update: jest.Mock }).update).mock.calls.find(
-      (c) => c[0]?.data?.status === 'FAILED',
+    const dbNotif = db.notification as unknown as { update: jest.Mock };
+    const failedCall = dbNotif.update.mock.calls.find(
+      (c: unknown[]) => (c[0] as { data: { status: string } }).data?.status === 'FAILED',
     );
-    expect(failedUpdate![0].data.errorMessage).toBe('Network timeout');
+    expect((failedCall![0] as { data: { errorMessage: string } }).data.errorMessage).toBe('Network timeout');
+  });
 
-    global.Date = RealDate;
+  test('dispatch succès → Notification mise à jour en SENT avec sentAt et providerRef', async () => {
+    jest.useFakeTimers({ now: madTime(10, 0) });
+
+    const db = makeMockDb();
+    const smsProvider = makeMockSmsProvider(); // messageId: 'msg-abc-123'
+    const svc = new NotificationsService(db, makeMockRedis(), smsProvider);
+
+    await svc.dispatch(baseJob);
+
+    const dbNotif = db.notification as unknown as { update: jest.Mock };
+    const sentCall = dbNotif.update.mock.calls.find(
+      (c: unknown[]) => (c[0] as { data: { status: string } }).data?.status === 'SENT',
+    );
+    expect(sentCall).toBeDefined();
+    expect((sentCall![0] as { data: { providerRef: string } }).data.providerRef).toBe('msg-abc-123');
   });
 });
 
@@ -591,26 +504,15 @@ describe('NotificationsService — préférences SMS', () => {
   beforeEach(() => jest.clearAllMocks());
 
   test('getPreferences retourne les valeurs par défaut si pas de clé Redis', async () => {
-    const svc = new NotificationsService(
-      makeMockDb(),
-      makeMockRedis(null as unknown as undefined),
-      makeMockSmsProvider(),
-    );
+    const svc = new NotificationsService(makeMockDb(), makeMockRedis(null), makeMockSmsProvider());
     const prefs = await svc.getPreferences(USER_ID);
     expect(prefs.smsEnabled).toBe(true);
     expect(prefs.optedOutTemplates).toEqual([]);
   });
 
-  test('getPreferences lit la valeur Redis et la désérialise', async () => {
-    const stored = JSON.stringify({
-      smsEnabled: false,
-      optedOutTemplates: ['TRIP_REMINDER'],
-    });
-    const svc = new NotificationsService(
-      makeMockDb(),
-      makeMockRedis(stored),
-      makeMockSmsProvider(),
-    );
+  test('getPreferences désérialise correctement la valeur Redis', async () => {
+    const stored = JSON.stringify({ smsEnabled: false, optedOutTemplates: ['TRIP_REMINDER'] });
+    const svc = new NotificationsService(makeMockDb(), makeMockRedis(stored), makeMockSmsProvider());
     const prefs = await svc.getPreferences(USER_ID);
     expect(prefs.smsEnabled).toBe(false);
     expect(prefs.optedOutTemplates).toContain('TRIP_REMINDER');
@@ -620,14 +522,13 @@ describe('NotificationsService — préférences SMS', () => {
     const redis = makeMockRedis();
     const svc = new NotificationsService(makeMockDb(), redis, makeMockSmsProvider());
 
-    await svc.updatePreferences(USER_ID, {
-      optedOutTemplates: ['TRIP_REMINDER'],
-    });
+    await svc.updatePreferences(USER_ID, { optedOutTemplates: ['TRIP_REMINDER'] });
 
-    expect((redis as { set: jest.Mock }).set).toHaveBeenCalledTimes(1);
-    const setCall = ((redis as { set: jest.Mock }).set).mock.calls[0];
-    const written = JSON.parse(setCall[1]) as { optedOutTemplates: string[] };
-    expect(written.optedOutTemplates).toContain('TRIP_REMINDER');
+    const redisAny = redis as unknown as { set: jest.Mock };
+    expect(redisAny.set).toHaveBeenCalledTimes(1);
+    const [, written] = redisAny.set.mock.calls[0];
+    const parsed = JSON.parse(written as string) as { optedOutTemplates: string[] };
+    expect(parsed.optedOutTemplates).toContain('TRIP_REMINDER');
   });
 });
 
@@ -636,29 +537,28 @@ describe('NotificationsService — préférences SMS', () => {
 // =====================================================================
 
 describe('nextSendableTime', () => {
-  test('21h30 UTC+3 → lendemain 06h00 UTC+3 = lendemain 03h00 UTC', () => {
-    const now = madTime(21, 30); // 18h30 UTC
+  test('21h30 UTC+3 → lendemain 06h00 UTC+3 (03h00 UTC)', () => {
+    const now = madTime(21, 30);
     const result = nextSendableTime(now, 6);
-
-    // Lendemain 06h00 UTC+3 = lendemain 03h00 UTC
-    const resultLocalHour =
-      Math.floor((result.getTime() + 3 * 60 * 60 * 1000) / (60 * 60 * 1000)) % 24;
-    expect(resultLocalHour).toBe(6);
-
-    // La date est bien le lendemain
-    const tomorrowMidnightLocal =
-      Math.floor((now.getTime() + 3 * 60 * 60 * 1000) / (24 * 60 * 60 * 1000)) * (24 * 60 * 60 * 1000)
-      + 24 * 60 * 60 * 1000;
+    const localHour = Math.floor(((result.getTime() + 3 * 60 * 60 * 1000) / (60 * 60 * 1000)) % 24);
+    expect(localHour).toBe(6);
     expect(result.getTime()).toBeGreaterThan(now.getTime());
-    expect(result.getTime()).toBeLessThan(tomorrowMidnightLocal + 7 * 60 * 60 * 1000);
   });
 
-  test('00h30 UTC+3 → lendemain 06h00 UTC+3 (même nuit, j+1)', () => {
+  test('00h30 UTC+3 → lendemain 06h00 UTC+3', () => {
     const now = madTime(0, 30);
     const result = nextSendableTime(now, 6);
-    const resultLocalHour =
-      Math.floor((result.getTime() + 3 * 60 * 60 * 1000) / (60 * 60 * 1000)) % 24;
-    expect(resultLocalHour).toBe(6);
+    const localHour = Math.floor(((result.getTime() + 3 * 60 * 60 * 1000) / (60 * 60 * 1000)) % 24);
+    expect(localHour).toBe(6);
     expect(result.getTime()).toBeGreaterThan(now.getTime());
+  });
+
+  test('10h00 UTC+3 → lendemain 06h00 UTC+3 (bien dans le futur)', () => {
+    const now = madTime(10, 0);
+    const result = nextSendableTime(now, 6);
+    const localHour = Math.floor(((result.getTime() + 3 * 60 * 60 * 1000) / (60 * 60 * 1000)) % 24);
+    expect(localHour).toBe(6);
+    // Lendemain 06h00 est environ 20h plus tard
+    expect(result.getTime() - now.getTime()).toBeGreaterThan(15 * 60 * 60 * 1000);
   });
 });

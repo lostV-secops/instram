@@ -445,6 +445,6 @@ export class NotificationsService {
     });
 
     await queue.close();
-    await (connection as { quit(): Promise<void> }).quit();
+    await (connection as unknown as { quit(): Promise<unknown> }).quit();
   }
 }
