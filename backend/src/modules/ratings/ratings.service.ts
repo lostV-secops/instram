@@ -251,7 +251,10 @@ export class RatingsService {
         ...(status ? { status: status as RatingStatus } : {}),
         ...(cursor ? { id: { lt: cursor } } : {}),
       },
-      include: { user: true, booking: { select: { reference: true, cooperativeId: true } } },
+      include: {
+        user: { select: { id: true, email: true, phone: true } },
+        booking: { select: { reference: true, cooperativeId: true } },
+      },
       orderBy: { createdAt: 'desc' },
       take: limit,
     });

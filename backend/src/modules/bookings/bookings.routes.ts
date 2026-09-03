@@ -320,8 +320,11 @@ export default async function bookingsRoutes(fastify: FastifyInstance): Promise<
         });
       }
 
-      // rawBody pour la vérification HMAC (avant parsing JSON)
-      const rawBody = Buffer.from(JSON.stringify(req.body));
+      // rawBody pour la vérification HMAC — buffer brut injecté par le parser app.ts
+      const rawBody = (req as FastifyRequest & { rawBody?: Buffer }).rawBody;
+      if (!rawBody) {
+        return reply.status(400).send({ code: 'MISSING_RAW_BODY', message: 'Corps brut manquant' });
+      }
 
       const parseResult = WebhookPayloadSchema.safeParse(req.body);
       if (!parseResult.success) {

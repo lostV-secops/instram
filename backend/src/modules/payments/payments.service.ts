@@ -314,7 +314,7 @@ export class PaymentsService {
     rawBody: Buffer;
     signature: string;
     payload: WebhookPayload;
-  }): Promise<{ status: 'processed' | 'duplicate' | 'failed' }> {
+  }): Promise<{ status: 'processed' | 'duplicate' | 'failed' | 'ignored' }> {
     const { provider, rawBody, signature, payload } = params;
 
     // 1. Vérification signature HMAC — rejet 401 immédiat si invalide (§7.4)
@@ -349,33 +349,34 @@ export class PaymentsService {
     }
 
     if (!booking) {
-      // Fallback : payment PENDING le plus récent pour ce provider
-      const pendingPayment = await this.db.payment.findFirst({
-        where: {
-          status: PaymentStatus.PENDING,
-          provider: provider.toUpperCase() as PaymentProvider,
-        },
-        orderBy: { initiatedAt: 'desc' },
-        include: {
-          booking: {
-            include: {
-              seatHolds: true,
-              payments: true,
-            },
-          },
+      // Webhook orphelin sans bookingReference déterministe — rejeté (sécurité IDOR)
+      await this.db.auditLog.create({
+        data: {
+          action: AuditAction.PAYMENT_FAILED,
+          entityType: 'Payment',
+          entityId: 'unknown',
+          before: { provider, reason: 'no_matching_booking', providerTransactionId },
         },
       });
-      if (pendingPayment?.booking) {
-        booking = pendingPayment.booking as BookingForConfirm;
-      }
-    }
-
-    if (!booking) {
-      // Webhook orphelin — loggé silencieusement, réponse 200
-      return { status: 'failed' };
+      return { status: 'ignored' as const };
     }
 
     if (status === 'SUCCESS') {
+      // Vérification du montant reçu vs montant dû (CRITIQUE — paiement partiel non accepté)
+      if (payload.amountMga !== undefined) {
+        const expectedAmount = booking.payments[0]?.amountMga;
+        if (expectedAmount !== undefined && payload.amountMga !== expectedAmount) {
+          await this.db.auditLog.create({
+            data: {
+              action: AuditAction.PAYMENT_FAILED,
+              entityType: 'Payment',
+              entityId: booking.id,
+              before: { expected: expectedAmount, received: payload.amountMga, provider },
+            },
+          });
+          return this._failPayment(booking, providerTransactionId);
+        }
+      }
       return this._confirmPayment(booking, providerTransactionId, provider);
     } else {
       return this._failPayment(booking, providerTransactionId);

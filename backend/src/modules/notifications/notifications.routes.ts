@@ -49,7 +49,7 @@ export default async function notificationsRoutes(
     '/notifications',
     { preHandler: fastify.authenticate },
     async (req: FastifyRequest, reply: FastifyReply) => {
-      const user = req.user as { userId: string };
+      const userId = (req.user as { sub: string }).sub;
 
       const queryParsed = listQuerySchema.safeParse(req.query);
       if (!queryParsed.success) {
@@ -61,7 +61,7 @@ export default async function notificationsRoutes(
       }
 
       const { cursor, limit } = queryParsed.data;
-      const result = await svc.listForUser(user.userId, cursor, limit);
+      const result = await svc.listForUser(userId, cursor, limit);
       return reply.status(200).send(result);
     },
   );
@@ -74,8 +74,8 @@ export default async function notificationsRoutes(
     '/notifications/preferences',
     { preHandler: fastify.authenticate },
     async (req: FastifyRequest, reply: FastifyReply) => {
-      const user = req.user as { userId: string };
-      const prefs = await svc.getPreferences(user.userId);
+      const userId = (req.user as { sub: string }).sub;
+      const prefs = await svc.getPreferences(userId);
       return reply.status(200).send(prefs);
     },
   );
@@ -88,7 +88,7 @@ export default async function notificationsRoutes(
     '/notifications/preferences',
     { preHandler: fastify.authenticate },
     async (req: FastifyRequest, reply: FastifyReply) => {
-      const user = req.user as { userId: string };
+      const userId = (req.user as { sub: string }).sub;
 
       const bodyParsed = preferencesBodySchema.safeParse(req.body);
       if (!bodyParsed.success) {
@@ -99,8 +99,8 @@ export default async function notificationsRoutes(
         });
       }
 
-      await svc.updatePreferences(user.userId, bodyParsed.data);
-      const updated = await svc.getPreferences(user.userId);
+      await svc.updatePreferences(userId, bodyParsed.data);
+      const updated = await svc.getPreferences(userId);
       return reply.status(200).send(updated);
     },
   );

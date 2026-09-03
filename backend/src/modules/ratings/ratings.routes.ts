@@ -7,12 +7,7 @@ import {
   ConflictError,
   ValidationError,
 } from './ratings.service';
-import {
-  CreateRatingSchema,
-  RatingListQuerySchema,
-  AdminRatingListQuerySchema,
-  ModerateRatingSchema,
-} from './ratings.schema';
+import { CreateRatingSchema, RatingListQuerySchema } from './ratings.schema';
 import prisma from '../../infra/db/prisma';
 
 // =====================================================================
@@ -143,71 +138,7 @@ export default async function ratingsRoutes(fastify: FastifyInstance): Promise<v
     },
   );
 
-  // ------------------------------------------------------------------
-  // GET /admin/ratings
-  // Auth : ADMIN_SUPER | ADMIN_OPS | ADMIN_MODERATOR
-  // Contrat : docs/contrat-api.yaml §Admin
-  // ------------------------------------------------------------------
-  fastify.get(
-    '/admin/ratings',
-    { onRequest: [fastify.authenticate] },
-    async (req: FastifyRequest, reply: FastifyReply) => {
-      // Vérification du rôle admin (AdminProfile requis)
-      const userId = getUserId(req);
-      const adminProfile = await prisma.adminProfile.findUnique({ where: { userId } });
-      if (!adminProfile) {
-        return reply.status(403).send({ code: 'FORBIDDEN', message: 'Accès réservé aux administrateurs InsTRAM' });
-      }
-
-      const parseResult = AdminRatingListQuerySchema.safeParse(req.query);
-      if (!parseResult.success) {
-        return reply.status(400).send({
-          code: 'VALIDATION_ERROR',
-          message: formatZodError(parseResult.error),
-        });
-      }
-
-      const ratings = await service.listRatingsAdmin(parseResult.data);
-      return reply.status(200).send(ratings);
-    },
-  );
-
-  // ------------------------------------------------------------------
-  // PATCH /admin/ratings/:ratingId
-  // Auth : ADMIN_SUPER | ADMIN_OPS | ADMIN_MODERATOR
-  // Contrat : docs/contrat-api.yaml §Admin
-  // ------------------------------------------------------------------
-  fastify.patch(
-    '/admin/ratings/:ratingId',
-    { onRequest: [fastify.authenticate] },
-    async (req: FastifyRequest, reply: FastifyReply) => {
-      const { ratingId } = req.params as { ratingId: string };
-      const userId = getUserId(req);
-      const adminProfile = await prisma.adminProfile.findUnique({ where: { userId } });
-      if (!adminProfile) {
-        return reply.status(403).send({ code: 'FORBIDDEN', message: 'Accès réservé aux administrateurs InsTRAM' });
-      }
-
-      const parseResult = ModerateRatingSchema.safeParse(req.body);
-      if (!parseResult.success) {
-        return reply.status(400).send({
-          code: 'VALIDATION_ERROR',
-          message: formatZodError(parseResult.error),
-        });
-      }
-
-      try {
-        const updated = await service.moderateRating(userId, ratingId, parseResult.data);
-        return reply.status(200).send(updated);
-      } catch (err) {
-        const code = (err as NodeJS.ErrnoException).code;
-        if (code === 'NOT_FOUND') {
-          return reply.status(404).send({ code: 'NOT_FOUND', message: (err as Error).message });
-        }
-        throw err;
-      }
-    },
-  );
+  // Note : GET /admin/ratings et PATCH /admin/ratings/:ratingId sont dans admin.routes.ts
 }
 
 // Named exports des classes d'erreur pour usage dans les tests

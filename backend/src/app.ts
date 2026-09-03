@@ -54,7 +54,11 @@ export async function buildApp(): Promise<FastifyInstance> {
           }
         : {}),
     },
-    trustProxy: true, // Nécessaire pour req.ip derrière un load-balancer / edge
+    trustProxy: process.env.TRUSTED_PROXY_IPS
+      ? process.env.TRUSTED_PROXY_IPS.split(',').map((s) => s.trim())
+      : process.env.NODE_ENV === 'production'
+      ? false
+      : true,
     disableRequestLogging: false,
   });
 
@@ -109,8 +113,26 @@ export async function buildApp(): Promise<FastifyInstance> {
   // ------------------------------------------------------------------
   // JWT : access token 15 min (architecture §2.2)
   // ------------------------------------------------------------------
+  // Parser rawBody — préserve le buffer brut pour la vérification HMAC des webhooks
+  app.addContentTypeParser(
+    'application/json',
+    { parseAs: 'buffer' },
+    (
+      _req: import('fastify').FastifyRequest,
+      body: Buffer,
+      done: (err: Error | null, body?: unknown) => void,
+    ) => {
+      (_req as import('fastify').FastifyRequest & { rawBody: Buffer }).rawBody = body;
+      try {
+        done(null, JSON.parse(body.toString('utf-8')));
+      } catch (err) {
+        done(err as Error);
+      }
+    },
+  );
+
   await app.register(fastifyJwt, {
-    secret: process.env.JWT_ACCESS_SECRET ?? 'change_me_access',
+    secret: process.env.JWT_ACCESS_SECRET!,
     sign: {
       expiresIn: process.env.JWT_ACCESS_EXPIRES_IN ?? '15m',
     },

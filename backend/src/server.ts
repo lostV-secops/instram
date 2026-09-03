@@ -12,6 +12,22 @@ const PORT = parseInt(process.env.PORT ?? '4000', 10);
 const HOST = process.env.HOST ?? '0.0.0.0';
 
 async function start(): Promise<void> {
+  // Validation des secrets critiques avant tout démarrage
+  const REQUIRED_SECRETS: Array<[string, string]> = [
+    ['JWT_ACCESS_SECRET', 'change_me_access'],
+    ['JWT_REFRESH_SECRET', 'change_me_refresh'],
+    ['QR_SECRET', 'change_me_qr_secret'],
+  ];
+  for (const [name, placeholder] of REQUIRED_SECRETS) {
+    const val = process.env[name];
+    if (!val || val === placeholder || val.length < 32) {
+      process.stderr.write(
+        `[BOOT ERROR] ${name} est absent, trop court ou égal à la valeur d'exemple. Arrêt.\n`,
+      );
+      process.exit(1);
+    }
+  }
+
   const app = await buildApp();
 
   try {
