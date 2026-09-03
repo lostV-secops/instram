@@ -55,6 +55,14 @@ export function Navbar({ isAuthenticated = false, userFirstName }: NavbarProps) 
               {t.nav.home}
             </Link>
           </li>
+          <li>
+            <Link
+              href={`/${lang}/cooperatives`}
+              className="text-white/90 hover:text-white text-sm transition-colors"
+            >
+              {t.nav.cooperatives}
+            </Link>
+          </li>
           {isAuthenticated && (
             <li>
               <Link

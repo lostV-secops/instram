@@ -1,6 +1,7 @@
 import { buildApp } from './app';
 import prisma from './infra/db/prisma';
 import redis from './infra/cache/redis';
+import { scheduleTripAutoClose, createTripAutoCloseWorker } from './infra/queue/trips.queue';
 
 // =====================================================================
 // Point d'entrée du serveur InsTRAM
@@ -16,6 +17,10 @@ async function start(): Promise<void> {
   try {
     await app.listen({ port: PORT, host: HOST });
     app.log.info(`InsTRAM backend démarré sur http://${HOST}:${PORT}`);
+
+    // Planification de la clôture automatique des trajets (VH-03)
+    await scheduleTripAutoClose();
+    createTripAutoCloseWorker();
   } catch (err) {
     app.log.error(err, 'Impossible de démarrer le serveur');
     process.exit(1);

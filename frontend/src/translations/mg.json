@@ -23,6 +23,7 @@
     "home": "Fandraisana",
     "search": "Hieroka dia",
     "myBookings": "Ny fandraharahako",
+    "cooperatives": "Kooperatera",
     "login": "Hiditra",
     "register": "Misoratra anarana",
     "switchLang": "Français"
@@ -187,5 +188,42 @@
     "terms": "Fepetra fampiasana",
     "privacy": "Politikan'ny tsiambaratelo",
     "contact": "Fifandraisana"
+  },
+  "cooperatives": {
+    "title": "Lisitry ny kooperatera",
+    "subtitle": "Hitady kooperatera fitaterana eto Madagasikara",
+    "searchPlaceholder": "Hieroka anarana na faritra...",
+    "searchLabel": "Fikarohana kooperatera",
+    "searchButton": "Hieroka",
+    "noResults": "Tsy misy kooperatera hita",
+    "noResultsHint": "Andama teny hafa na esory ny filters.",
+    "viewTrips": "Hijery ny dia",
+    "viewProfile": "Hijery ny antontan-kevitra",
+    "routes": "Lalana desservies",
+    "regions": "Faritra desservies",
+    "ratingCount": "hevitra {count}",
+    "noRating": "Tsy mbola notombanana",
+    "contact": "Fifandraisana",
+    "phone": "Laharana finday",
+    "email": "Mailaka",
+    "searchTrips": "Hieroka dia",
+    "policy": "Fitsipiky ny fanafoana",
+    "loading": "Miandry...",
+    "errorLoad": "Tsy azo atao ny mampihatra ny lisitra. Jereo ny onjilanao.",
+    "errorLoadDetail": "Tsy azo atao ny mampihatra ity kooperatera ity. Jereo ny onjilanao.",
+    "notFound": "Kooperatera tsy hita.",
+    "backToDirectory": "Hiverina any amin'ny lisitra",
+    "ratings": {
+      "title": "Hevitry ny mpandeha",
+      "average": "Tombana sehatra",
+      "total": "hevitra {count} voafaritana",
+      "noRatings": "Tsy misy hevitra amin'izao",
+      "stars1": "kintana 1",
+      "stars2": "kintana 2",
+      "stars3": "kintana 3",
+      "stars4": "kintana 4",
+      "stars5": "kintana 5",
+      "distribution": "Fizarana ny tombana"
+    }
   }
 }

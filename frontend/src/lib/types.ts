@@ -257,6 +257,40 @@ export interface BookingDetail extends Booking {
   ticket: Ticket | null;
 }
 
+// ─── Directory (annuaire public) ─────────────────────────────────────────────
+// Endpoints : GET /v1/directory/cooperatives
+//             GET /v1/directory/cooperatives/{slug}
+// Source : docs/contrat-api.yaml — schemas DirectoryEntry, DirectoryEntryDetail
+// Note : RatingStatus et Rating sont définis plus bas (section admin/ratings).
+
+/** Entrée dans l'annuaire public (schema DirectoryEntry) */
+export interface DirectoryEntry {
+  slug: string;
+  displayName: string;
+  description: string | null;
+  logoUrl: string | null;
+  /** Régions desservies (ex. ["Analamanga", "Vakinankaratra"]) */
+  regionsServed: string[];
+  ratingAverage: number;
+  ratingCount: number;
+}
+
+/** Ligne desservie dans la fiche détail */
+export interface DirectoryRoute {
+  displayName: string;
+  originCity: City;
+  destinationCity: City;
+}
+
+/** Fiche détail d'une coopérative (schema DirectoryEntryDetail) */
+export interface DirectoryEntryDetail extends DirectoryEntry {
+  routes: DirectoryRoute[];
+  /** Politique d'annulation — utilise CoopPolicy défini plus bas */
+  policy: CoopPolicy | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+}
+
 // ─── Paiement ─────────────────────────────────────────────────────────────────
 export interface PaymentInitiation {
   paymentId: string;
@@ -452,6 +486,46 @@ export interface CoopVehicle {
   model: string | null;
   capacity: number;
   isActive: boolean;
+}
+
+// ─── Admin — Console InsTRAM ─────────────────────────────────────────────────
+
+export type AdminRole = 'ADMIN_SUPER' | 'ADMIN_OPS' | 'ADMIN_MODERATOR';
+
+export interface AdminDashboard {
+  cooperativesActive: number;
+  cooperativesPending: number;
+  bookingsToday: number;
+  revenueToday: number;
+  platformFeeToday: number;
+  incidents: Array<{
+    type: string;
+    severity: string;
+    message: string;
+  }>;
+}
+
+export type AdminUserStatus = 'ACTIVE' | 'SUSPENDED' | 'DELETED';
+
+export interface AdminUserSummary {
+  id: string;
+  email: string | null;
+  phone: string | null;
+  status: AdminUserStatus;
+  roles: string[];
+  createdAt: string;
+}
+
+export type RatingStatus = 'PENDING_REVIEW' | 'PUBLISHED' | 'REJECTED';
+
+export interface Rating {
+  id: string;
+  bookingId: string;
+  cooperativeId: string;
+  score: number;
+  comment: string | null;
+  status: RatingStatus;
+  createdAt: string;
 }
 
 /** Politique d'annulation enrichie (coop back-office) */
