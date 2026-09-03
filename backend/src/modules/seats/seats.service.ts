@@ -3,7 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import { BookingChannel } from '@prisma/client';
 import type { Redis } from 'ioredis';
 import type { HoldSeatsInput } from './seats.schema';
-import { emitSeatHeld } from '../ws/ws.publisher';
+import { emitSeatHeld, emitSeatReleased } from '../ws/ws.publisher';
 
 // =====================================================================
 // SeatsService — module feuille (pas de dépendance vers d'autres modules métier)
@@ -380,16 +380,9 @@ export class SeatsService {
       });
     }
 
-    // Pub/Sub : diffusion SEAT_RELEASED
-    if (seatDefinitionIds.length > 0) {
-      await this.redis.publish(
-        `trip:${tripInstanceId}`,
-        JSON.stringify({
-          event: 'SEAT_RELEASED',
-          tripInstanceId,
-          seatDefinitionIds,
-        }),
-      );
+    // Pub/Sub : diffusion SEAT_RELEASED (une émission par siège, format ws.publisher)
+    for (const seatId of seatDefinitionIds) {
+      await emitSeatReleased({ tripInstanceId, seatDefinitionId: seatId });
     }
   }
 
