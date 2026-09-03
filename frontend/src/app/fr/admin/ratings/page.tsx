@@ -13,10 +13,13 @@
  * Note : le contrat utilise le schéma RatingStatus { PENDING_REVIEW, PUBLISHED, REJECTED }.
  * Le statut PENDING_REVIEW correspond à "En attente de modération".
  *
+ * Lien vers /fr/admin/ratings/{id} pour le détail d'un avis.
+ *
  * États de chargement et d'erreur explicites.
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { RatingModerationCard } from '@/components/admin/RatingModerationCard';
 import { Button } from '@/components/ui/Button';
 import type { Rating, RatingStatus } from '@/lib/types';
@@ -144,11 +147,18 @@ export default function AdminRatingsPage() {
                 </p>
               )}
               {ratings.map((rating) => (
-                <RatingModerationCard
-                  key={rating.id}
-                  rating={rating}
-                  onModerated={handleModerated}
-                />
+                <div key={rating.id} className="relative">
+                  <RatingModerationCard
+                    rating={rating}
+                    onModerated={handleModerated}
+                  />
+                  <Link
+                    href={`/fr/admin/ratings/${rating.id}`}
+                    className="absolute top-4 right-4 text-xs text-brand hover:underline"
+                  >
+                    Détail
+                  </Link>
+                </div>
               ))}
             </div>
           )}

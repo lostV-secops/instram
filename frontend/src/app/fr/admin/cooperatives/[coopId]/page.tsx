@@ -25,6 +25,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
+import { useAdmin } from '@/app/fr/admin/layout';
 import type { Cooperative, CooperativeStatus } from '@/lib/types';
 
 const statusLabels: Record<CooperativeStatus, string> = {
@@ -48,6 +49,10 @@ export default function AdminCoopDetailPage() {
   const params = useParams();
   const router = useRouter();
   const coopId = params.coopId as string;
+
+  // Rôle pour conditionner les liens d'action
+  const { role } = useAdmin();
+  const canAct = role === 'ADMIN_SUPER' || role === 'ADMIN_OPS';
 
   const [coop, setCoop] = useState<Cooperative | null>(null);
   const [loading, setLoading] = useState(true);
@@ -249,29 +254,39 @@ export default function AdminCoopDetailPage() {
 
       {/* Boutons d'action contextuels */}
       <div className="flex gap-3 flex-wrap">
-        {coop.status === 'PENDING_VALIDATION' && (
-          <Button
-            variant="action"
-            isLoading={actionLoading === 'validate'}
-            disabled={actionLoading !== null}
-            onClick={handleValidate}
-          >
-            Valider la coopérative
-          </Button>
+        {coop.status === 'PENDING_VALIDATION' && canAct && (
+          <>
+            {/* Lien vers la page de validation avec formulaire commission */}
+            <Link href={`/fr/admin/cooperatives/${coopId}/validate`}>
+              <Button variant="action">
+                Valider la coopérative
+              </Button>
+            </Link>
+            {/* Action rapide en ligne */}
+            <Button
+              variant="ghost"
+              size="sm"
+              isLoading={actionLoading === 'validate'}
+              disabled={actionLoading !== null}
+              onClick={handleValidate}
+            >
+              Validation rapide (sans commission)
+            </Button>
+          </>
         )}
 
-        {coop.status === 'VALIDATED' && (
-          <Button
-            variant="danger"
-            isLoading={actionLoading === 'suspend'}
-            disabled={actionLoading !== null}
-            onClick={() => setActionModal('suspend')}
-          >
-            Suspendre
-          </Button>
+        {coop.status === 'VALIDATED' && canAct && (
+          <>
+            {/* Lien vers la page de suspension avec formulaire motif */}
+            <Link href={`/fr/admin/cooperatives/${coopId}/suspend`}>
+              <Button variant="danger">
+                Suspendre
+              </Button>
+            </Link>
+          </>
         )}
 
-        {coop.status === 'SUSPENDED' && (
+        {coop.status === 'SUSPENDED' && canAct && (
           <Button
             variant="primary"
             isLoading={actionLoading === 'reactivate'}

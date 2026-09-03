@@ -6,11 +6,13 @@
  * Appelle GET /v1/admin/users?q=...&role=... (contrat-api.yaml, tag Admin).
  * Affiche : nom/contact, rôles, statut, date de création.
  * Action : Suspendre un compte → POST /v1/admin/users/{id}/suspend { reason }
+ * Lien vers /fr/admin/users/{id} pour le détail.
  *
  * États de chargement et d'erreur explicites.
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -231,22 +233,30 @@ export default function AdminUsersPage() {
                           })}
                         </td>
                         <td className="py-3 px-4 text-right">
-                          {user.status === 'ACTIVE' && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setSuspendModal({
-                                  userId: user.id,
-                                  reason: '',
-                                  loading: false,
-                                  error: null,
-                                })
-                              }
-                              className="text-xs text-red-600 hover:underline font-medium"
+                          <div className="flex items-center justify-end gap-3">
+                            <Link
+                              href={`/fr/admin/users/${user.id}`}
+                              className="text-xs text-brand hover:underline font-medium"
                             >
-                              Suspendre
-                            </button>
-                          )}
+                              Voir
+                            </Link>
+                            {user.status === 'ACTIVE' && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSuspendModal({
+                                    userId: user.id,
+                                    reason: '',
+                                    loading: false,
+                                    error: null,
+                                  })
+                                }
+                                className="text-xs text-red-600 hover:underline font-medium"
+                              >
+                                Suspendre
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}

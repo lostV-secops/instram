@@ -1,20 +1,18 @@
 /**
  * Annuaire public des coopératives — /fr/cooperatives et /mg/cooperatives
  *
- * Server Component — SEO important.
- * Fetch : GET /v1/directory/cooperatives?q=...&cursor=...
+ * Server Component avec ISR (revalidate 60 s) — données peu volatiles.
+ * Fetch : GET /v1/directory/cooperatives?q=...
  *   (source de vérité : docs/contrat-api.yaml — tag Directory)
  *
  * Fonctionnalités :
- *  - Grille de cartes coopératives (CoopCard)
- *  - Barre de recherche ?q= (CoopSearchBar)
- *  - Pagination par curseur
+ *  - Grille de CoopCard (nom, région, note, nb avis)
+ *  - Barre de recherche ?q= / ?region= (CoopSearchBar — formulaire GET natif)
  *  - Message si liste vide
- *  - États de chargement implicites via Server Component (streaming SSR)
- *  - État d'erreur explicite (réseau instable = cas fréquent)
+ *  - État d'erreur réseau explicite (réseau instable = cas fréquent)
  *
- * Charte graphique : bleu #205E98, bleu clair #4596D7, bleu foncé #162E49.
- * Vert #9CC43D UNIQUEMENT sur les boutons transactionnels (réserver/payer/confirmer).
+ * Charte : bleu #205E98, bleu clair #4596D7, bleu foncé #162E49.
+ * Vert #9CC43D UNIQUEMENT sur les boutons transactionnels (réserver/payer).
  */
 
 import type { Metadata } from 'next';
@@ -22,13 +20,17 @@ import Link from 'next/link';
 import { getTranslations, isValidLang } from '@/lib/i18n';
 import { apiGet, AppError } from '@/lib/api';
 import type { DirectoryEntry } from '@/lib/types';
-import { CoopCard } from '@/components/cooperatives/CoopCard';
+import { CoopCard } from '@/components/cooperative/CoopCard';
 import { CoopSearchBar } from '@/components/cooperatives/CoopSearchBar';
+
+// ISR 60 s — l'annuaire change peu souvent
+export const revalidate = 60;
 
 interface PageProps {
   params: { lang: string };
   searchParams: {
     q?: string;
+    region?: string;
     cursor?: string;
   };
 }
@@ -50,6 +52,7 @@ export default async function CooperativesPage({ params, searchParams }: PagePro
   const tc = t.cooperatives;
 
   const q = searchParams.q?.trim() ?? '';
+  const region = searchParams.region?.trim() ?? '';
   const cursor = searchParams.cursor ?? undefined;
 
   // ─── Fetch liste coopératives actives ──────────────────────────────────────
@@ -58,58 +61,58 @@ export default async function CooperativesPage({ params, searchParams }: PagePro
   let fetchError: string | null = null;
 
   try {
-    // GET /v1/directory/cooperatives (public, sans auth)
-    const params_url = new URLSearchParams();
-    if (q) params_url.set('q', q);
-    if (cursor) params_url.set('cursor', cursor);
+    // GET /v1/directory/cooperatives — public, sans auth, cache 60 s
+    const qs = new URLSearchParams();
+    if (q) qs.set('q', q);
+    if (region) qs.set('region', region);
+    if (cursor) qs.set('cursor', cursor);
 
-    const qs = params_url.toString();
-    const result = await apiGet<DirectoryEntry[]>(
-      `/directory/cooperatives${qs ? `?${qs}` : ''}`,
+    const qsStr = qs.toString();
+    const result = await apiGet<DirectoryEntry[] | { items: DirectoryEntry[]; nextCursor: string | null }>(
+      `/directory/cooperatives${qsStr ? `?${qsStr}` : ''}`,
       {
         acceptLang: lang,
-        // Cache public 5 minutes (Cache-Control du backend : public, max-age=300)
-        next: { revalidate: 300 },
+        next: { revalidate: 60 },
       },
     );
-    // La réponse est un tableau direct (schema: array of DirectoryEntry)
+
     if (Array.isArray(result)) {
       cooperatives = result;
-    }
-    // Si l'API retourne un objet paginé (items + nextCursor), adaptation :
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const anyResult = result as any;
-    if (anyResult?.items) {
-      cooperatives = anyResult.items;
-      nextCursor = anyResult.nextCursor ?? null;
+    } else if (result && 'items' in result) {
+      cooperatives = result.items;
+      nextCursor = result.nextCursor ?? null;
     }
   } catch (err) {
-    if (err instanceof AppError) {
-      fetchError = t.common.errorServer;
-    } else {
-      fetchError = tc.errorLoad;
-    }
+    fetchError = err instanceof AppError ? t.common.errorServer : tc.errorLoad;
   }
+
+  const hasFilter = q || region;
 
   return (
     <div className="space-y-6">
-      {/* En-tête */}
+
+      {/* ─── En-tête ─────────────────────────────────────────────────────── */}
       <div className="bg-brand-dark rounded-xl px-5 py-6 text-white">
         <h1 className="text-2xl font-bold mb-1">{tc.title}</h1>
         <p className="text-white/80 text-sm">{tc.subtitle}</p>
       </div>
 
-      {/* Barre de recherche */}
+      {/* ─── Barre de recherche / filtre ──────────────────────────────────── */}
       <div>
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+          {tc.filterByCity}
+        </p>
         <CoopSearchBar lang={lang} defaultValue={q} t={t} />
       </div>
 
-      {/* Indicateur de filtre actif */}
-      {q && !fetchError && (
+      {/* Filtre actif */}
+      {hasFilter && !fetchError && (
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <span>
-            Filtre actif :{' '}
-            <span className="font-medium text-brand">&ldquo;{q}&rdquo;</span>
+            {t.common.search} :{' '}
+            <span className="font-medium text-brand">
+              &ldquo;{q || region}&rdquo;
+            </span>
           </span>
           <Link
             href={`/${lang}/cooperatives`}
@@ -120,25 +123,25 @@ export default async function CooperativesPage({ params, searchParams }: PagePro
         </div>
       )}
 
-      {/* État d'erreur réseau */}
+      {/* ─── Erreur réseau ─────────────────────────────────────────────────── */}
       {fetchError && (
         <div
           role="alert"
-          className="bg-red-50 border border-red-200 rounded-xl px-4 py-4 text-center"
+          className="bg-red-50 border border-red-200 rounded-xl px-4 py-5 text-center"
         >
-          <p className="text-red-700 text-sm font-medium mb-2">{fetchError}</p>
+          <p className="text-red-700 text-sm font-medium mb-3">{fetchError}</p>
           <Link
             href={`/${lang}/cooperatives${q ? `?q=${encodeURIComponent(q)}` : ''}`}
-            className="inline-block text-sm text-brand hover:text-brand-dark border border-brand rounded-lg px-4 py-2 transition-colors"
+            className="inline-block text-sm text-brand border border-brand rounded-lg px-4 py-2 hover:bg-brand hover:text-white transition-colors"
           >
             {t.common.retry}
           </Link>
         </div>
       )}
 
-      {/* Liste vide */}
+      {/* ─── Liste vide ────────────────────────────────────────────────────── */}
       {!fetchError && cooperatives.length === 0 && (
-        <div className="text-center py-12 bg-gray-50 rounded-xl">
+        <div className="text-center py-14 bg-gray-50 rounded-xl">
           <svg
             className="mx-auto w-12 h-12 text-gray-300 mb-3"
             fill="none"
@@ -155,7 +158,7 @@ export default async function CooperativesPage({ params, searchParams }: PagePro
           </svg>
           <p className="text-gray-700 font-medium">{tc.noResults}</p>
           <p className="text-gray-500 text-sm mt-1">{tc.noResultsHint}</p>
-          {q && (
+          {hasFilter && (
             <Link
               href={`/${lang}/cooperatives`}
               className="inline-block mt-4 text-sm bg-brand text-white rounded-lg px-5 py-2.5 hover:bg-brand-dark transition-colors"
@@ -166,7 +169,7 @@ export default async function CooperativesPage({ params, searchParams }: PagePro
         </div>
       )}
 
-      {/* Grille de coopératives */}
+      {/* ─── Grille coopératives ───────────────────────────────────────────── */}
       {!fetchError && cooperatives.length > 0 && (
         <>
           <ul
@@ -181,7 +184,7 @@ export default async function CooperativesPage({ params, searchParams }: PagePro
             ))}
           </ul>
 
-          {/* Pagination — page suivante */}
+          {/* Pagination — page suivante par curseur */}
           {nextCursor && (
             <div className="text-center pt-2">
               <Link

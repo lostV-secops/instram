@@ -99,7 +99,12 @@ export async function apiGet<T>(
       ...headers,
       ...(options?.headers as Record<string, string> | undefined),
     },
-    cache: options?.cache ?? 'no-store',
+    // Si next.revalidate est fourni, ne pas forcer no-store (incompatible)
+    ...(!(options as { next?: { revalidate?: number } })?.next?.revalidate
+      ? { cache: options?.cache ?? 'no-store' }
+      : options?.cache
+      ? { cache: options.cache }
+      : {}),
   });
 
   if (!response.ok) {
