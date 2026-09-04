@@ -232,7 +232,7 @@ export default function AdminSettingsPage() {
               <h2 className="text-base font-semibold text-brand-dark">Plage de silence SMS</h2>
               <p className="text-xs text-gray-500 mt-0.5">
                 Les notifications non-transactionnelles ne sont pas envoyées pendant cette plage.
-                Valeur par défaut : <strong>22h00 — 07h00</strong> (VH-02).
+                Valeur par défaut : <strong>22h00 — 06h00</strong> (VH-02).
               </p>
             </div>
 
@@ -253,8 +253,8 @@ export default function AdminSettingsPage() {
                   pattern="\d{2}:\d{2}"
                   value={smsEnd}
                   onChange={(e) => setSmsEnd(e.target.value)}
-                  placeholder="07:00"
-                  hint="Ex : 07:00 pour 7h du matin."
+                  placeholder="06:00"
+                  hint="Ex : 06:00 pour 6h du matin."
                 />
               </div>
 

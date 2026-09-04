@@ -25,7 +25,7 @@ import type {
 // Règles critiques :
 //   RG-02 : Walk-in → PlatformFee = 0, Commission = 0 (vérifié explicitement)
 //   RG-03 : Pas de DELETE /bookings côté voyageur
-//   VH-05 : PlatformFee = max(1000, prix_total * 0.03)
+//   VH-05 : PlatformFee = seatSubtotal × 1.5% (InsTRAM) + seatSubtotal × 1% (Mobile Money) = 2.5%
 //   VH-09 : QR payload = JSON signé HMAC-SHA256
 // =====================================================================
 
@@ -95,12 +95,11 @@ function generateQrPayload(data: {
 
 /**
  * Calcule les frais de service plateforme (VH-05) pour une réservation en ligne.
- * Règle : max(1 000 MGA, seatSubtotal * 3%) par réservation.
+ * Règle : seatSubtotal × 2.5% (1.5% InsTRAM + 1% Mobile Money provider).
  * Walk-in : toujours 0 (RG-02) — vérification dans le code appelant.
  */
 function calculatePlatformFee(seatSubtotalMga: number): number {
-  const threePercent = Math.round(seatSubtotalMga * 0.03);
-  return Math.max(1000, threePercent);
+  return Math.round(seatSubtotalMga * 0.025);
 }
 
 /**
@@ -180,14 +179,7 @@ export class BookingsService {
       throw new ConflictError('Tous les holds ont expiré.');
     }
 
-    // 3. Étendre le TTL à NOW() + 5 min (phase paiement — VH-01)
-    const extendedExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
-    await this.db.seatHold.updateMany({
-      where: { id: { in: groupHolds.map((h) => h.id) } },
-      data: { expiresAt: extendedExpiresAt },
-    });
-
-    // 4. Calculer les montants
+    // 3. Calculer les montants (hold de 15 min — VH-01 : pas d'extension nécessaire)
     const trip = referenceHold.tripInstance;
     const fares = trip.fares;
 

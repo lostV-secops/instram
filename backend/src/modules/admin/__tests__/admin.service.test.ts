@@ -200,12 +200,12 @@ describe('AdminService.validateCooperative', () => {
       }),
     );
 
-    // Plan de commission par défaut créé (VH-04 : 8 %)
+    // Plan de commission par défaut créé (VH-04 : 4 %)
     expect(db._tx.cooperativePricingPlan.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           type: PricingPlanType.COMMISSION,
-          commissionRate: 8,
+          commissionRate: 4,
         }),
       }),
     );

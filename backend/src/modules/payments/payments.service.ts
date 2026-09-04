@@ -19,7 +19,7 @@ import type { WebhookPayload } from '../bookings/bookings.schema';
 //
 // Règles critiques :
 //   RG-02 : WALK_IN → PlatformFee = 0, Commission = 0 (double vérification channel)
-//   VH-05 : PlatformFee = max(1 000 MGA, seatSubtotal × 3%)
+//   VH-05 : PlatformFee = seatSubtotal × 2.5% (1.5% InsTRAM + 1% Mobile Money)
 //   VH-04 : Commission par défaut = 8% (plan COMMISSION)
 //   Plan SUBSCRIPTION → Commission = 0
 //   Signature webhook vérifiée AVANT tout traitement (§7.4)
@@ -70,12 +70,11 @@ export class ConflictError extends Error {
 
 /**
  * Calcule les frais de service plateforme (VH-05).
- * Règle : max(1 000 MGA fixe, seatSubtotal × 3%) par réservation.
+ * Règle : seatSubtotal × 2.5% (1.5% InsTRAM + 1% Mobile Money provider).
  * WALK_IN : toujours 0 — appliqué par le code appelant.
  */
 function calculatePlatformFee(seatSubtotalMga: number): number {
-  const threePercent = Math.round(seatSubtotalMga * 0.03);
-  return Math.max(1000, threePercent);
+  return Math.round(seatSubtotalMga * 0.025);
 }
 
 /**

@@ -23,7 +23,7 @@
 //   H-ADM-06 : L'endpoint mark-paid (/admin/subscriptions/:id/mark-paid)
 //              n'est pas dans le contrat. Il est implémenté comme extension.
 //   H-ADM-07 : La commission par défaut lors de la validation d'une
-//              coopérative sans plan existant est 8 % (VH-04).
+//              coopérative sans plan existant est 4 % (VH-04).
 //   H-ADM-08 : PATCH /admin/ratings/:id/approve|reject (tâche) sont des
 //              raccourcis de PATCH /admin/ratings/:id avec status dans body
 //              (contrat). Les deux formes sont implémentées.

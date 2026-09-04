@@ -120,8 +120,8 @@ export interface AdminProfile {
 // =====================================================================
 
 export class AdminService {
-  /** Commission par défaut pour les nouvelles coopératives validées (VH-04 = 8 %). */
-  private static readonly DEFAULT_COMMISSION_RATE = 8;
+  /** Commission par défaut pour les nouvelles coopératives validées (VH-04 = 4 %). */
+  private static readonly DEFAULT_COMMISSION_RATE = 4;
 
   constructor(private readonly db: PrismaClient) {}
 
@@ -280,7 +280,7 @@ export class AdminService {
 
   // ------------------------------------------------------------------
   // POST /admin/cooperatives/:id/validate — PENDING_VALIDATION → VALIDATED
-  // Crée un plan de commission par défaut (VH-04 : 8 %) si aucun plan actif.
+  // Crée un plan de commission par défaut (VH-04 : 4 %) si aucun plan actif.
   // AuditLog : COOP_VALIDATED
   // ------------------------------------------------------------------
 
@@ -1024,7 +1024,7 @@ export class AdminService {
         : null,
       // Horaires SMS silence nocturne (valeurs par défaut du CDC §4.1)
       smsQuietHoursStart: process.env.SMS_QUIET_START ?? '22:00',
-      smsQuietHoursEnd: process.env.SMS_QUIET_END ?? '07:00',
+      smsQuietHoursEnd: process.env.SMS_QUIET_END ?? '06:00',
     };
   }
 

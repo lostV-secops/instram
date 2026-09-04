@@ -25,7 +25,7 @@ import { Badge } from '@/components/ui/Badge';
 import { GlobalStatsCard } from '@/components/admin/GlobalStatsCard';
 import type { AdminDashboard, ExportJob, ExportJobStatus } from '@/lib/types';
 
-const FORMAT_OPTIONS = ['XLSX', 'CSV', 'PDF'] as const;
+const FORMAT_OPTIONS = ['PDF', 'CSV'] as const;
 type ExportFormat = (typeof FORMAT_OPTIONS)[number];
 
 const statusVariants: Record<ExportJobStatus, 'warning' | 'info' | 'success' | 'error' | 'neutral'> = {
@@ -65,7 +65,7 @@ export default function AdminReportsPage() {
   // Formulaire
   const [fromDate, setFromDate] = useState(monthStart);
   const [toDate, setToDate] = useState(today);
-  const [format, setFormat] = useState<ExportFormat>('XLSX');
+  const [format, setFormat] = useState<ExportFormat>('PDF');
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -281,7 +281,6 @@ export default function AdminReportsPage() {
             </p>
           )}
 
-          {/* Exporter XLSX — variant="action" car c'est une action de confirmation */}
           <Button
             variant="action"
             type="submit"
