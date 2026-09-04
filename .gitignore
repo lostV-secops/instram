@@ -4,6 +4,7 @@ node_modules/
 .next/
 dist/
 *.log
+*.tsbuildinfo
 
 # Backend — artefacts spécifiques au sous-répertoire
 backend/node_modules/
