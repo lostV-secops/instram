@@ -10,19 +10,10 @@
 import { useState, useId, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { z } from 'zod';
 import { useTranslations, useLang } from '@/components/TranslationsProvider';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import type { Lang } from '@/lib/types';
-
-const registerSchema = z.object({
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
-  password: z.string().min(10),
-  email: z.string().email().optional(),
-  phone: z.string().optional(),
-});
 
 export default function RegisterPage() {
   const t = useTranslations();
@@ -38,6 +29,7 @@ export default function RegisterPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   const fnId = useId();
   const lnId = useId();
@@ -49,8 +41,8 @@ export default function RegisterPage() {
   function validate(): boolean {
     const errs: Record<string, string> = {};
 
-    if (!firstName.trim()) errs.firstName = t.auth.errorEmailRequired;
-    if (!lastName.trim()) errs.lastName = t.auth.errorEmailRequired;
+    if (!firstName.trim()) errs.firstName = t.auth.errorNameRequired;
+    if (!lastName.trim()) errs.lastName = t.auth.errorNameRequired;
     if (!email.trim() && !phone.trim()) {
       errs.email = t.auth.errorEmailRequired;
     }
@@ -71,13 +63,14 @@ export default function RegisterPage() {
 
     setIsLoading(true);
     setGlobalError(null);
+    setSuccess(false);
 
     try {
       const body: Record<string, unknown> = {
         firstName,
         lastName,
         password,
-        preferredLang,
+        preferredLang: preferredLang.toUpperCase(),
       };
       if (email) body.email = email;
       if (phone) body.phone = phone;
@@ -94,13 +87,17 @@ export default function RegisterPage() {
       }
 
       if (!response.ok) {
-        setGlobalError(t.common.errorServer);
+        const errBody = await response.json().catch(() => null);
+        setGlobalError(errBody?.message ?? t.common.errorServer);
         return;
       }
 
-      // Rediriger vers la page d'accueil après inscription
-      router.push(`/${lang}`);
-      router.refresh();
+      // Succès : afficher le message de confirmation 2 s avant de rediriger
+      setSuccess(true);
+      setTimeout(() => {
+        router.push(`/${lang}`);
+        router.refresh();
+      }, 2000);
     } catch {
       setGlobalError(t.common.errorNetwork);
     } finally {
@@ -114,24 +111,37 @@ export default function RegisterPage() {
         {t.auth.registerTitle}
       </h1>
 
+      {/* ── Bannière succès ── */}
+      {success && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="mb-4 flex items-center gap-3 rounded-xl border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800"
+        >
+          <span className="text-xl">✅</span>
+          <span className="font-medium">{t.auth.successRegister}</span>
+        </div>
+      )}
+
       <form
         onSubmit={handleSubmit}
         noValidate
         className="bg-white rounded-xl border border-gray-200 p-5 space-y-4"
         aria-label={t.auth.registerTitle}
       >
-        {/* Erreur globale */}
+        {/* ── Erreur globale ── */}
         {globalError && (
           <div
             role="alert"
             aria-live="assertive"
-            className="bg-red-50 border border-red-300 text-red-700 rounded-lg px-4 py-3 text-sm"
+            className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700"
           >
-            {globalError}
+            <span className="mt-0.5">⚠️</span>
+            <span>{globalError}</span>
           </div>
         )}
 
-        {/* Nom et Prénom */}
+        {/* ── Prénom / Nom ── */}
         <div className="grid grid-cols-2 gap-3">
           <Input
             id={fnId}
@@ -153,6 +163,7 @@ export default function RegisterPage() {
           />
         </div>
 
+        {/* ── Email ── */}
         <Input
           id={emailId}
           label={t.auth.email}
@@ -169,6 +180,7 @@ export default function RegisterPage() {
           }
         />
 
+        {/* ── Téléphone ── */}
         <Input
           id={phoneId}
           label={t.auth.phone}
@@ -180,19 +192,33 @@ export default function RegisterPage() {
           placeholder="+261 34 XX XX XXX"
         />
 
-        <Input
-          id={pwdId}
-          label={t.auth.newPassword}
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          error={errors.password}
-          required
-          autoComplete="new-password"
-          minLength={10}
-        />
+        {/* ── Mot de passe ── */}
+        <div>
+          <Input
+            id={pwdId}
+            label={t.auth.newPassword}
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            error={errors.password}
+            required
+            autoComplete="new-password"
+            minLength={10}
+          />
+          {/* Indicateur de longueur */}
+          {password.length > 0 && password.length < 10 && !errors.password && (
+            <p className="mt-1 text-xs text-amber-600">
+              {password.length}/10 caractères minimum
+            </p>
+          )}
+          {password.length >= 10 && (
+            <p className="mt-1 text-xs text-green-600 flex items-center gap-1">
+              <span>✓</span> Mot de passe valide
+            </p>
+          )}
+        </div>
 
-        {/* Préférence de langue */}
+        {/* ── Langue préférée ── */}
         <div className="flex flex-col gap-1">
           <label htmlFor={langId} className="text-sm font-medium text-gray-800">
             {t.auth.preferredLang}
@@ -208,15 +234,20 @@ export default function RegisterPage() {
           </select>
         </div>
 
-        {/* Bouton inscription — bleu brand (pas vert) */}
+        {/* ── Bouton inscription ── */}
         <Button
           type="submit"
           variant="primary"
           size="lg"
           fullWidth
           isLoading={isLoading}
+          disabled={success}
         >
-          {isLoading ? t.auth.registering : t.auth.registerButton}
+          {success
+            ? '✅ ' + (lang === 'fr' ? 'Compte créé !' : 'Kaonty voaforona!')
+            : isLoading
+              ? t.auth.registering
+              : t.auth.registerButton}
         </Button>
 
         <div className="text-center text-sm text-gray-600">

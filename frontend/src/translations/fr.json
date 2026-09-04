@@ -181,7 +181,9 @@
     "errorEmailRequired": "L'email ou le téléphone est requis.",
     "errorPasswordTooShort": "Le mot de passe doit contenir au moins 10 caractères.",
     "errorEmailInvalid": "L'adresse e-mail est invalide.",
-    "errorAlreadyExists": "Un compte existe déjà avec cet email ou ce numéro."
+    "errorAlreadyExists": "Un compte existe déjà avec cet email ou ce numéro.",
+    "errorNameRequired": "Ce champ est requis.",
+    "successRegister": "Compte créé avec succès ! Bienvenue sur InsTRAM."
   },
   "footer": {
     "copyright": "© 2024 InsTRAM — CODEL Technologies Co.",

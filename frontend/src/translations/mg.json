@@ -181,7 +181,9 @@
     "errorEmailRequired": "Ilaina ny mailaka na finday.",
     "errorPasswordTooShort": "Ny teny miafina dia tsy tokony hisy litera 10 farafahakeliny.",
     "errorEmailInvalid": "Tsy mety ny adiresy mailaka.",
-    "errorAlreadyExists": "Efa misy kaonty amin'ity mailaka na laharana ity."
+    "errorAlreadyExists": "Efa misy kaonty amin'ity mailaka na laharana ity.",
+    "errorNameRequired": "Ilaina ity saha ity.",
+    "successRegister": "Kaonty voaforona ! Tonga soa ao InsTRAM."
   },
   "footer": {
     "copyright": "© 2024 InsTRAM — CODEL Technologies Co.",
