@@ -476,10 +476,10 @@ describe('runAutoClose (worker trip.autoClose)', () => {
     expect(result.tripIds).toHaveLength(0);
   });
 
-  it('marque COMPLETED les trajets dont departureAt < NOW() - 72h (VH-03)', async () => {
+  it('marque COMPLETED les trajets DEPARTED dont actualDepartedAt < NOW() - 72h (VH-03)', async () => {
     const expiredTrips = [
-      { id: 'trip-old-1', status: TripStatus.OPEN_FOR_BOOKING },
-      { id: 'trip-old-2', status: TripStatus.DRAFT },
+      { id: 'trip-old-1', status: TripStatus.DEPARTED },
+      { id: 'trip-old-2', status: TripStatus.DEPARTED },
     ];
 
     const mockUpdateMany = jest.fn().mockResolvedValue({ count: 2 });
@@ -526,7 +526,7 @@ describe('runAutoClose (worker trip.autoClose)', () => {
     );
   });
 
-  it('n\'affecte pas les trajets CANCELLED ni COMPLETED (filtre WHERE)', async () => {
+  it('n\'affecte que les trajets DEPARTED (filtre WHERE — VH-03)', async () => {
     const mockFindMany = jest.fn().mockResolvedValue([]);
 
     jest.doMock('../../../infra/db/prisma', () => ({
@@ -540,13 +540,12 @@ describe('runAutoClose (worker trip.autoClose)', () => {
     const { runAutoClose } = await import('../../../infra/queue/trips.queue');
     await runAutoClose();
 
-    // Vérifier que le filtre notIn exclut bien CANCELLED et COMPLETED
+    // Seuls les trajets en status DEPARTED avec actualDepartedAt dépassé sont ciblés
     expect(mockFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          status: {
-            notIn: expect.arrayContaining([TripStatus.CANCELLED, TripStatus.COMPLETED]),
-          },
+          status: TripStatus.DEPARTED,
+          actualDepartedAt: expect.objectContaining({ lt: expect.any(Date) }),
         }),
       }),
     );

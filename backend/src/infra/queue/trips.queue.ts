@@ -6,10 +6,12 @@ import prisma from '../db/prisma';
 // =====================================================================
 // Worker trip.autoClose — Architecture §2.7, §6.6
 //
-// Règle VH-03 : clôture automatique 72 heures après departureAt.
+// Règle VH-03 : clôture automatique 72 heures après le DÉPART RÉEL.
 // Fréquence : toutes les 10 minutes (cron */10 * * * *).
 // Marque COMPLETED les TripInstance dont :
-//   departureAt < NOW() - 72h  ET  status NOT IN (CANCELLED, COMPLETED)
+//   status = DEPARTED  ET  actualDepartedAt < NOW() - 72h
+// Un trajet qui n'a jamais quitté (DRAFT, OPEN…) n'est jamais clôturé
+// automatiquement, même si son heure planifiée est dépassée.
 // Chaque transition est loggée dans AuditLog (RG-13).
 //
 // Ambiguïté documentée : le schéma AuditAction n'a pas d'action dédiée
@@ -84,13 +86,13 @@ export interface AutoCloseResult {
 export async function runAutoClose(): Promise<AutoCloseResult> {
   const cutoff = new Date(Date.now() - AUTO_CLOSE_HOURS * 60 * 60 * 1000);
 
-  // Trouver les trajets à clôturer
+  // Trouver les trajets à clôturer : DEPARTED depuis plus de 72h (VH-03)
+  // On utilise actualDepartedAt, pas departureAt, pour ne pas fermer
+  // un trajet retardé qui n'est jamais parti.
   const tripsToClose = await prisma.tripInstance.findMany({
     where: {
-      departureAt: { lt: cutoff },
-      status: {
-        notIn: [TripStatus.CANCELLED, TripStatus.COMPLETED],
-      },
+      status: TripStatus.DEPARTED,
+      actualDepartedAt: { lt: cutoff },
     },
     select: { id: true, status: true },
   });
