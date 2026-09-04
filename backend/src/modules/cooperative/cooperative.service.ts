@@ -87,6 +87,18 @@ export class CooperativeService {
       );
     }
 
+    // H-3 : vérifier que la coopérative est active (VALIDATED) — bloquer si suspendue
+    const cooperative = await this.db.cooperative.findUnique({
+      where: { id: membership.cooperativeId },
+      select: { status: true },
+    });
+
+    if (cooperative && cooperative.status !== 'VALIDATED') {
+      const err = new Error('Cooperative is not active');
+      (err as NodeJS.ErrnoException).code = 'COOPERATIVE_SUSPENDED';
+      throw err;
+    }
+
     return {
       membershipId: membership.id,
       cooperativeId: membership.cooperativeId,

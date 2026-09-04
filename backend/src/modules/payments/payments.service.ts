@@ -122,8 +122,11 @@ type BookingForConfirm = {
   tripInstanceId: string;
   cooperativeId: string;
   channel: string;
+  // H-4 : totalAmountMga pour validation finale du montant webhook
+  totalAmountMga: number;
   seatHolds: { seatDefinitionId: string }[];
-  payments: { id: string; amountMga: number }[];
+  // H-4 : status pour filtrer sur PENDING dans handleWebhook
+  payments: { id: string; amountMga: number; status: string }[];
 };
 
 // =====================================================================
@@ -140,12 +143,15 @@ export class PaymentsService {
   ) {}
 
   private _getGateway(provider: string): MobileMoneyGateway {
-    const gw = this.gateways.get(provider.toUpperCase());
-    if (gw) return gw;
-    // Fallback STUB si le provider n'est pas configuré (dev/test)
-    const first = this.gateways.values().next().value;
-    if (first) return first;
-    throw new Error(`Provider Mobile Money inconnu : ${provider}`);
+    // M-2 : tout provider non enregistré est rejeté explicitement —
+    // pas de fallback silencieux qui masquerait un mauvais paramètre de webhook.
+    const gateway = this.gateways.get(provider.toUpperCase());
+    if (!gateway) {
+      throw Object.assign(new Error(`Unknown payment provider: ${provider}`), {
+        code: 'UNKNOWN_PROVIDER',
+      });
+    }
+    return gateway;
   }
 
   // ------------------------------------------------------------------
@@ -361,21 +367,36 @@ export class PaymentsService {
       return { status: 'ignored' as const };
     }
 
+    // C-2 Fix 1 : statuts intermédiaires — no-op, pas d'échec
+    if (status === 'PENDING' || status === 'INITIATED') {
+      return { status: 'ignored' as const };
+    }
+
     if (status === 'SUCCESS') {
-      // Vérification du montant reçu vs montant dû (CRITIQUE — paiement partiel non accepté)
-      if (payload.amountMga !== undefined) {
-        const expectedAmount = booking.payments[0]?.amountMga;
-        if (expectedAmount !== undefined && payload.amountMga !== expectedAmount) {
-          await this.db.auditLog.create({
-            data: {
-              action: AuditAction.PAYMENT_FAILED,
-              entityType: 'Payment',
-              entityId: booking.id,
-              before: { expected: expectedAmount, received: payload.amountMga, provider },
-            },
-          });
-          return this._failPayment(booking, providerTransactionId);
-        }
+      // H-4 : filtrer sur PENDING et comparer à booking.totalAmountMga
+      const pendingPayment = booking.payments.find((p) => p.status === 'PENDING');
+      if (pendingPayment && payload.amountMga !== pendingPayment.amountMga) {
+        await this.db.auditLog.create({
+          data: {
+            action: AuditAction.PAYMENT_FAILED,
+            entityType: 'Payment',
+            entityId: booking.id,
+            before: { expected: pendingPayment.amountMga, received: payload.amountMga, provider },
+          },
+        });
+        return this._failPayment(booking, providerTransactionId);
+      }
+      // Validation finale vs totalAmountMga (double vérification — paiement partiel refusé)
+      if (payload.amountMga !== booking.totalAmountMga) {
+        await this.db.auditLog.create({
+          data: {
+            action: AuditAction.PAYMENT_FAILED,
+            entityType: 'Payment',
+            entityId: booking.id,
+            before: { expected: booking.totalAmountMga, received: payload.amountMga, provider, reason: 'totalAmountMga_mismatch' },
+          },
+        });
+        return this._failPayment(booking, providerTransactionId);
       }
       return this._confirmPayment(booking, providerTransactionId, provider);
     } else {
@@ -540,7 +561,10 @@ export class PaymentsService {
         include: { platformFee: true },
       });
 
-      if (!pendingPayment) return;
+      if (!pendingPayment) {
+        // C-2 Fix 2 : erreur explicite au lieu de return silencieux
+        throw Object.assign(new Error('No PENDING payment found for booking'), { code: 'NO_PENDING_PAYMENT' });
+      }
 
       // Payment.status = CONFIRMED, confirmedAt
       await tx.payment.update({
@@ -662,12 +686,12 @@ export class PaymentsService {
     providerTransactionId: string,
   ): Promise<{ status: 'failed' }> {
     await this.db.$transaction(async (tx) => {
+      // C-2 Fix 3 : ne pas écrire providerTransactionId sur un paiement FAILED
       await tx.payment.updateMany({
         where: { bookingId: booking.id, status: PaymentStatus.PENDING },
         data: {
           status: PaymentStatus.FAILED,
           failedAt: new Date(),
-          providerTransactionId,
         },
       });
 

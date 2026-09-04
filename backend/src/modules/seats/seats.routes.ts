@@ -94,6 +94,10 @@ export default async function seatsRoutes(fastify: FastifyInstance): Promise<voi
         if ((err as NodeJS.ErrnoException).code === 'NOT_FOUND') {
           return reply.status(404).send({ code: 'NOT_FOUND', message: (err as Error).message });
         }
+        // C-3 : statut trajet non bookable ou siège hors véhicule → 403
+        if ((err as NodeJS.ErrnoException).code === 'FORBIDDEN') {
+          return reply.status(403).send({ code: 'FORBIDDEN', message: (err as Error).message });
+        }
         req.log.error(err, 'holdSeats error');
         return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
       }

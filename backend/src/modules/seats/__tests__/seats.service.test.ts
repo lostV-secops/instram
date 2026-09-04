@@ -186,6 +186,7 @@ describe('SeatsService.holdSeats — succès', () => {
     // Trip + seatDefs valides
     (mockPrisma.tripInstance.findUnique as jest.Mock).mockResolvedValue({
       id: TRIP_ID,
+      status: 'OPEN_FOR_BOOKING',
       fares: [{ seatDefinitionId: null, category: 'STANDARD', priceMga: 25000 }],
     });
     (mockPrisma.seatDefinition.findMany as jest.Mock).mockResolvedValue([fakeSeatDef1]);
@@ -244,6 +245,7 @@ describe('SeatsService.holdSeats — conflits', () => {
   beforeEach(() => {
     (mockPrisma.tripInstance.findUnique as jest.Mock).mockResolvedValue({
       id: TRIP_ID,
+      status: 'OPEN_FOR_BOOKING',
       fares: [],
     });
     (mockPrisma.seatDefinition.findMany as jest.Mock).mockResolvedValue([fakeSeatDef1]);

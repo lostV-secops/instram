@@ -8,6 +8,7 @@ import {
   LogoutSchema,
 } from './auth.schema';
 import prisma from '../../infra/db/prisma';
+import { requestAccountDeletion } from './auth.delete.service';
 
 // =====================================================================
 // Plugin Fastify — routes Auth
@@ -147,6 +148,26 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
     }
   });
+
+  // ------------------------------------------------------------------
+  // DELETE /me — Suppression / anonymisation du compte voyageur (H-5)
+  // Nécessite un JWT d'accès valide. Opération irréversible côté applicatif.
+  // Les données financières (Booking, Payment, etc.) sont conservées (audit légal).
+  // ------------------------------------------------------------------
+  fastify.delete(
+    '/me',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const userId = (req.user as { sub: string }).sub;
+      try {
+        await requestAccountDeletion(userId, prisma);
+        return reply.status(204).send();
+      } catch (err) {
+        req.log.error(err, 'delete account error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
 
   // ------------------------------------------------------------------
   // POST /logout  (nécessite un JWT d'accès valide)

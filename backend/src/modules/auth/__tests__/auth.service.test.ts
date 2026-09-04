@@ -249,15 +249,8 @@ describe('AuthService', () => {
 
       prismaMock.authSession.findUnique.mockResolvedValue(fakeSession);
 
-      // $transaction pour la rotation
-      prismaMock.$transaction.mockImplementation(async (ops: Promise<unknown>[]) => {
-        return Promise.all(ops);
-      });
-
-      prismaMock.authSession.update.mockResolvedValue({
-        ...fakeSession,
-        revokedAt: new Date(),
-      });
+      // M-9 : rotation atomique via updateMany (pas de $transaction)
+      prismaMock.authSession.updateMany.mockResolvedValue({ count: 1 });
       prismaMock.authSession.create.mockResolvedValue({
         id: 'session-2',
         userId: fakeUser.id,
@@ -273,10 +266,10 @@ describe('AuthService', () => {
 
       expect(result.accessToken).toBe('stub-access-token');
       expect(result.refreshToken).toBeTruthy();
-      // L'ancien hash a bien été révoqué
-      expect(prismaMock.authSession.update).toHaveBeenCalledWith(
+      // L'ancien token a bien été révoqué atomiquement via updateMany
+      expect(prismaMock.authSession.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'session-1' },
+          where: { id: 'session-1', revokedAt: null },
           data: { revokedAt: expect.any(Date) },
         }),
       );
@@ -304,15 +297,19 @@ describe('AuthService', () => {
       };
 
       prismaMock.authSession.findUnique.mockResolvedValue(fakeSession);
-      prismaMock.authSession.updateMany.mockResolvedValue({ count: 2 });
+      // Premier updateMany (révocation atomique) → count:0 déclenche le chemin replay
+      // Deuxième updateMany (révocation toutes sessions) → count:2
+      prismaMock.authSession.updateMany
+        .mockResolvedValueOnce({ count: 0 })
+        .mockResolvedValueOnce({ count: 2 });
 
       await expect(service.refresh('replayed-token')).rejects.toMatchObject({
-        code: 'REFRESH_TOKEN_EXPIRED',
+        code: 'INVALID_REFRESH_TOKEN',
       });
 
-      // Toutes les sessions actives ont été révoquées
+      // Toutes les sessions de l'utilisateur ont été révoquées
       expect(prismaMock.authSession.updateMany).toHaveBeenCalledWith({
-        where: { userId: fakeUser.id, revokedAt: null },
+        where: { userId: fakeUser.id },
         data: { revokedAt: expect.any(Date) },
       });
     });

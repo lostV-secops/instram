@@ -202,6 +202,10 @@ export async function registerWsServer(
   // ------------------------------------------------------------------
   // Route WS
   // ------------------------------------------------------------------
+  // H-2 : Le token passé en query string (?token=<jwt>) est un access JWT.
+  // Il ne doit JAMAIS être loggé en clair. Le sérialiseur Pino configuré dans
+  // app.ts tronque `req.url` à la partie avant `?` pour tous les logs Fastify.
+  // Dans ce handler, aucun `fastify.log` ni `request.log` ne logue le token brut.
   fastify.get<{ Querystring: { token?: string } }>(
     path,
     {
@@ -211,6 +215,7 @@ export async function registerWsServer(
     },
     (socket: WsSocket, request: FastifyRequest<{ Querystring: { token?: string } }>) => {
       // ---------------- Authentification ----------------
+      // token extrait depuis query string — ne pas logger ce token
       const token = request.query?.token;
 
       if (!token || typeof token !== 'string') {

@@ -191,11 +191,16 @@ export class SeatsService {
     const [trip, seatDefs] = await Promise.all([
       this.db.tripInstance.findUnique({
         where: { id: tripInstanceId },
-        include: { fares: true },
+        include: {
+          fares: true,
+          // C-3 : inclure seatMapId du véhicule pour valider que les sièges appartiennent au bon plan
+          vehicle: { select: { seatMapId: true } },
+        },
       }),
       this.db.seatDefinition.findMany({
         where: { id: { in: seatDefinitionIds } },
-        select: { id: true, code: true, category: true },
+        // C-3 : inclure seatMapId pour vérifier l'appartenance au véhicule du trajet
+        select: { id: true, code: true, category: true, seatMapId: true },
       }),
     ]);
 
@@ -205,6 +210,25 @@ export class SeatsService {
 
     if (seatDefs.length !== seatDefinitionIds.length) {
       throw new NotFoundError('Un ou plusieurs sièges introuvables');
+    }
+
+    // C-3 : rejeter les statuts non disponibles à la réservation
+    const BOOKABLE_STATUSES: string[] = ['OPEN_FOR_BOOKING', 'BOARDING'];
+    if (!BOOKABLE_STATUSES.includes(trip.status)) {
+      throw new ForbiddenError(
+        `Réservation impossible : le trajet est en statut "${trip.status}" (attendu: OPEN_FOR_BOOKING ou BOARDING)`,
+      );
+    }
+
+    // C-3 : vérifier que tous les sièges demandés appartiennent au seatMap du véhicule du trajet
+    const vehicleSeatMapId = trip.vehicle?.seatMapId;
+    if (vehicleSeatMapId) {
+      const wrongSeats = seatDefs.filter((s) => s.seatMapId !== vehicleSeatMapId);
+      if (wrongSeats.length > 0) {
+        throw new ForbiddenError(
+          `Siège(s) n'appartenant pas au véhicule du trajet : ${wrongSeats.map((s) => s.code).join(', ')}`,
+        );
+      }
     }
 
     const seatCodeMap = new Map(seatDefs.map((s) => [s.id, s.code]));

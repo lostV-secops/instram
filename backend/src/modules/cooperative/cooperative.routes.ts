@@ -50,7 +50,7 @@ export default async function cooperativeRoutes(
       return reply.send(coop);
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
-      if (code === 'FORBIDDEN') return reply.status(403).send({ code, message: (err as Error).message });
+      if (code === 'FORBIDDEN' || code === 'COOPERATIVE_SUSPENDED') return reply.status(403).send({ code, message: (err as Error).message });
       if (code === 'NOT_FOUND') return reply.status(404).send({ code, message: (err as Error).message });
       req.log.error(err, 'getCoopMe error');
       return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
@@ -79,7 +79,7 @@ export default async function cooperativeRoutes(
         return reply.send(members);
       } catch (err) {
         const code = (err as NodeJS.ErrnoException).code;
-        if (code === 'FORBIDDEN') return reply.status(403).send({ code, message: (err as Error).message });
+        if (code === 'FORBIDDEN' || code === 'COOPERATIVE_SUSPENDED') return reply.status(403).send({ code, message: (err as Error).message });
         req.log.error(err, 'getMembers error');
         return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
       }
@@ -114,7 +114,7 @@ export default async function cooperativeRoutes(
       return reply.status(201).send(invitation);
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
-      if (code === 'FORBIDDEN') return reply.status(403).send({ code, message: (err as Error).message });
+      if (code === 'FORBIDDEN' || code === 'COOPERATIVE_SUSPENDED') return reply.status(403).send({ code, message: (err as Error).message });
       if (code === 'CONFLICT') return reply.status(409).send({ code, message: (err as Error).message });
       req.log.error(err, 'inviteMember error');
       return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
@@ -156,7 +156,7 @@ export default async function cooperativeRoutes(
         return reply.send(member);
       } catch (err) {
         const code = (err as NodeJS.ErrnoException).code;
-        if (code === 'FORBIDDEN') return reply.status(403).send({ code, message: (err as Error).message });
+        if (code === 'FORBIDDEN' || code === 'COOPERATIVE_SUSPENDED') return reply.status(403).send({ code, message: (err as Error).message });
         if (code === 'NOT_FOUND') return reply.status(404).send({ code, message: (err as Error).message });
         req.log.error(err, 'updateMember error');
         return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
@@ -177,7 +177,7 @@ export default async function cooperativeRoutes(
         return reply.send(vehicles);
       } catch (err) {
         const code = (err as NodeJS.ErrnoException).code;
-        if (code === 'FORBIDDEN') return reply.status(403).send({ code, message: (err as Error).message });
+        if (code === 'FORBIDDEN' || code === 'COOPERATIVE_SUSPENDED') return reply.status(403).send({ code, message: (err as Error).message });
         req.log.error(err, 'getVehicles error');
         return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
       }
@@ -208,7 +208,7 @@ export default async function cooperativeRoutes(
         return reply.status(201).send(vehicle);
       } catch (err) {
         const code = (err as NodeJS.ErrnoException).code;
-        if (code === 'FORBIDDEN') return reply.status(403).send({ code, message: (err as Error).message });
+        if (code === 'FORBIDDEN' || code === 'COOPERATIVE_SUSPENDED') return reply.status(403).send({ code, message: (err as Error).message });
         if (code === 'CONFLICT') return reply.status(409).send({ code, message: (err as Error).message });
         req.log.error(err, 'createVehicle error');
         return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
@@ -232,7 +232,7 @@ export default async function cooperativeRoutes(
         return reply.send(vehicle);
       } catch (err) {
         const code = (err as NodeJS.ErrnoException).code;
-        if (code === 'FORBIDDEN') return reply.status(403).send({ code, message: (err as Error).message });
+        if (code === 'FORBIDDEN' || code === 'COOPERATIVE_SUSPENDED') return reply.status(403).send({ code, message: (err as Error).message });
         if (code === 'NOT_FOUND') return reply.status(404).send({ code, message: (err as Error).message });
         req.log.error(err, 'getVehicle error');
         return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });

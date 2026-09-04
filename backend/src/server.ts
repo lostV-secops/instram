@@ -2,6 +2,11 @@ import { buildApp } from './app';
 import prisma from './infra/db/prisma';
 import redis from './infra/cache/redis';
 import { scheduleTripAutoClose, createTripAutoCloseWorker } from './infra/queue/trips.queue';
+import { scheduleReconcileJob, startPaymentReconcileWorker } from './infra/queue/payments.queue';
+import { startSmsWorker } from './infra/queue/sms.queue';
+import { startExportWorker } from './infra/queue/exports.queue';
+import { NotificationsService } from './modules/notifications/notifications.service';
+import { createSmsProvider } from './infra/sms/provider';
 
 // =====================================================================
 // Point d'entrée du serveur InsTRAM
@@ -28,6 +33,14 @@ async function start(): Promise<void> {
     }
   }
 
+  // H-1 : TRUSTED_PROXY_IPS obligatoire en production pour que req.ip soit fiable
+  if (process.env.NODE_ENV === 'production' && !process.env.TRUSTED_PROXY_IPS) {
+    process.stderr.write(
+      '[BOOT ERROR] TRUSTED_PROXY_IPS requis en production (ex: 10.0.0.0/8). Arrêt.\n',
+    );
+    process.exit(1);
+  }
+
   const app = await buildApp();
 
   try {
@@ -37,6 +50,13 @@ async function start(): Promise<void> {
     // Planification de la clôture automatique des trajets (VH-03)
     await scheduleTripAutoClose();
     createTripAutoCloseWorker();
+
+    // Workers BullMQ : réconciliation paiements, exports, SMS (architecture §2.7)
+    await scheduleReconcileJob();
+    startPaymentReconcileWorker({ db: prisma, redis });
+    startExportWorker(prisma);
+    const notificationsService = new NotificationsService(prisma, redis, createSmsProvider());
+    startSmsWorker(notificationsService);
   } catch (err) {
     app.log.error(err, 'Impossible de démarrer le serveur');
     process.exit(1);

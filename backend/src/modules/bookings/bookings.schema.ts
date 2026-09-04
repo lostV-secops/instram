@@ -103,8 +103,10 @@ export type BookingListQueryInput = z.infer<typeof BookingListQuerySchema>;
 export const WebhookPayloadSchema = z.object({
   providerTransactionId: z.string(),
   bookingReference: z.string().optional(), // Certains opérateurs le renvoient
-  status: z.enum(['SUCCESS', 'FAILED', 'EXPIRED', 'PENDING']),
-  amountMga: z.number().int().optional(),
+  // C-2 : INITIATED ajouté pour no-op cohérent avec les opérateurs qui envoient ce statut
+  status: z.enum(['SUCCESS', 'FAILED', 'EXPIRED', 'PENDING', 'INITIATED']),
+  // H-4 : amountMga obligatoire et positif — requis pour validation du montant webhook
+  amountMga: z.number().int().positive(),
 });
 
 export type WebhookPayload = z.infer<typeof WebhookPayloadSchema>;

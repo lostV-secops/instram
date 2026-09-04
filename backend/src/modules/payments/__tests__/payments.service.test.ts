@@ -101,8 +101,9 @@ function makeBookingWithHolds() {
     tripInstanceId: TRIP_ID,
     cooperativeId: COOP_ID,
     channel: 'ONLINE',
+    totalAmountMga: 26000,
     seatHolds: [{ seatDefinitionId: SEAT_ID_1 }],
-    payments: [{ id: PAYMENT_ID, amountMga: 26000 }],
+    payments: [{ id: PAYMENT_ID, amountMga: 26000, status: 'PENDING' }],
   };
 }
 
@@ -518,7 +519,7 @@ describe('PaymentsService.handleWebhook — signature invalide', () => {
         provider: 'mvola',
         rawBody,
         signature: 'invalidsig',
-        payload: { providerTransactionId: 'tx-bad', status: 'SUCCESS' },
+        payload: { providerTransactionId: 'tx-bad', status: 'SUCCESS', amountMga: 26000 },
       }),
     ).rejects.toBeInstanceOf(WebhookSignatureError);
   });
@@ -553,7 +554,7 @@ describe('PaymentsService.handleWebhook — succès paiement', () => {
       provider: 'mvola',
       rawBody,
       signature: 'valid-sig',
-      payload: { providerTransactionId: 'tx-ok', status: 'SUCCESS', bookingReference: 'IT-ABCDE' },
+      payload: { providerTransactionId: 'tx-ok', status: 'SUCCESS', bookingReference: 'IT-ABCDE', amountMga: 26000 },
     });
 
     expect(result.status).toBe('processed');
@@ -592,7 +593,7 @@ describe('PaymentsService.handleWebhook — idempotence', () => {
       provider: 'mvola',
       rawBody,
       signature: 'valid-sig',
-      payload: { providerTransactionId: 'tx-already-done', status: 'SUCCESS' },
+      payload: { providerTransactionId: 'tx-already-done', status: 'SUCCESS', amountMga: 26000 },
     });
 
     expect(result.status).toBe('duplicate');
@@ -648,7 +649,7 @@ describe('PaymentsService.handleWebhook — idempotence', () => {
       provider: 'mvola',
       rawBody,
       signature: 'valid-sig',
-      payload: { providerTransactionId: 'tx-dup', status: 'SUCCESS', bookingReference: 'IT-ABCDE' },
+      payload: { providerTransactionId: 'tx-dup', status: 'SUCCESS', bookingReference: 'IT-ABCDE', amountMga: 26000 },
     });
 
     // Deuxième webhook — même transaction
@@ -656,7 +657,7 @@ describe('PaymentsService.handleWebhook — idempotence', () => {
       provider: 'mvola',
       rawBody,
       signature: 'valid-sig',
-      payload: { providerTransactionId: 'tx-dup', status: 'SUCCESS', bookingReference: 'IT-ABCDE' },
+      payload: { providerTransactionId: 'tx-dup', status: 'SUCCESS', bookingReference: 'IT-ABCDE', amountMga: 26000 },
     });
 
     expect(result1.status).toBe('processed');
@@ -709,7 +710,7 @@ describe('PaymentsService.handleWebhook — échec paiement', () => {
       provider: 'mvola',
       rawBody,
       signature: 'valid-sig',
-      payload: { providerTransactionId: 'tx-fail', status: 'FAILED', bookingReference: 'IT-ABCDE' },
+      payload: { providerTransactionId: 'tx-fail', status: 'FAILED', bookingReference: 'IT-ABCDE', amountMga: 26000 },
     });
 
     expect(result.status).toBe('failed');
@@ -759,7 +760,7 @@ describe('PaymentsService.handleWebhook — échec paiement', () => {
       provider: 'mvola',
       rawBody,
       signature: 'valid-sig',
-      payload: { providerTransactionId: 'tx-exp', status: 'EXPIRED', bookingReference: 'IT-ABCDE' },
+      payload: { providerTransactionId: 'tx-exp', status: 'EXPIRED', bookingReference: 'IT-ABCDE', amountMga: 26000 },
     });
 
     expect(result.status).toBe('failed');

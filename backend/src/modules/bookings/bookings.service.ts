@@ -17,7 +17,6 @@ import type {
   WalkInBookingInput,
   CancelAtCounterInput,
   BookingListQueryInput,
-  WebhookPayload,
 } from './bookings.schema';
 
 // =====================================================================
@@ -58,14 +57,6 @@ export class ConflictError extends Error {
     super(message);
     this.name = 'ConflictError';
     (this as NodeJS.ErrnoException).code = 'CONFLICT';
-  }
-}
-
-export class WebhookSignatureError extends Error {
-  constructor() {
-    super('Signature webhook invalide');
-    this.name = 'WebhookSignatureError';
-    (this as NodeJS.ErrnoException).code = 'INVALID_SIGNATURE';
   }
 }
 
@@ -207,13 +198,21 @@ export class BookingsService {
       else if (fare.category) fareByCat.set(fare.category, fare.priceMga);
     }
 
-    const seatSubtotalMga = groupHolds.reduce((sum, h) => {
+    // C-3 : lancer FARE_NOT_FOUND si aucun tarif n'est configuré pour un siège
+    let seatSubtotalMga = 0;
+    for (const h of groupHolds) {
       const price =
         fareByDefId.get(h.seatDefinitionId) ??
         fareByCat.get(h.seatDefinition.category) ??
-        0;
-      return sum + price;
-    }, 0);
+        null;
+      if (price === null) {
+        throw Object.assign(
+          new Error('Aucun tarif configuré pour un ou plusieurs sièges'),
+          { code: 'FARE_NOT_FOUND' },
+        );
+      }
+      seatSubtotalMga += price;
+    }
 
     // VH-05 : frais plateforme
     const platformFeeMga = calculatePlatformFee(seatSubtotalMga);
@@ -554,10 +553,19 @@ export class BookingsService {
       else if (fare.category) fareByCat.set(fare.category, fare.priceMga);
     }
 
-    const seatSubtotalMga = seatDefinitionIds.reduce((sum, id) => {
+    // C-3 : lancer FARE_NOT_FOUND si aucun tarif n'est configuré pour un siège
+    let seatSubtotalMga = 0;
+    for (const id of seatDefinitionIds) {
       const cat = seatCategoryMap.get(id);
-      return sum + (fareByDefId.get(id) ?? (cat ? fareByCat.get(cat) ?? 0 : 0));
-    }, 0);
+      const price = fareByDefId.get(id) ?? (cat ? fareByCat.get(cat) ?? null : null);
+      if (price === null) {
+        throw Object.assign(
+          new Error('Aucun tarif configuré pour un ou plusieurs sièges'),
+          { code: 'FARE_NOT_FOUND' },
+        );
+      }
+      seatSubtotalMga += price;
+    }
 
     // RG-02 : WALK-IN → frais = 0, commission = 0 (vérification explicite)
     const WALK_IN_PLATFORM_FEE = 0;
@@ -873,239 +881,6 @@ export class BookingsService {
     }
 
     return this._formatBooking(updated);
-  }
-
-  // ------------------------------------------------------------------
-  // POST /webhooks/mobile-money/:provider
-  // Idempotence : providerTransactionId déjà en base → 200 sans retraitement
-  // ------------------------------------------------------------------
-
-  async processWebhook(
-    provider: string,
-    rawBody: Buffer,
-    signature: string,
-    payload: WebhookPayload,
-  ): Promise<{ status: 'processed' | 'duplicate' | 'failed' }> {
-    // 1. Vérification signature HMAC (architecture §2.6)
-    const isValid = this.gateway.verifyWebhookSignature(provider, rawBody, signature);
-    if (!isValid) {
-      throw new WebhookSignatureError();
-    }
-
-    const { providerTransactionId, status, bookingReference } = payload;
-
-    // 2. Idempotence : déjà traité ?
-    const existingPayment = await this.db.payment.findFirst({
-      where: { providerTransactionId },
-    });
-
-    if (existingPayment) {
-      return { status: 'duplicate' };
-    }
-
-    // 3. Retrouver le Booking (via référence dans le payload ou via Payment PENDING)
-    let booking = null;
-    if (bookingReference) {
-      booking = await this.db.booking.findUnique({
-        where: { reference: bookingReference },
-        include: { seatHolds: { where: { expiresAt: { gt: new Date() } } }, payments: true },
-      });
-    } else {
-      // Fallback : payment PENDING le plus récent
-      const pendingPayment = await this.db.payment.findFirst({
-        where: { status: PaymentStatus.PENDING, provider: provider.toUpperCase() as PaymentProvider },
-        orderBy: { initiatedAt: 'desc' },
-        include: { booking: { include: { seatHolds: { where: { expiresAt: { gt: new Date() } } }, payments: true } } },
-      });
-      if (pendingPayment) booking = pendingPayment.booking;
-    }
-
-    if (!booking) {
-      // Webhook orphelin — on logue et on répond 200
-      return { status: 'failed' };
-    }
-
-    if (status === 'SUCCESS') {
-      return this._confirmPayment(booking, providerTransactionId, provider);
-    } else {
-      return this._failPayment(booking, providerTransactionId);
-    }
-  }
-
-  // ------------------------------------------------------------------
-  // Helpers privés — webhook
-  // ------------------------------------------------------------------
-
-  private async _confirmPayment(
-    booking: {
-      id: string;
-      reference: string;
-      tripInstanceId: string;
-      cooperativeId: string;
-      seatHolds: { seatDefinitionId: string; seatDefinition?: { code: string; category: string } | undefined }[];
-      payments: { id: string; amountMga: number }[];
-    },
-    providerTransactionId: string,
-    provider: string,
-  ): Promise<{ status: 'processed' }> {
-    await this.db.$transaction(async (tx) => {
-      const pendingPayment = await tx.payment.findFirst({
-        where: { bookingId: booking.id, status: PaymentStatus.PENDING },
-        include: { platformFee: true },
-      });
-
-      if (!pendingPayment) return;
-
-      // Mettre à jour le Payment
-      await tx.payment.update({
-        where: { id: pendingPayment.id },
-        data: {
-          status: PaymentStatus.CONFIRMED,
-          confirmedAt: new Date(),
-          providerTransactionId,
-        },
-      });
-
-      // Créer les BookingSeats actifs (SeatHold → BookingSeat)
-      for (const hold of booking.seatHolds) {
-        // Charger les infos du siège
-        const seatDef = await tx.seatDefinition.findUnique({
-          where: { id: hold.seatDefinitionId },
-          select: { id: true, code: true, category: true },
-        });
-        if (!seatDef) continue;
-
-        // Chercher le tarif
-        const fare = await tx.fare.findFirst({
-          where: {
-            tripInstanceId: booking.tripInstanceId,
-            OR: [
-              { seatDefinitionId: seatDef.id },
-              { seatDefinitionId: null, category: seatDef.category },
-            ],
-          },
-          orderBy: { seatDefinitionId: 'desc' }, // siège précis prime
-        });
-
-        await tx.bookingSeat.create({
-          data: {
-            bookingId: booking.id,
-            tripInstanceId: booking.tripInstanceId,
-            seatDefinitionId: seatDef.id,
-            seatCode: seatDef.code,
-            category: seatDef.category,
-            priceMga: fare?.priceMga ?? 0,
-            isActive: true,
-          },
-        });
-      }
-
-      // Confirmer le Booking
-      await tx.booking.update({
-        where: { id: booking.id },
-        data: {
-          status: BookingStatus.CONFIRMED,
-          confirmedAt: new Date(),
-        },
-      });
-
-      // Lier la commission au payment
-      await tx.commission.updateMany({
-        where: { bookingId: booking.id, paymentId: null },
-        data: { paymentId: pendingPayment.id },
-      });
-
-      // AuditLog (RG-13)
-      await tx.auditLog.create({
-        data: {
-          action: AuditAction.PAYMENT_CONFIRMED,
-          entityType: 'Payment',
-          entityId: pendingPayment.id,
-          after: { bookingId: booking.id, providerTransactionId, provider },
-        },
-      });
-    });
-
-    // Pub/Sub : SEAT_SOLD
-    const seatDefinitionIds = booking.seatHolds.map((h) => h.seatDefinitionId);
-    await this.redis.publish(
-      `trip:${booking.tripInstanceId}`,
-      JSON.stringify({
-        event: 'SEAT_SOLD',
-        tripInstanceId: booking.tripInstanceId,
-        seatDefinitionIds,
-        bookingId: booking.id,
-      }),
-    );
-
-    // SMS confirmation (transactionnel — immédiat, bypass silence VH-02)
-    if (this.notifications) {
-      await this.notifications.enqueue({
-        bookingId: booking.id,
-        templateKey: 'BOOKING_CONFIRMED',
-        variables: { reference: booking.reference, departureAt: '', origin: '' },
-        lang: 'FR',
-        phone: '', // le worker récupère le phone depuis Passenger si vide
-        transactional: true,
-      });
-    } else {
-      await enqueueSms({
-        phone: '',
-        templateCode: 'BOOKING_CONFIRMED',
-        params: { reference: booking.reference, departureAt: '', origin: '' },
-        lang: 'FR',
-        bookingId: booking.id,
-        isTransactional: true,
-      });
-    }
-
-    return { status: 'processed' };
-  }
-
-  private async _failPayment(
-    booking: { id: string; tripInstanceId: string; seatHolds: { seatDefinitionId: string }[] },
-    providerTransactionId: string,
-  ): Promise<{ status: 'failed' }> {
-    await this.db.$transaction(async (tx) => {
-      await tx.payment.updateMany({
-        where: { bookingId: booking.id, status: PaymentStatus.PENDING },
-        data: {
-          status: PaymentStatus.FAILED,
-          failedAt: new Date(),
-          providerTransactionId,
-        },
-      });
-
-      await tx.booking.update({
-        where: { id: booking.id },
-        data: { status: BookingStatus.PAYMENT_FAILED },
-      });
-
-      await tx.auditLog.create({
-        data: {
-          action: AuditAction.PAYMENT_FAILED,
-          entityType: 'Booking',
-          entityId: booking.id,
-          after: { providerTransactionId, status: 'FAILED' },
-        },
-      });
-    });
-
-    // Pub/Sub : SEAT_RELEASED (les holds expireront naturellement)
-    const seatDefinitionIds = booking.seatHolds.map((h) => h.seatDefinitionId);
-    if (seatDefinitionIds.length > 0) {
-      await this.redis.publish(
-        `trip:${booking.tripInstanceId}`,
-        JSON.stringify({
-          event: 'SEAT_RELEASED',
-          tripInstanceId: booking.tripInstanceId,
-          seatDefinitionIds,
-          bookingId: booking.id,
-        }),
-      );
-    }
-
-    return { status: 'failed' };
   }
 
   // ------------------------------------------------------------------

@@ -9,7 +9,7 @@
  *   - initiatePayment
  */
 
-import { BookingsService, ConflictError, NotFoundError, ForbiddenError, WebhookSignatureError } from '../bookings.service';
+import { BookingsService, ConflictError, NotFoundError, ForbiddenError } from '../bookings.service';
 import type { MobileMoneyGateway } from '../../../infra/mobileMoney/gateway';
 
 // =====================================================================
@@ -468,7 +468,7 @@ describe('BookingsService.createWalkIn — RG-02', () => {
     (mockPrisma.tripInstance.findFirst as jest.Mock).mockResolvedValue({
       id: TRIP_ID,
       cooperativeId: COOP_ID,
-      fares: [],
+      fares: [{ seatDefinitionId: null, category: 'STANDARD', priceMga: 25000 }],
     });
     mockTx.bookingSeat.findMany.mockResolvedValue([
       { seatDefinitionId: SEAT_ID_1, seatCode: '1A' },
@@ -485,188 +485,6 @@ describe('BookingsService.createWalkIn — RG-02', () => {
     await expect(
       service.createWalkIn(STAFF_USER_ID, COOP_ID, walkInInput),
     ).rejects.toThrow(ForbiddenError);
-  });
-});
-
-// =====================================================================
-// processWebhook — confirmation paiement
-// =====================================================================
-
-describe('BookingsService.processWebhook — confirmation', () => {
-  const PROVIDER_TX_ID = 'mvola-tx-123';
-  const rawBody = Buffer.from(JSON.stringify({
-    providerTransactionId: PROVIDER_TX_ID,
-    status: 'SUCCESS',
-  }));
-  const signature = 'valid-sig';
-
-  const fakeBookingWithHolds = {
-    id: BOOKING_ID,
-    reference: 'IT-ABCDE',
-    tripInstanceId: TRIP_ID,
-    cooperativeId: COOP_ID,
-    seatHolds: [{ seatDefinitionId: SEAT_ID_1 }],
-    payments: [{ id: PAYMENT_ID, amountMga: 26000 }],
-  };
-
-  beforeEach(() => {
-    (mockGateway.verifyWebhookSignature as jest.Mock).mockReturnValue(true);
-    // Pas de paiement existant avec ce providerTransactionId
-    (mockPrisma.payment.findFirst as jest.Mock).mockResolvedValueOnce(null);
-    // Booking trouvé via référence
-    (mockPrisma.booking.findUnique as jest.Mock).mockResolvedValue(fakeBookingWithHolds);
-
-    // Transaction
-    mockTx.payment.findFirst.mockResolvedValue({ id: PAYMENT_ID, platformFee: null });
-    mockTx.payment.update.mockResolvedValue({});
-    mockTx.seatDefinition.findUnique.mockResolvedValue({
-      id: SEAT_ID_1, code: '1A', category: 'STANDARD',
-    });
-    mockTx.fare.findFirst.mockResolvedValue({ priceMga: 25000 });
-    mockTx.bookingSeat.create.mockResolvedValue({});
-    mockTx.booking.update.mockResolvedValue({ ...fakeBooking, status: 'CONFIRMED', confirmedAt: new Date() });
-    mockTx.commission.updateMany.mockResolvedValue({ count: 1 });
-    mockTx.auditLog.create.mockResolvedValue({});
-  });
-
-  it('confirme le paiement et retourne status=processed', async () => {
-    const result = await service.processWebhook(
-      'mvola',
-      rawBody,
-      signature,
-      { providerTransactionId: PROVIDER_TX_ID, status: 'SUCCESS', bookingReference: 'IT-ABCDE' },
-    );
-
-    expect(result.status).toBe('processed');
-  });
-
-  it('émet SEAT_SOLD sur Redis Pub/Sub après confirmation', async () => {
-    await service.processWebhook(
-      'mvola',
-      rawBody,
-      signature,
-      { providerTransactionId: PROVIDER_TX_ID, status: 'SUCCESS', bookingReference: 'IT-ABCDE' },
-    );
-
-    expect(mockRedis.publish).toHaveBeenCalledWith(
-      `trip:${TRIP_ID}`,
-      expect.stringContaining('"event":"SEAT_SOLD"'),
-    );
-  });
-
-  it('crée un AuditLog PAYMENT_CONFIRMED (RG-13)', async () => {
-    await service.processWebhook(
-      'mvola',
-      rawBody,
-      signature,
-      { providerTransactionId: PROVIDER_TX_ID, status: 'SUCCESS', bookingReference: 'IT-ABCDE' },
-    );
-
-    expect(mockTx.auditLog.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ action: 'PAYMENT_CONFIRMED' }),
-      }),
-    );
-  });
-
-  it('enfile un SMS de confirmation (transactionnel)', async () => {
-    await service.processWebhook(
-      'mvola',
-      rawBody,
-      signature,
-      { providerTransactionId: PROVIDER_TX_ID, status: 'SUCCESS', bookingReference: 'IT-ABCDE' },
-    );
-
-    expect(enqueueSms).toHaveBeenCalledWith(
-      expect.objectContaining({
-        templateCode: 'BOOKING_CONFIRMED',
-        isTransactional: true,
-      }),
-    );
-  });
-});
-
-// =====================================================================
-// processWebhook — idempotence
-// =====================================================================
-
-describe('BookingsService.processWebhook — idempotence', () => {
-  it('retourne status=duplicate si providerTransactionId déjà en base', async () => {
-    (mockGateway.verifyWebhookSignature as jest.Mock).mockReturnValue(true);
-    // Simuler un paiement déjà existant avec ce providerTransactionId
-    (mockPrisma.payment.findFirst as jest.Mock).mockResolvedValue({
-      id: PAYMENT_ID,
-      providerTransactionId: 'mvola-tx-already',
-    });
-
-    const result = await service.processWebhook(
-      'mvola',
-      Buffer.from('{}'),
-      'sig',
-      {
-        providerTransactionId: 'mvola-tx-already',
-        status: 'SUCCESS',
-      },
-    );
-
-    expect(result.status).toBe('duplicate');
-    // Aucune transaction DB ne doit être lancée
-    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
-  });
-});
-
-// =====================================================================
-// processWebhook — signature invalide
-// =====================================================================
-
-describe('BookingsService.processWebhook — signature invalide', () => {
-  it("rejette avec WebhookSignatureError si la signature est incorrecte", async () => {
-    (mockGateway.verifyWebhookSignature as jest.Mock).mockReturnValue(false);
-
-    await expect(
-      service.processWebhook(
-        'mvola',
-        Buffer.from('{}'),
-        'bad-sig',
-        { providerTransactionId: 'tx-1', status: 'SUCCESS' },
-      ),
-    ).rejects.toThrow(WebhookSignatureError);
-  });
-});
-
-// =====================================================================
-// processWebhook — échec paiement
-// =====================================================================
-
-describe('BookingsService.processWebhook — échec paiement', () => {
-  it("passe le Booking en PAYMENT_FAILED et émet SEAT_RELEASED", async () => {
-    (mockGateway.verifyWebhookSignature as jest.Mock).mockReturnValue(true);
-    (mockPrisma.payment.findFirst as jest.Mock).mockResolvedValueOnce(null);
-    (mockPrisma.booking.findUnique as jest.Mock).mockResolvedValue({
-      id: BOOKING_ID,
-      reference: 'IT-ABCDE',
-      tripInstanceId: TRIP_ID,
-      cooperativeId: COOP_ID,
-      seatHolds: [{ seatDefinitionId: SEAT_ID_1 }],
-      payments: [],
-    });
-
-    mockTx.payment.updateMany.mockResolvedValue({ count: 1 });
-    mockTx.booking.update.mockResolvedValue({ ...fakeBooking, status: 'PAYMENT_FAILED' });
-    mockTx.auditLog.create.mockResolvedValue({});
-
-    const result = await service.processWebhook(
-      'mvola',
-      Buffer.from('{}'),
-      'sig',
-      { providerTransactionId: 'tx-failed', status: 'FAILED', bookingReference: 'IT-ABCDE' },
-    );
-
-    expect(result.status).toBe('failed');
-    expect(mockRedis.publish).toHaveBeenCalledWith(
-      `trip:${TRIP_ID}`,
-      expect.stringContaining('"event":"SEAT_RELEASED"'),
-    );
   });
 });
 

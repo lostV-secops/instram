@@ -259,16 +259,9 @@ export class AuthService {
       throw err;
     }
 
-    if (session.revokedAt != null || session.expiresAt < new Date()) {
-      // Token révoqué ou expiré — si révoqué, c'est peut-être une attaque de replay
-      if (session.revokedAt != null) {
-        // Révocation de toutes les sessions actives de l'utilisateur (défense en profondeur)
-        await this.db.authSession.updateMany({
-          where: { userId: session.userId, revokedAt: null },
-          data: { revokedAt: new Date() },
-        });
-      }
-      const err = new Error('Refresh token expiré ou révoqué');
+    // Vérification expiration (non-atomique suffisant : date immuable après création)
+    if (session.expiresAt < new Date()) {
+      const err = new Error('Refresh token expiré');
       (err as NodeJS.ErrnoException).code = 'REFRESH_TOKEN_EXPIRED';
       throw err;
     }
@@ -279,26 +272,39 @@ export class AuthService {
       throw err;
     }
 
-    // Rotation : révocation de l'ancien token + création d'un nouveau
+    // M-9 : Rotation atomique — révocation de l'ancien token via updateMany avec
+    // condition revokedAt: null. Si count=0, le token a été utilisé entre la lecture
+    // et cet appel (replay attack) : on révoque toute la chaîne de sessions.
+    const now = new Date();
     const rawNewToken = generateRawRefreshToken();
     const newTokenHash = hashRefreshToken(rawNewToken);
     const expiresAt = new Date(Date.now() + parseDurationMs(this.refreshExpiresIn));
 
-    await this.db.$transaction([
-      this.db.authSession.update({
-        where: { id: session.id },
-        data: { revokedAt: new Date() },
-      }),
-      this.db.authSession.create({
-        data: {
-          userId: session.userId,
-          refreshTokenHash: newTokenHash,
-          userAgent: meta.userAgent ?? session.userAgent,
-          ipAddress: meta.ipAddress ?? session.ipAddress,
-          expiresAt,
-        },
-      }),
-    ]);
+    const revokeResult = await this.db.authSession.updateMany({
+      where: { id: session.id, revokedAt: null },
+      data: { revokedAt: now },
+    });
+
+    if (revokeResult.count === 0) {
+      // Token déjà révoqué entre le findUnique et ici → replay attack probable
+      await this.db.authSession.updateMany({
+        where: { userId: session.userId },
+        data: { revokedAt: now },
+      });
+      const err = new Error('Refresh token déjà utilisé');
+      (err as NodeJS.ErrnoException).code = 'INVALID_REFRESH_TOKEN';
+      throw err;
+    }
+
+    await this.db.authSession.create({
+      data: {
+        userId: session.userId,
+        refreshTokenHash: newTokenHash,
+        userAgent: meta.userAgent ?? session.userAgent,
+        ipAddress: meta.ipAddress ?? session.ipAddress,
+        expiresAt,
+      },
+    });
 
     const accessPayload = this._buildAccessPayload(session.user);
     const accessToken = this.tokenGenerator.signAccessToken(accessPayload);

@@ -60,7 +60,7 @@ export async function tripsCoopRoutes(fastify: FastifyInstance): Promise<void> {
 
   function handleError(err: unknown, req: FastifyRequest, reply: FastifyReply, ctx: string) {
     const code = (err as NodeJS.ErrnoException).code;
-    if (code === 'FORBIDDEN') return reply.status(403).send({ code, message: (err as Error).message });
+    if (code === 'FORBIDDEN' || code === 'COOPERATIVE_SUSPENDED') return reply.status(403).send({ code, message: (err as Error).message });
     if (code === 'NOT_FOUND') return reply.status(404).send({ code, message: (err as Error).message });
     if (code === 'CONFLICT') return reply.status(409).send({ code, message: (err as Error).message });
     req.log.error(err, ctx);

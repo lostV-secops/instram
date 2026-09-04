@@ -164,10 +164,16 @@ export class RatingsService {
   ): Promise<RatingListResult> {
     const { limit, cursor } = query;
 
+    // H-5 : exclure les avis des comptes qui ont demandé la suppression/anonymisation.
+    // Le filtre passe par la relation directe `user` sur Rating (champ userId).
+    // Hypothèse résolue : l'instruction mentionnait `booking.traveler` mais le schema
+    // expose la relation `user` directement sur Rating et `buyer` (non `traveler`) sur
+    // Booking — on utilise donc `user: { anonymizedAt: null }`, plus direct et exact.
     const ratings = await this.prisma.rating.findMany({
       where: {
         cooperativeId,
         status: RatingStatus.PUBLISHED,
+        user: { anonymizedAt: null },
         ...(cursor ? { id: { lt: cursor } } : {}),
       },
       include: {

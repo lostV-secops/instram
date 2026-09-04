@@ -44,6 +44,16 @@ export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
+      // H-2 : masquer la query string (contient le JWT WS token) dans tous les logs Pino
+      serializers: {
+        req(req) {
+          return {
+            method: req.method,
+            url: req.url?.split('?')[0], // retirer la query string des logs
+            hostname: req.hostname,
+          };
+        },
+      },
       // Pino JSON : format adapté aux logs structurés (observabilité §7.6)
       ...(process.env.NODE_ENV === 'development'
         ? {
@@ -84,8 +94,13 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   // CORS : origines configurables via env
+  // M-3 : CORS_ORIGIN obligatoire en production ; liste séparée par virgules admise
   await app.register(fastifyCors, {
-    origin: process.env.CORS_ORIGIN ?? true,
+    origin: process.env.NODE_ENV === 'production'
+      ? (process.env.CORS_ORIGIN
+          ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim())
+          : (() => { throw new Error('CORS_ORIGIN requis en production'); })())
+      : true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
@@ -103,7 +118,10 @@ export async function buildApp(): Promise<FastifyInstance> {
     max: 200,
     timeWindow: '1m',
     redis,
-    keyGenerator: (req) => req.ip,
+    // H-1 : utiliser x-forwarded-for si présent (derrière un reverse proxy),
+    // avec fallback sur req.ip puis 'unknown'
+    keyGenerator: (req) =>
+      req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() ?? req.ip ?? 'unknown',
     errorResponseBuilder: (_req, context) => ({
       code: 'RATE_LIMIT_EXCEEDED',
       message: `Trop de requêtes. Réessayez dans ${Math.ceil(context.ttl / 1000)} secondes.`,
