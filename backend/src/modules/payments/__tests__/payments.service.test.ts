@@ -67,9 +67,9 @@ function makeOnlineBooking(overrides: Partial<Record<string, unknown>> = {}) {
     buyerUserId: USER_ID,
     channel: 'ONLINE',
     status: 'PENDING_PAYMENT',
-    totalAmountMga: 26000, // 25000 siège + 1000 frais
+    totalAmountMga: 25625, // 25000 siège + 625 frais (25000*2.5% — VH-05)
     seatSubtotalMga: 25000,
-    platformFeeMga: 1000,
+    platformFeeMga: 625,
     qrPayload: 'mock-qr',
     createdAt: new Date(),
     confirmedAt: null,
@@ -250,14 +250,14 @@ beforeEach(() => {
 });
 
 // ======================================================================
-// 1. initiate — booking ONLINE → PlatformFee = max(1000, 3%)
+// 1. initiate — booking ONLINE → PlatformFee = seatSubtotal * 2.5% (VH-05)
 // ======================================================================
 
 describe('PaymentsService.initiate', () => {
-  it('booking ONLINE avec prix 25 000 MGA → PlatformFee = 1 000 (min garanti VH-05)', async () => {
+  it('booking ONLINE avec prix 25 000 MGA → PlatformFee = 625 (2.5% — VH-05)', async () => {
     const onlineBooking = makeOnlineBooking();
 
-    // seatSubtotal * 3% = 750 < 1000 → PlatformFee = 1000
+    // seatSubtotal * 2.5% = 625 (pas de minimum — VH-05)
     const db = buildMockDb({
       booking: {
         findFirst: jest.fn()
@@ -308,17 +308,17 @@ describe('PaymentsService.initiate', () => {
     expect(result.status).toBe('PENDING');
     expect(result.instructions.messageFr).toContain('*999#');
 
-    // PlatformFee doit être max(1000, 25000*0.03=750) = 1000
+    // PlatformFee = 25000 * 2.5% = 625 (VH-05 : pas de minimum)
     expect(capturedPlatformFee).not.toBeNull();
-    expect(capturedPlatformFee!.amountMga).toBe(1000);
+    expect(capturedPlatformFee!.amountMga).toBe(625);
     expect(capturedPlatformFee!.policyRef).toBe('VH-05');
   });
 
-  it('booking ONLINE avec prix 50 000 MGA → PlatformFee = 1 500 (3% supérieur au fixe)', async () => {
+  it('booking ONLINE avec prix 50 000 MGA → PlatformFee = 1 250 (2.5% — VH-05)', async () => {
     const onlineBooking = makeOnlineBooking({
       seatSubtotalMga: 50000,
-      totalAmountMga: 51500, // 50000 + 1500
-      platformFeeMga: 1500,
+      totalAmountMga: 51250, // 50000 + 1250 (50000*2.5%)
+      platformFeeMga: 1250,
     });
 
     const db = buildMockDb({
@@ -363,8 +363,8 @@ describe('PaymentsService.initiate', () => {
       phone: '+261340000001',
     });
 
-    // 50000 * 3% = 1500 > 1000 → PlatformFee = 1500
-    expect(capturedPlatformFee!.amountMga).toBe(1500);
+    // 50000 * 2.5% = 1250 (VH-05)
+    expect(capturedPlatformFee!.amountMga).toBe(1250);
   });
 
   it('booking WALK_IN → PlatformFee = 0 et Commission = 0 (RG-02)', async () => {

@@ -48,7 +48,7 @@ const makeSeats = (overrides: Partial<Seat>[] = []): Seat[] => [
   { seatDefinitionId: 's2', code: 'A2', category: 'CLASSIC', row: 1, column: 2, status: 'AVAILABLE', priceMga: 15000 },
   { seatDefinitionId: 's3', code: 'A3', category: 'CLASSIC', row: 1, column: 3, status: 'HELD', priceMga: 15000 },
   { seatDefinitionId: 's4', code: 'A4', category: 'CLASSIC', row: 1, column: 4, status: 'SOLD', priceMga: 15000 },
-  { seatDefinitionId: 's5', code: 'A5', category: 'CLASSIC', row: 2, column: 1, status: 'HELD_BY_ME', priceMga: 15000 },
+  { seatDefinitionId: 's5', code: 'A5', category: 'CLASSIC', row: 2, column: 1, status: 'HELD', priceMga: 15000 },
   ...overrides as Seat[],
 ];
 
@@ -150,7 +150,7 @@ describe('SeatMap — rendu des statuts', () => {
     // Cliquer sur 7 sièges
     for (let i = 0; i < 7; i++) {
       const btn = screen.getByRole('button', { name: new RegExp(`X${i}`) });
-      if (!btn.disabled) await userEvent.click(btn);
+      if (!(btn as HTMLButtonElement).disabled) await userEvent.click(btn);
     }
 
     // Seuls 6 devraient être sélectionnés — le 7e clic n'ajoute pas

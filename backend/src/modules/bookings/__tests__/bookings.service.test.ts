@@ -64,9 +64,9 @@ const fakeBooking = {
   buyerUserId: USER_ID,
   channel: 'ONLINE',
   status: 'PENDING_PAYMENT',
-  totalAmountMga: 25750, // 25000 + max(1000, 750) = 25000 + 1000 = 26000... let's say 26000
+  totalAmountMga: 25625, // 25000 + 25000*2.5% = 25000 + 625 (VH-05)
   seatSubtotalMga: 25000,
-  platformFeeMga: 1000,
+  platformFeeMga: 625,
   qrPayload: 'mock-qr',
   createdAt: new Date(),
   confirmedAt: null,
@@ -215,7 +215,7 @@ describe('BookingsService.createOnlineBooking', () => {
           status: 'PENDING_PAYMENT',
           channel: 'ONLINE',
           seatSubtotalMga: 25000,
-          platformFeeMga: expect.any(Number), // max(1000, 25000*0.03=750) = 1000
+          platformFeeMga: expect.any(Number), // 25000*2.5% = 625 (VH-05)
         }),
       }),
     );
@@ -226,19 +226,19 @@ describe('BookingsService.createOnlineBooking', () => {
     });
   });
 
-  it('calcule platformFee = max(1000, seatSubtotal * 3%)', async () => {
-    // Avec 25000 MGA : 3% = 750 < 1000 → platformFee = 1000
+  it('calcule platformFee = 2.5% du seatSubtotal (VH-05)', async () => {
+    // Avec 25000 MGA : 25000 * 2.5% = 625 (pas de minimum — VH-05)
     await service.createOnlineBooking(USER_ID, {
       holdId: HOLD_ID,
       passengers: [{ firstName: 'Jean', lastName: 'Dupont', seatCode: '1A' }],
     });
 
     const createCall = (mockTx.booking.create as jest.Mock).mock.calls[0][0];
-    expect(createCall.data.platformFeeMga).toBe(1000); // min fixe
+    expect(createCall.data.platformFeeMga).toBe(625); // 2.5% de 25000
   });
 
-  it('calcule platformFee = 3% si supérieur à 1000', async () => {
-    // Simuler seatSubtotal = 50000 → 3% = 1500 > 1000
+  it('calcule platformFee = 2.5% si seatSubtotal = 50 000 MGA (VH-05)', async () => {
+    // 50000 * 2.5% = 1250
     (mockPrisma.seatHold.findFirst as jest.Mock).mockResolvedValue({
       ...fakeHold,
       tripInstance: {
@@ -260,26 +260,17 @@ describe('BookingsService.createOnlineBooking', () => {
     });
 
     const createCall = (mockTx.booking.create as jest.Mock).mock.calls[0][0];
-    expect(createCall.data.platformFeeMga).toBe(1500); // 3% de 50000
+    expect(createCall.data.platformFeeMga).toBe(1250); // 2.5% de 50000
   });
 
-  it('étend le TTL du hold à +5 min (phase paiement VH-01)', async () => {
+  it('ne rallonge PAS le TTL du hold — hold unique 15 min (VH-01)', async () => {
     await service.createOnlineBooking(USER_ID, {
       holdId: HOLD_ID,
       passengers: [{ firstName: 'Jean', lastName: 'Dupont', seatCode: '1A' }],
     });
 
-    expect(mockPrisma.seatHold.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          expiresAt: expect.any(Date),
-        }),
-      }),
-    );
-
-    const updateCall = (mockPrisma.seatHold.updateMany as jest.Mock).mock.calls[0][0];
-    const extendedExpiry = updateCall.data.expiresAt;
-    expect(extendedExpiry.getTime()).toBeGreaterThan(Date.now() + 4 * 60 * 1000);
+    // VH-01 : hold unique 15 min, aucune extension lors de createOnlineBooking
+    expect(mockPrisma.seatHold.updateMany).not.toHaveBeenCalled();
   });
 
   it('lève ConflictError si le hold est expiré ou introuvable', async () => {

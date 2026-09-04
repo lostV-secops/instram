@@ -53,8 +53,8 @@ describe('apiGet', () => {
 
     const error = await apiGet('/me').catch((e: unknown) => e as AppError);
     expect(error).toBeInstanceOf(AppError);
-    expect(error.code).toBe('UNAUTHORIZED');
-    expect(error.status).toBe(401);
+    expect((error as AppError).code).toBe('UNAUTHORIZED');
+    expect((error as AppError).status).toBe(401);
   });
 
   it('lance AppError sur réponse 404', async () => {
