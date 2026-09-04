@@ -5,6 +5,18 @@
  */
 
 import { SeatsService, SeatConflictError, NotFoundError } from '../seats.service';
+
+// Mock ws.publisher — seats.service appelle emitSeatHeld/emitSeatReleased
+// après la migration Pub/Sub (plus de redis.publish direct dans le service)
+jest.mock('../../ws/ws.publisher', () => ({
+  emitSeatHeld: jest.fn().mockResolvedValue(undefined),
+  emitSeatReleased: jest.fn().mockResolvedValue(undefined),
+  emitSeatSold: jest.fn().mockResolvedValue(undefined),
+  emitBookingConfirmed: jest.fn().mockResolvedValue(undefined),
+}));
+
+import * as wsPublisher from '../../ws/ws.publisher';
+
 // =====================================================================
 // Mocks
 // =====================================================================
@@ -206,12 +218,14 @@ describe('SeatsService.holdSeats — succès', () => {
     );
   });
 
-  it('publie un événement SEAT_HELD sur le canal Redis Pub/Sub', async () => {
+  it('publie un événement SEAT_HELD via ws.publisher', async () => {
     await service.holdSeats(TRIP_ID, USER_ID, { seatDefinitionIds: [SEAT_ID_1] });
 
-    expect(mockRedis.publish).toHaveBeenCalledWith(
-      `trip:${TRIP_ID}`,
-      expect.stringContaining('"event":"SEAT_HELD"'),
+    expect(wsPublisher.emitSeatHeld).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tripInstanceId: TRIP_ID,
+        seatDefinitionId: SEAT_ID_1,
+      }),
     );
   });
 
@@ -348,9 +362,10 @@ describe('SeatsService.releaseHold', () => {
       where: { id: { in: [HOLD_ID_1, groupHolds[1].id] } },
     });
 
-    expect(mockRedis.publish).toHaveBeenCalledWith(
-      `trip:${TRIP_ID}`,
-      expect.stringContaining('"event":"SEAT_RELEASED"'),
+    expect(wsPublisher.emitSeatReleased).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tripInstanceId: TRIP_ID,
+      }),
     );
   });
 
@@ -373,7 +388,7 @@ describe('SeatsService.releaseHold', () => {
 
     await service.releaseHold(TRIP_ID, HOLD_ID_1, USER_ID);
 
-    expect(mockRedis.publish).not.toHaveBeenCalled();
+    expect(wsPublisher.emitSeatReleased).not.toHaveBeenCalled();
     expect(mockPrisma.seatHold.deleteMany).not.toHaveBeenCalled();
   });
 });
