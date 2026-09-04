@@ -1,52 +1,62 @@
 'use client';
 
-/**
- * Vue globale des trajets — /fr/admin/trips
- *
- * NOTE CONTRAT API : Aucun endpoint /admin/trips n'existe dans contrat-api.yaml.
- * Cette page est prête côté UI. L'endpoint backend `/v1/admin/trips` est à
- * implémenter et à ajouter au contrat avant de la mettre en production.
- *
- * Affiche : liste des trajets toutes coops, filtres date / statut.
- * États de chargement et d'erreur explicites.
- */
-
 import { useState, useEffect, useCallback } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import type { TripStatus } from '@/lib/types';
 
-interface AdminTripRow {
+type AdminTripStatus = 'DRAFT' | 'OPEN_FOR_BOOKING' | 'BOARDING' | 'DEPARTED' | 'COMPLETED' | 'CANCELLED';
+
+interface AdminTripCooperative {
   id: string;
-  cooperativeName: string;
-  routeLabel: string;
-  departureAt: string;
-  status: TripStatus;
+  displayName: string;
 }
 
-const TRIP_STATUS_OPTIONS: { value: TripStatus | ''; label: string }[] = [
+interface AdminTripRoute {
+  id: string;
+  displayName: string;
+}
+
+interface AdminTripVehicle {
+  id: string;
+  registration: string;
+  displayName: string | null;
+}
+
+interface AdminTripRow {
+  id: string;
+  departureAt: string;
+  arrivalEstimatedAt: string | null;
+  status: AdminTripStatus;
+  cooperative: AdminTripCooperative;
+  route: AdminTripRoute;
+  vehicle: AdminTripVehicle | null;
+  _count: { bookings: number; bookingSeats: number };
+}
+
+const TRIP_STATUS_OPTIONS: { value: AdminTripStatus | ''; label: string }[] = [
   { value: '', label: 'Tous les statuts' },
   { value: 'DRAFT', label: 'Brouillon' },
   { value: 'OPEN_FOR_BOOKING', label: 'Ouvert' },
-  { value: 'CLOSED_FOR_BOOKING', label: 'Fermé' },
+  { value: 'BOARDING', label: 'Embarquement' },
   { value: 'DEPARTED', label: 'En route' },
   { value: 'COMPLETED', label: 'Terminé' },
   { value: 'CANCELLED', label: 'Annulé' },
 ];
 
-const statusVariants: Record<TripStatus, 'default' | 'success' | 'warning' | 'error' | 'neutral' | 'info'> = {
+const statusVariants: Record<AdminTripStatus, 'default' | 'success' | 'warning' | 'error' | 'neutral' | 'info'> = {
   DRAFT: 'neutral',
   OPEN_FOR_BOOKING: 'success',
-  CLOSED_FOR_BOOKING: 'warning',
+  BOARDING: 'warning',
   DEPARTED: 'info',
   COMPLETED: 'default',
   CANCELLED: 'error',
 };
 
-const statusLabels: Record<TripStatus, string> = {
+const statusLabels: Record<AdminTripStatus, string> = {
   DRAFT: 'Brouillon',
   OPEN_FOR_BOOKING: 'Ouvert',
-  CLOSED_FOR_BOOKING: 'Fermé',
+  BOARDING: 'Embarquement',
   DEPARTED: 'En route',
   COMPLETED: 'Terminé',
   CANCELLED: 'Annulé',
@@ -55,7 +65,7 @@ const statusLabels: Record<TripStatus, string> = {
 const today = new Date().toISOString().slice(0, 10);
 
 export default function AdminTripsPage() {
-  const [statusFilter, setStatusFilter] = useState<TripStatus | ''>('');
+  const [statusFilter, setStatusFilter] = useState<AdminTripStatus | ''>('');
   const [fromDate, setFromDate] = useState(today);
   const [toDate, setToDate] = useState(today);
   const [trips, setTrips] = useState<AdminTripRow[]>([]);
@@ -68,10 +78,9 @@ export default function AdminTripsPage() {
     (cursor?: string) => {
       const params = new URLSearchParams({ limit: '20' });
       if (statusFilter) params.set('status', statusFilter);
-      if (fromDate) params.set('from', fromDate);
-      if (toDate) params.set('to', toDate);
+      if (fromDate) params.set('from', `${fromDate}T00:00:00.000Z`);
+      if (toDate) params.set('to', `${toDate}T23:59:59.999Z`);
       if (cursor) params.set('cursor', cursor);
-      // NOTE : endpoint absent du contrat API — à implémenter côté backend
       return `/api/proxy/v1/admin/trips?${params.toString()}`;
     },
     [statusFilter, fromDate, toDate],
@@ -83,8 +92,7 @@ export default function AdminTripsPage() {
     try {
       const res = await fetch(buildUrl(), { cache: 'no-store' });
       if (!res.ok) throw new Error('Erreur lors du chargement des trajets.');
-      const data: { items: AdminTripRow[]; nextCursor: string | null } =
-        await res.json();
+      const data: { items: AdminTripRow[]; nextCursor: string | null } = await res.json();
       setTrips(data.items ?? []);
       setNextCursor(data.nextCursor ?? null);
     } catch {
@@ -100,8 +108,7 @@ export default function AdminTripsPage() {
     try {
       const res = await fetch(buildUrl(nextCursor), { cache: 'no-store' });
       if (!res.ok) throw new Error();
-      const data: { items: AdminTripRow[]; nextCursor: string | null } =
-        await res.json();
+      const data: { items: AdminTripRow[]; nextCursor: string | null } = await res.json();
       setTrips((prev) => [...prev, ...(data.items ?? [])]);
       setNextCursor(data.nextCursor ?? null);
     } catch { /* silencieux */ }
@@ -114,11 +121,10 @@ export default function AdminTripsPage() {
 
   return (
     <div className="space-y-5">
-      {/* Titre + avertissement endpoint */}
       <div>
         <h1 className="text-xl font-bold text-brand-dark">Tous les trajets</h1>
-        <p className="text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 rounded px-2 py-1 mt-1 inline-block">
-          Endpoint <code>/admin/trips</code> absent du contrat API — à implémenter côté backend.
+        <p className="text-sm text-gray-500 mt-0.5">
+          Supervision globale — toutes coopératives confondues
         </p>
       </div>
 
@@ -149,7 +155,7 @@ export default function AdminTripsPage() {
           <select
             id="status-filter"
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as TripStatus | '')}
+            onChange={(e) => setStatusFilter(e.target.value as AdminTripStatus | '')}
             className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-white"
           >
             {TRIP_STATUS_OPTIONS.map((opt) => (
@@ -193,31 +199,39 @@ export default function AdminTripsPage() {
           ) : (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[500px]">
+                <table className="w-full text-sm min-w-[600px]">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
                       <th className="py-2 px-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Coopérative</th>
                       <th className="py-2 px-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Ligne</th>
                       <th className="py-2 px-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Départ</th>
+                      <th className="py-2 px-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Véhicule</th>
+                      <th className="py-2 px-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Rés.</th>
                       <th className="py-2 px-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Statut</th>
                     </tr>
                   </thead>
                   <tbody>
                     {trips.map((trip) => (
                       <tr key={trip.id} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="py-3 px-4 text-sm text-gray-700 truncate max-w-[150px]">
-                          {trip.cooperativeName}
+                        <td className="py-3 px-4 text-sm text-gray-700 truncate max-w-[140px]">
+                          {trip.cooperative.displayName}
                         </td>
                         <td className="py-3 px-4 text-sm text-brand-dark font-medium truncate max-w-[160px]">
-                          {trip.routeLabel}
+                          {trip.route.displayName}
                         </td>
-                        <td className="py-3 px-4 text-sm text-gray-600">
+                        <td className="py-3 px-4 text-sm text-gray-600 whitespace-nowrap">
                           {new Date(trip.departureAt).toLocaleString('fr-FR', {
                             day: '2-digit',
                             month: 'short',
                             hour: '2-digit',
                             minute: '2-digit',
                           })}
+                        </td>
+                        <td className="py-3 px-4 text-xs text-gray-500">
+                          {trip.vehicle ? (trip.vehicle.registration) : '—'}
+                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-700 text-center">
+                          {trip._count.bookings}
                         </td>
                         <td className="py-3 px-4">
                           <Badge variant={statusVariants[trip.status]}>
