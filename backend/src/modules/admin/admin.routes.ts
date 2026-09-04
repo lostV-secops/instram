@@ -39,6 +39,8 @@ import {
   SuspendUserBodySchema,
   AuditLogQuerySchema,
   ListRatingsQuerySchema,
+  ListTripsQuerySchema,
+  UpdateSettingsBodySchema,
 } from './admin.schema';
 import prisma from '../../infra/db/prisma';
 
@@ -269,6 +271,25 @@ export default async function adminRoutes(fastify: FastifyInstance): Promise<voi
     '/cooperatives/:cooperativeId/reject',
     { onRequest: [fastify.authenticate, requireSuperOrOps] },
     rejectCoopHandler,
+  );
+
+  // ------------------------------------------------------------------
+  // POST /admin/cooperatives/:cooperativeId/reactivate — SUSPENDED → VALIDATED
+  // ------------------------------------------------------------------
+  fastify.post<{ Params: { cooperativeId: string } }>(
+    '/cooperatives/:cooperativeId/reactivate',
+    { onRequest: [fastify.authenticate, requireSuperOrOps] },
+    async (req: FastifyRequest<{ Params: { cooperativeId: string } }>, reply: FastifyReply) => {
+      try {
+        const coop = await service.reactivateCooperative(
+          req.params.cooperativeId,
+          getAdminContext(req),
+        );
+        return reply.send(coop);
+      } catch (err) {
+        return handleError(err, req, reply, 'reactivateCooperative');
+      }
+    },
   );
 
   // ==================================================================
@@ -607,5 +628,70 @@ export default async function adminRoutes(fastify: FastifyInstance): Promise<voi
     '/audit-log',
     { onRequest: [fastify.authenticate, requireAnyAdmin] },
     auditLogHandler,
+  );
+
+  // ==================================================================
+  // TRAJETS — SUPERVISION
+  // ==================================================================
+
+  // ------------------------------------------------------------------
+  // GET /admin/trips — liste paginée de tous les trajets
+  // ------------------------------------------------------------------
+  fastify.get(
+    '/trips',
+    { onRequest: [fastify.authenticate, requireAnyAdmin] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const parse = ListTripsQuerySchema.safeParse(req.query);
+      if (!parse.success) {
+        return reply.status(400).send({ code: 'VALIDATION_ERROR', message: formatZodError(parse.error) });
+      }
+      try {
+        const result = await service.listTrips(parse.data);
+        return reply.send(result);
+      } catch (err) {
+        return handleError(err, req, reply, 'listTrips');
+      }
+    },
+  );
+
+  // ==================================================================
+  // PARAMÈTRES PLATEFORME
+  // ==================================================================
+
+  // ------------------------------------------------------------------
+  // GET /admin/settings — politique de frais active + horaires SMS
+  // ------------------------------------------------------------------
+  fastify.get(
+    '/settings',
+    { onRequest: [fastify.authenticate, requireSuperOrOps] },
+    async (_req: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const settings = await service.getSettings();
+        return reply.send(settings);
+      } catch (err) {
+        _req.log.error(err, 'admin/getSettings error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
+  // PUT /admin/settings — mettre à jour la politique de frais plateforme
+  // ------------------------------------------------------------------
+  fastify.put(
+    '/settings',
+    { onRequest: [fastify.authenticate, requireSuperOrOps] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const parse = UpdateSettingsBodySchema.safeParse(req.body);
+      if (!parse.success) {
+        return reply.status(400).send({ code: 'VALIDATION_ERROR', message: formatZodError(parse.error) });
+      }
+      try {
+        const result = await service.updateSettings(parse.data, getAdminContext(req));
+        return reply.send(result);
+      } catch (err) {
+        return handleError(err, req, reply, 'updateSettings');
+      }
+    },
   );
 }

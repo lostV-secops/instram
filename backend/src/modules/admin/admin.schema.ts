@@ -130,6 +130,44 @@ export const ListRatingsQuerySchema = z.object({
 });
 
 // ------------------------------------------------------------------
+// Trajets (supervision admin)
+// ------------------------------------------------------------------
+
+export const ListTripsQuerySchema = z.object({
+  status: z
+    .enum(['DRAFT', 'OPEN_FOR_BOOKING', 'BOARDING', 'DEPARTED', 'COMPLETED', 'CANCELLED'])
+    .optional(),
+  cooperativeId: z.string().uuid().optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+// ------------------------------------------------------------------
+// Paramètres plateforme (PlatformFeePolicy + horaires SMS)
+// ------------------------------------------------------------------
+
+export const UpdateSettingsBodySchema = z.object({
+  platformFee: z
+    .object({
+      ratePercent: z.number().min(0).max(100).optional(),
+      fixedAmountMga: z.number().int().min(0).optional(),
+      minAmountMga: z.number().int().min(0).optional(),
+      name: z.string().min(1).optional(),
+    })
+    .optional(),
+  smsQuietHoursStart: z
+    .string()
+    .regex(/^\d{2}:\d{2}$/, 'Format HH:MM attendu')
+    .optional(),
+  smsQuietHoursEnd: z
+    .string()
+    .regex(/^\d{2}:\d{2}$/, 'Format HH:MM attendu')
+    .optional(),
+});
+
+// ------------------------------------------------------------------
 // Types exportés
 // ------------------------------------------------------------------
 
@@ -142,3 +180,5 @@ export type ListUsersQuery = z.infer<typeof ListUsersQuerySchema>;
 export type SuspendUserBody = z.infer<typeof SuspendUserBodySchema>;
 export type AuditLogQuery = z.infer<typeof AuditLogQuerySchema>;
 export type ListRatingsQuery = z.infer<typeof ListRatingsQuerySchema>;
+export type ListTripsQuery = z.infer<typeof ListTripsQuerySchema>;
+export type UpdateSettingsBody = z.infer<typeof UpdateSettingsBodySchema>;

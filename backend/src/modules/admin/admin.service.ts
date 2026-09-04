@@ -43,6 +43,8 @@ import type {
   SuspendUserBody,
   AuditLogQuery,
   ListRatingsQuery,
+  ListTripsQuery,
+  UpdateSettingsBody,
 } from './admin.schema';
 
 // =====================================================================
@@ -891,6 +893,203 @@ export class AdminService {
     });
 
     return updated;
+  }
+
+  // ------------------------------------------------------------------
+  // POST /admin/cooperatives/:id/reactivate — SUSPENDED → VALIDATED
+  // AuditLog : COOP_VALIDATED
+  // ------------------------------------------------------------------
+
+  async reactivateCooperative(
+    cooperativeId: string,
+    ctx: AdminContext,
+  ): Promise<Cooperative> {
+    const cooperative = await this.db.cooperative.findUnique({
+      where: { id: cooperativeId },
+    });
+
+    if (!cooperative) {
+      throw new NotFoundError(`Coopérative introuvable : ${cooperativeId}`);
+    }
+
+    if (cooperative.status !== CooperativeStatus.SUSPENDED) {
+      throw new ConflictError(
+        `La coopérative est en statut "${cooperative.status}". Seules les coopératives SUSPENDED peuvent être réactivées.`,
+      );
+    }
+
+    const updated = await this.db.$transaction(async (tx) => {
+      const updatedCoop = await tx.cooperative.update({
+        where: { id: cooperativeId },
+        data: {
+          status: CooperativeStatus.VALIDATED,
+          validatedAt: new Date(),
+        },
+      });
+
+      await this.writeAuditLog(tx as unknown as PrismaClient, {
+        actorUserId: ctx.actorUserId,
+        action: AuditAction.COOP_VALIDATED,
+        entityType: 'Cooperative',
+        entityId: cooperativeId,
+        before: { status: cooperative.status },
+        after: { status: CooperativeStatus.VALIDATED, reason: 'reactivated' },
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+      });
+
+      return updatedCoop;
+    });
+
+    return updated;
+  }
+
+  // ==================================================================
+  // SUPERVISION — TRAJETS
+  // ==================================================================
+
+  // ------------------------------------------------------------------
+  // GET /admin/trips — liste paginée de tous les trajets
+  // ------------------------------------------------------------------
+
+  async listTrips(query: ListTripsQuery): Promise<PaginatedResult<object>> {
+    const { status, cooperativeId, from, to, cursor, limit } = query;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = {
+      ...(status ? { status } : {}),
+      ...(cooperativeId ? { cooperativeId } : {}),
+      ...(from || to
+        ? {
+            departureAt: {
+              ...(from ? { gte: new Date(from) } : {}),
+              ...(to ? { lte: new Date(to) } : {}),
+            },
+          }
+        : {}),
+      ...(cursor ? { id: { gt: cursor } } : {}),
+    };
+
+    const items = await this.db.tripInstance.findMany({
+      where,
+      take: limit + 1,
+      orderBy: { departureAt: 'desc' },
+      select: {
+        id: true,
+        departureAt: true,
+        arrivalEstimatedAt: true,
+        status: true,
+        actualDepartedAt: true,
+        createdAt: true,
+        cooperative: { select: { id: true, displayName: true } },
+        route: { select: { id: true, displayName: true } },
+        vehicle: { select: { id: true, registration: true, displayName: true } },
+        _count: { select: { bookings: true, bookingSeats: true } },
+      },
+    });
+
+    const hasNext = items.length > limit;
+    const page = hasNext ? items.slice(0, limit) : items;
+
+    return {
+      items: page,
+      nextCursor: hasNext ? (page[page.length - 1] as { id: string }).id : null,
+    };
+  }
+
+  // ==================================================================
+  // PARAMÈTRES PLATEFORME
+  // ==================================================================
+
+  // ------------------------------------------------------------------
+  // GET /admin/settings — politique de frais active + horaires SMS
+  // ------------------------------------------------------------------
+
+  async getSettings(): Promise<object> {
+    const activeFeePolicy = await this.db.platformFeePolicy.findFirst({
+      where: { isActive: true },
+      orderBy: { effectiveFrom: 'desc' },
+    });
+
+    return {
+      platformFee: activeFeePolicy
+        ? {
+            id: activeFeePolicy.id,
+            name: activeFeePolicy.name,
+            ratePercent: activeFeePolicy.ratePercent,
+            fixedAmountMga: activeFeePolicy.fixedAmountMga,
+            minAmountMga: activeFeePolicy.minAmountMga,
+            effectiveFrom: activeFeePolicy.effectiveFrom,
+          }
+        : null,
+      // Horaires SMS silence nocturne (valeurs par défaut du CDC §4.1)
+      smsQuietHoursStart: process.env.SMS_QUIET_START ?? '22:00',
+      smsQuietHoursEnd: process.env.SMS_QUIET_END ?? '07:00',
+    };
+  }
+
+  // ------------------------------------------------------------------
+  // PUT /admin/settings — mettre à jour la politique de frais
+  // Crée une nouvelle PlatformFeePolicy, désactive l'ancienne.
+  // AuditLog : ADMIN_ACCESS
+  // ------------------------------------------------------------------
+
+  async updateSettings(body: UpdateSettingsBody, ctx: AdminContext): Promise<object> {
+    const now = new Date();
+
+    const result = await this.db.$transaction(async (tx) => {
+      let updatedFeePolicy = null;
+
+      if (body.platformFee) {
+        // Désactiver la politique actuelle
+        await tx.platformFeePolicy.updateMany({
+          where: { isActive: true },
+          data: { isActive: false, effectiveUntil: now },
+        });
+
+        // Créer la nouvelle politique
+        updatedFeePolicy = await tx.platformFeePolicy.create({
+          data: {
+            name: body.platformFee.name ?? 'Frais plateforme',
+            ratePercent: body.platformFee.ratePercent ?? null,
+            fixedAmountMga: body.platformFee.fixedAmountMga ?? null,
+            minAmountMga: body.platformFee.minAmountMga ?? null,
+            effectiveFrom: now,
+            isActive: true,
+          },
+        });
+      }
+
+      await this.writeAuditLog(tx as unknown as PrismaClient, {
+        actorUserId: ctx.actorUserId,
+        action: AuditAction.ADMIN_ACCESS,
+        entityType: 'PlatformSettings',
+        after: {
+          platformFee: body.platformFee ?? null,
+          smsQuietHoursStart: body.smsQuietHoursStart ?? null,
+          smsQuietHoursEnd: body.smsQuietHoursEnd ?? null,
+        },
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+      });
+
+      return {
+        platformFee: updatedFeePolicy
+          ? {
+              id: updatedFeePolicy.id,
+              name: updatedFeePolicy.name,
+              ratePercent: updatedFeePolicy.ratePercent,
+              fixedAmountMga: updatedFeePolicy.fixedAmountMga,
+              minAmountMga: updatedFeePolicy.minAmountMga,
+              effectiveFrom: updatedFeePolicy.effectiveFrom,
+            }
+          : undefined,
+        smsQuietHoursStart: body.smsQuietHoursStart,
+        smsQuietHoursEnd: body.smsQuietHoursEnd,
+      };
+    });
+
+    return result;
   }
 
   // ==================================================================
