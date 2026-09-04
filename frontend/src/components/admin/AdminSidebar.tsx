@@ -83,6 +83,21 @@ const IconSettings = () => (
   </svg>
 );
 
+const IconBarChart = () => (
+  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+    <line x1="18" y1="20" x2="18" y2="10" />
+    <line x1="12" y1="20" x2="12" y2="4" />
+    <line x1="6" y1="20" x2="6" y2="14" />
+    <line x1="2" y1="20" x2="22" y2="20" />
+  </svg>
+);
+
+const IconShield = () => (
+  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+  </svg>
+);
+
 const NAV_ITEMS: NavItem[] = [
   { href: '/fr/admin', label: 'Tableau de bord', icon: <IconGrid /> },
   { href: '/fr/admin/cooperatives', label: 'Coopératives', icon: <IconBuilding /> },
@@ -90,7 +105,9 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/fr/admin/bookings', label: 'Réservations', icon: <IconClipboard /> },
   { href: '/fr/admin/ratings', label: 'Modération avis', icon: <IconStar /> },
   { href: '/fr/admin/users', label: 'Utilisateurs', icon: <IconUsers /> },
+  { href: '/fr/admin/reports', label: 'Rapports financiers', icon: <IconBarChart /> },
   { href: '/fr/admin/exports', label: 'Exports', icon: <IconDownload /> },
+  { href: '/fr/admin/admins', label: 'Administrateurs', icon: <IconShield /> },
   { href: '/fr/admin/settings', label: 'Paramètres plateforme', icon: <IconSettings /> },
 ];
 
