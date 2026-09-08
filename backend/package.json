@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
-    "dev": "ts-node --watch --project tsconfig.json src/server.ts",
+    "dev": "tsx watch src/server.ts",
     "test": "jest --runInBand",
     "test:watch": "jest --watch --runInBand",
     "test:coverage": "jest --coverage --runInBand",
@@ -47,6 +47,7 @@
     "prisma": "^5.17.0",
     "ts-jest": "^29.2.4",
     "ts-node": "^10.9.2",
+    "tsx": "^4.23.13",
     "typescript": "^5.5.4"
   },
   "jest": {
