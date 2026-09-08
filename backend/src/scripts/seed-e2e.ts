@@ -6,25 +6,38 @@
  *
  * Données créées :
  * - 1 coopérative de test (VALIDATED)
- * - 1 SeatMap (4 sièges STANDARD + 2 VIP)
+ * - 1 SeatMap (6 sièges : 2 VIP + 4 STANDARD)
  * - 1 Vehicle
  * - 1 Route Antananarivo → Toamasina
  * - 2 TripInstances OPEN_FOR_BOOKING (demain + dans 7 jours)
  * - Fares pour chaque trip
+ * - 1 utilisateur COOP_ADMIN (phone +261340000002) + Membership E2E
  *
  * Usage :
  *   npx ts-node -r tsconfig-paths/register src/scripts/seed-e2e.ts
  */
 
 import { PrismaClient } from '@prisma/client';
+import * as argon2 from 'argon2';
 
 const db = new PrismaClient();
 
 // IDs fixes pour idempotence (générés une fois, hardcodés)
-const COOP_ID         = 'e2e00000-0000-0000-0000-000000000001';
-const SEATMAP_ID      = 'e2e00000-0000-0000-0000-000000000002';
-const VEHICLE_ID      = 'e2e00000-0000-0000-0000-000000000003';
-const ROUTE_ID        = 'e2e00000-0000-0000-0000-000000000004';
+const COOP_ID              = 'e2e00000-0000-0000-0000-000000000001';
+const SEATMAP_ID           = 'e2e00000-0000-0000-0000-000000000002';
+const VEHICLE_ID           = 'e2e00000-0000-0000-0000-000000000003';
+const ROUTE_ID             = 'e2e00000-0000-0000-0000-000000000004';
+
+// Utilisateur COOP_ADMIN pour les tests du back-office
+const COOP_ADMIN_USER_ID   = 'e2e00000-0000-0000-0002-000000000001';
+const COOP_ADMIN_PROFILE_ID = 'e2e00000-0000-0000-0002-000000000002';
+const COOP_ADMIN_MEMBER_ID  = 'e2e00000-0000-0000-0002-000000000003';
+export const COOP_ADMIN = {
+  phone: '+261340000002',
+  password: 'CoopAdmin2024!',
+  firstName: 'AdminCoop',
+  lastName: 'E2E',
+};
 
 // Villes issues du seed officiel des villes
 const CITY_TANA_ID    = '770b9808-5087-431b-8342-243848dcb4fe'; // Antananarivo
@@ -165,6 +178,45 @@ async function main() {
     const dateStr = departure.toISOString().split('T')[0];
     console.log(`[seed-e2e] ✓ TripInstance J+${daysFromNow} (${dateStr}) — id: ${tripId}`);
   }
+
+  // 7. Utilisateur COOP_ADMIN + TravelerProfile + Membership
+  const passwordHash = await argon2.hash(COOP_ADMIN.password);
+
+  await db.user.upsert({
+    where: { id: COOP_ADMIN_USER_ID },
+    update: { passwordHash },
+    create: {
+      id: COOP_ADMIN_USER_ID,
+      phone: COOP_ADMIN.phone,
+      passwordHash,
+      preferredLang: 'FR',
+      status: 'ACTIVE',
+    },
+  });
+
+  await db.travelerProfile.upsert({
+    where: { id: COOP_ADMIN_PROFILE_ID },
+    update: {},
+    create: {
+      id: COOP_ADMIN_PROFILE_ID,
+      userId: COOP_ADMIN_USER_ID,
+      firstName: COOP_ADMIN.firstName,
+      lastName: COOP_ADMIN.lastName,
+    },
+  });
+
+  await db.membership.upsert({
+    where: { id: COOP_ADMIN_MEMBER_ID },
+    update: { active: true },
+    create: {
+      id: COOP_ADMIN_MEMBER_ID,
+      userId: COOP_ADMIN_USER_ID,
+      cooperativeId: COOP_ID,
+      role: 'COOP_ADMIN',
+      active: true,
+    },
+  });
+  console.log(`[seed-e2e] ✓ Utilisateur COOP_ADMIN (${COOP_ADMIN.phone})`);
 
   console.log('[seed-e2e] Seed E2E terminé avec succès.');
 }

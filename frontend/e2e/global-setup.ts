@@ -1,9 +1,13 @@
 /**
- * Playwright global setup — seed E2E + login utilisateur de test.
+ * Playwright global setup — seed E2E + sessions de test.
  *
  * 1. Lance `npm run seed:e2e` dans le répertoire backend (idempotent).
- * 2. Crée l'utilisateur de test via l'API (409 ignoré si déjà existant).
- * 3. Se connecte via le formulaire et sauvegarde la session dans e2e/.auth/user.json.
+ * 2. Crée l'utilisateur voyageur via l'API (409 ignoré) et sauvegarde la session.
+ * 3. Se connecte en tant que COOP_ADMIN (créé par le seed) et sauvegarde la session.
+ *
+ * Sessions générées :
+ *  - e2e/.auth/user.json      — voyageur TestE2E
+ *  - e2e/.auth/coop-admin.json — back-office COOP_ADMIN
  */
 import { chromium, FullConfig } from '@playwright/test';
 import { execSync } from 'child_process';
@@ -17,6 +21,13 @@ export const TEST_USER = {
   phone: '+261340000001',
   password: 'TestE2E2024!',
   preferredLang: 'FR',
+};
+
+export const COOP_ADMIN_USER = {
+  phone: '+261340000002',
+  password: 'CoopAdmin2024!',
+  firstName: 'AdminCoop',
+  lastName: 'E2E',
 };
 
 export default async function globalSetup(_config: FullConfig) {
@@ -57,9 +68,21 @@ export default async function globalSetup(_config: FullConfig) {
   await page.locator('form button[type="submit"]').click();
   await page.waitForURL((url) => !url.pathname.includes('/auth/login'), { timeout: 15_000 });
 
-  // 3. Sauvegarder la session (cookies httpOnly inclus)
+  // 3. Sauvegarder la session voyageur (cookies httpOnly inclus)
   await context.storageState({ path: 'e2e/.auth/user.json' });
+  await context.clearCookies();
+
+  // 4. Connexion COOP_ADMIN (créé par le seed E2E dans la DB)
+  await page.goto('/fr/auth/login');
+  await page.getByLabel(/e-mail|email/i).first().fill(COOP_ADMIN_USER.phone);
+  await page.getByLabel(/mot de passe|teny miafina/i).first().fill(COOP_ADMIN_USER.password);
+  await page.locator('form button[type="submit"]').click();
+  await page.waitForURL((url) => !url.pathname.includes('/auth/login'), { timeout: 15_000 });
+
+  // 5. Sauvegarder la session COOP_ADMIN
+  await context.storageState({ path: 'e2e/.auth/coop-admin.json' });
+
   await browser.close();
 
-  console.log('[E2E setup] Utilisateur de test connecté — session sauvegardée.');
+  console.log('[E2E setup] Sessions sauvegardées — user.json + coop-admin.json.');
 }
