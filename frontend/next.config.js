@@ -10,6 +10,14 @@ const nextConfig = {
     formats: ['image/webp'],
   },
   async headers() {
+    const isDev = process.env.NODE_ENV === 'development';
+
+    // En dev, Next.js App Router injecte des scripts inline pour l'hydratation
+    // et le HMR — unsafe-inline est requis, sinon React ne s'active pas.
+    const scriptSrc = isDev
+      ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+      : "script-src 'self'";
+
     return [
       {
         source: '/(.*)',
@@ -22,8 +30,7 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self'",
-              // Tailwind génère des styles inline en dev — unsafe-inline limité à style-src
+              scriptSrc,
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https://api.instram.mg https://staging.api.instram.mg http://localhost:4000",
               [
