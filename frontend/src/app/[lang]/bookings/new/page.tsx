@@ -96,17 +96,31 @@ export default async function BookingNewPage({
     );
   }
 
-  // Construire un objet SeatHoldResponse minimal depuis les query params
-  // (les sièges réels sont dans le hold — le backend valide à la création du booking)
-  // Ici on reconstruit un résumé pour l'affichage uniquement.
+  // Charger les sièges réels retenus par ce hold depuis l'API (status HELD_BY_ME)
+  type SeatRaw = { seatDefinitionId: string; code: string; priceMga: number; status: string };
+  let heldSeats: Array<{ seatDefinitionId: string; code: string; priceMga: number }> = [];
+  try {
+    const seatMap = await apiGet<{ seats: SeatRaw[] }>(
+      `/trips/${tripId}/seats`,
+      { cache: 'no-store' },
+    );
+    heldSeats = seatMap.seats
+      .filter((s) => s.status === 'HELD_BY_ME')
+      .map((s) => ({ seatDefinitionId: s.seatDefinitionId, code: s.code, priceMga: s.priceMga }));
+  } catch {
+    // L'API peut être indisponible — on tombera sur le fallback ci-dessous
+  }
+
   const holdProxy: SeatHoldResponse = {
     holdId,
     tripInstanceId: tripId,
-    seats: trip.fares.map((fare, i) => ({
-      seatDefinitionId: `placeholder-${i}`,
-      code: `?`,
-      priceMga: fare.priceMga,
-    })),
+    seats: heldSeats.length > 0
+      ? heldSeats
+      : trip.fares.map((fare, i) => ({
+          seatDefinitionId: `unknown-${i}`,
+          code: `?`,
+          priceMga: fare.priceMga,
+        })),
     expiresAt: expiresAt ?? new Date(Date.now() + 120_000).toISOString(),
   };
 

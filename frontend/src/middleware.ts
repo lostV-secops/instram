@@ -7,7 +7,7 @@ const DEFAULT_LOCALE: Locale = 'fr';
 const LOCALE_COOKIE = 'NEXT_LOCALE';
 
 /** Routes qui nécessitent une session active (redirection vers login sinon) */
-const PROTECTED_PATH_SEGMENTS = ['/bookings', '/coop'];
+const PROTECTED_PATH_SEGMENTS = ['/bookings', '/coop', '/driver', '/admin'];
 
 function getPreferredLocale(request: NextRequest): Locale {
   const cookieLocale = request.cookies.get(LOCALE_COOKIE)?.value;
