@@ -244,7 +244,7 @@ export default function RegisterPage() {
           disabled={success}
         >
           {success
-            ? '✅ ' + (lang === 'fr' ? 'Compte créé !' : 'Kaonty voaforona!')
+            ? '✅ ' + t.auth.successRegisterBtn
             : isLoading
               ? t.auth.registering
               : t.auth.registerButton}

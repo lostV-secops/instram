@@ -183,7 +183,9 @@
     "errorEmailInvalid": "L'adresse e-mail est invalide.",
     "errorAlreadyExists": "Un compte existe déjà avec cet email ou ce numéro.",
     "errorNameRequired": "Ce champ est requis.",
-    "successRegister": "Compte créé avec succès ! Bienvenue sur InsTRAM."
+    "successRegister": "Compte créé avec succès ! Bienvenue sur InsTRAM.",
+    "successRegisterBtn": "Compte créé !",
+    "successLogin": "Connexion réussie ! Redirection en cours…"
   },
   "footer": {
     "copyright": "© 2024 InsTRAM — CODEL Technologies Co.",

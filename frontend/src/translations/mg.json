@@ -183,7 +183,9 @@
     "errorEmailInvalid": "Tsy mety ny adiresy mailaka.",
     "errorAlreadyExists": "Efa misy kaonty amin'ity mailaka na laharana ity.",
     "errorNameRequired": "Ilaina ity saha ity.",
-    "successRegister": "Kaonty voaforona ! Tonga soa ao InsTRAM."
+    "successRegister": "Kaonty voaforona ! Tonga soa ao InsTRAM.",
+    "successRegisterBtn": "Kaonty voaforona !",
+    "successLogin": "Miditra soa aman-tsara ! Alefa..."
   },
   "footer": {
     "copyright": "© 2024 InsTRAM — CODEL Technologies Co.",
