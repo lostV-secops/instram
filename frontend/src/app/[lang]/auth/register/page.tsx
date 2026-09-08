@@ -29,7 +29,6 @@ export default function RegisterPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   const fnId = useId();
   const lnId = useId();
@@ -63,7 +62,6 @@ export default function RegisterPage() {
 
     setIsLoading(true);
     setGlobalError(null);
-    setSuccess(false);
 
     try {
       const body: Record<string, unknown> = {
@@ -92,12 +90,8 @@ export default function RegisterPage() {
         return;
       }
 
-      // Succès : afficher le message de confirmation 2 s avant de rediriger
-      setSuccess(true);
-      setTimeout(() => {
-        router.push(`/${lang}`);
-        router.refresh();
-      }, 2000);
+      router.push(`/${lang}`);
+      router.refresh();
     } catch {
       setGlobalError(t.common.errorNetwork);
     } finally {
@@ -110,18 +104,6 @@ export default function RegisterPage() {
       <h1 className="text-2xl font-bold text-gray-900 mb-6 text-center">
         {t.auth.registerTitle}
       </h1>
-
-      {/* ── Bannière succès ── */}
-      {success && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="mb-4 flex items-center gap-3 rounded-xl border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800"
-        >
-          <span className="text-xl">✅</span>
-          <span className="font-medium">{t.auth.successRegister}</span>
-        </div>
-      )}
 
       <form
         onSubmit={handleSubmit}
@@ -241,13 +223,8 @@ export default function RegisterPage() {
           size="lg"
           fullWidth
           isLoading={isLoading}
-          disabled={success}
         >
-          {success
-            ? '✅ ' + t.auth.successRegisterBtn
-            : isLoading
-              ? t.auth.registering
-              : t.auth.registerButton}
+          {isLoading ? t.auth.registering : t.auth.registerButton}
         </Button>
 
         <div className="text-center text-sm text-gray-600">

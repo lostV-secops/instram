@@ -1,10 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { COOKIE_ACCESS } from './lib/auth';
+import {
+  COOKIE_ACCESS,
+  COOKIE_REFRESH,
+  ACCESS_TOKEN_MAX_AGE,
+  REFRESH_TOKEN_MAX_AGE,
+  sessionCookieOptions,
+} from './lib/auth';
 
 const LOCALES = ['fr', 'mg'] as const;
 type Locale = (typeof LOCALES)[number];
 const DEFAULT_LOCALE: Locale = 'fr';
 const LOCALE_COOKIE = 'NEXT_LOCALE';
+
+const BACKEND_URL =
+  process.env.BACKEND_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  'http://localhost:4000';
 
 /** Routes qui nécessitent une session active (redirection vers login sinon) */
 const PROTECTED_PATH_SEGMENTS = ['/bookings', '/coop', '/driver', '/admin', '/profile'];
@@ -24,7 +35,30 @@ function getPreferredLocale(request: NextRequest): Locale {
   return DEFAULT_LOCALE;
 }
 
-export function middleware(request: NextRequest): NextResponse {
+/**
+ * Rafraîchit silencieusement l'access token via le refresh token.
+ * Retourne { accessToken, refreshToken } ou null si échec.
+ */
+async function tryRefreshToken(
+  rawRefreshToken: string,
+): Promise<{ accessToken: string; refreshToken: string } | null> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/v1/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: rawRefreshToken }),
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.accessToken || !data.refreshToken) return null;
+    return { accessToken: data.accessToken, refreshToken: data.refreshToken };
+  } catch {
+    return null;
+  }
+}
+
+export async function middleware(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
 
   // Ne pas intercepter les routes Next.js internes, fichiers statiques et API
@@ -48,12 +82,9 @@ export function middleware(request: NextRequest): NextResponse {
     const locale = getPreferredLocale(request);
     const localizedPath = `/${locale}${pathname === '/' ? '' : pathname}`;
     const redirectUrl = new URL(localizedPath, request.url);
-
-    // Préserver les query params
     redirectUrl.search = request.nextUrl.search;
 
     const response = NextResponse.redirect(redirectUrl);
-    // Mémoriser la préférence de langue (1 an)
     response.cookies.set(LOCALE_COOKIE, locale, {
       maxAge: 60 * 60 * 24 * 365,
       path: '/',
@@ -62,10 +93,11 @@ export function middleware(request: NextRequest): NextResponse {
     return response;
   }
 
-  // Mettre à jour le cookie de langue si nécessaire
   const currentLocale = LOCALES.find(
     (l) => pathname === `/${l}` || pathname.startsWith(`/${l}/`),
   );
+
+  // Mise à jour du cookie de langue si nécessaire
   if (currentLocale) {
     const storedLocale = request.cookies.get(LOCALE_COOKIE)?.value;
     if (storedLocale !== currentLocale) {
@@ -75,9 +107,8 @@ export function middleware(request: NextRequest): NextResponse {
         path: '/',
         sameSite: 'lax',
       });
-      // Vérifier les routes protégées sur la même passe
       if (requiresAuth(pathname, currentLocale)) {
-        return redirectToLogin(request, pathname, currentLocale);
+        return handleAuthCheck(request, response, pathname, currentLocale);
       }
       return response;
     }
@@ -85,13 +116,58 @@ export function middleware(request: NextRequest): NextResponse {
 
   // Vérification des routes protégées
   if (currentLocale && requiresAuth(pathname, currentLocale)) {
-    const hasSession = request.cookies.has(COOKIE_ACCESS);
-    if (!hasSession) {
-      return redirectToLogin(request, pathname, currentLocale);
-    }
+    const baseResponse = NextResponse.next();
+    return handleAuthCheck(request, baseResponse, pathname, currentLocale);
   }
 
   return NextResponse.next();
+}
+
+async function handleAuthCheck(
+  request: NextRequest,
+  baseResponse: NextResponse,
+  pathname: string,
+  locale: Locale,
+): Promise<NextResponse> {
+  const hasAccessToken = request.cookies.has(COOKIE_ACCESS);
+  const rawRefreshToken = request.cookies.get(COOKIE_REFRESH)?.value;
+
+  if (hasAccessToken) {
+    // Token d'accès présent — laisser passer
+    return baseResponse;
+  }
+
+  if (!rawRefreshToken) {
+    // Aucun token — redirection vers login
+    return redirectToLogin(request, pathname, locale);
+  }
+
+  // Access token manquant mais refresh token présent → rafraîchissement silencieux
+  const tokens = await tryRefreshToken(rawRefreshToken);
+  if (!tokens) {
+    return redirectToLogin(request, pathname, locale);
+  }
+
+  // Injection du nouveau cookie d'accès dans les headers de la requête forwarded
+  // afin que cookies() de next/headers le voie dans les Server Components.
+  const reqHeaders = new Headers(request.headers);
+  const existingCookies = request.headers.get('cookie') ?? '';
+  const cookieSep = existingCookies ? '; ' : '';
+  reqHeaders.set('cookie', `${existingCookies}${cookieSep}${COOKIE_ACCESS}=${tokens.accessToken}`);
+
+  const response = NextResponse.next({ request: { headers: reqHeaders } });
+
+  // Persister les nouveaux tokens dans les cookies du navigateur
+  response.cookies.set(COOKIE_ACCESS, tokens.accessToken, {
+    ...sessionCookieOptions,
+    maxAge: ACCESS_TOKEN_MAX_AGE,
+  });
+  response.cookies.set(COOKIE_REFRESH, tokens.refreshToken, {
+    ...sessionCookieOptions,
+    maxAge: REFRESH_TOKEN_MAX_AGE,
+  });
+
+  return response;
 }
 
 function requiresAuth(pathname: string, locale: Locale): boolean {
@@ -112,13 +188,6 @@ function redirectToLogin(
 
 export const config = {
   matcher: [
-    /*
-     * Matcher : tous les chemins sauf :
-     * - api/ (Route Handlers Next.js)
-     * - _next/static (fichiers statiques)
-     * - _next/image (optimisation image)
-     * - favicon.ico
-     */
     '/((?!api|_next/static|_next/image|favicon.ico).*)',
   ],
 };

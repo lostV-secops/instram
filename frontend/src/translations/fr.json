@@ -186,7 +186,7 @@
     "errorNameRequired": "Ce champ est requis.",
     "successRegister": "Compte créé avec succès ! Bienvenue sur InsTRAM.",
     "successRegisterBtn": "Compte créé !",
-    "successLogin": "Connexion réussie ! Redirection en cours…"
+    "successLogin": "Connexion réussie !"
   },
   "profile": {
     "title": "Mon profil",

@@ -38,7 +38,6 @@ export default function LoginPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   const credId = useId();
   const pwdId = useId();
@@ -92,12 +91,8 @@ export default function LoginPage() {
         return;
       }
 
-      // Succès : afficher le message 1,5 s avant de rediriger
-      setSuccess(true);
-      setTimeout(() => {
-        router.push(redirectTo);
-        router.refresh();
-      }, 1500);
+      router.push(redirectTo);
+      router.refresh();
     } catch {
       setGlobalError(t.common.errorNetwork);
     } finally {
@@ -110,18 +105,6 @@ export default function LoginPage() {
       <h1 className="text-2xl font-bold text-gray-900 mb-6 text-center">
         {t.auth.loginTitle}
       </h1>
-
-      {/* Bannière succès */}
-      {success && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="mb-4 flex items-center gap-3 rounded-xl border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800"
-        >
-          <span className="text-xl">✅</span>
-          <span className="font-medium">{t.auth.successLogin}</span>
-        </div>
-      )}
 
       <form
         onSubmit={handleSubmit}
@@ -171,9 +154,8 @@ export default function LoginPage() {
           size="lg"
           fullWidth
           isLoading={isLoading}
-          disabled={success}
         >
-          {success ? '✅ ' + t.auth.successLogin : isLoading ? t.auth.loggingIn : t.auth.loginButton}
+          {isLoading ? t.auth.loggingIn : t.auth.loginButton}
         </Button>
 
         <div className="text-center text-sm text-gray-600">
