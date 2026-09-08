@@ -40,10 +40,9 @@ export default async function HomePage({ params }: PageProps) {
   // Chargement SSR des villes — cached via HTTP Cache-Control du backend (1h)
   let cities: CityList['items'] = [];
   try {
-    const data = await apiGet<CityList>('/catalog/cities?limit=200', {
+    const data = await apiGet<CityList>('/catalog/cities?limit=500', {
       acceptLang: lang,
-      // Le backend renvoie Cache-Control: public, max-age=3600
-      next: { revalidate: 3600 },
+      cache: 'no-store',
     });
     cities = data.items ?? [];
   } catch {

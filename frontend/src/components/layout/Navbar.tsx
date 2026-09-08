@@ -64,14 +64,24 @@ export function Navbar({ isAuthenticated = false, userFirstName }: NavbarProps) 
             </Link>
           </li>
           {isAuthenticated && (
-            <li>
-              <Link
-                href={`/${lang}/bookings`}
-                className="text-white/90 hover:text-white text-sm transition-colors"
-              >
-                {t.nav.myBookings}
-              </Link>
-            </li>
+            <>
+              <li>
+                <Link
+                  href={`/${lang}/bookings`}
+                  className="text-white/90 hover:text-white text-sm transition-colors"
+                >
+                  {t.nav.myBookings}
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={`/${lang}/profile`}
+                  className="text-white/90 hover:text-white text-sm transition-colors"
+                >
+                  {t.nav.myProfile}
+                </Link>
+              </li>
+            </>
           )}
         </ul>
 

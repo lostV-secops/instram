@@ -150,6 +150,28 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
   });
 
   // ------------------------------------------------------------------
+  // GET /me — Profil complet de l'utilisateur connecté
+  // ------------------------------------------------------------------
+  fastify.get(
+    '/me',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const userId = (req.user as { sub: string }).sub;
+      try {
+        const user = await authService.getMe(userId);
+        return reply.status(200).send(user);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'NOT_FOUND') {
+          return reply.status(404).send({ code, message: 'Utilisateur introuvable' });
+        }
+        req.log.error(err, 'getMe error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
   // DELETE /me — Suppression / anonymisation du compte voyageur (H-5)
   // Nécessite un JWT d'accès valide. Opération irréversible côté applicatif.
   // Les données financières (Booking, Payment, etc.) sont conservées (audit légal).

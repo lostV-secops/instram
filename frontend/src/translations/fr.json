@@ -26,7 +26,8 @@
     "cooperatives": "Coopératives",
     "login": "Se connecter",
     "register": "S'inscrire",
-    "switchLang": "Malagasy"
+    "switchLang": "Malagasy",
+    "myProfile": "Mon profil"
   },
   "home": {
     "title": "Réservez votre trajet",
@@ -186,6 +187,29 @@
     "successRegister": "Compte créé avec succès ! Bienvenue sur InsTRAM.",
     "successRegisterBtn": "Compte créé !",
     "successLogin": "Connexion réussie ! Redirection en cours…"
+  },
+  "profile": {
+    "title": "Mon profil",
+    "travelerSection": "Informations personnelles",
+    "accountSection": "Compte",
+    "name": "Nom complet",
+    "email": "Adresse e-mail",
+    "phone": "Numéro de téléphone",
+    "lang": "Langue préférée",
+    "langFr": "Français",
+    "langMg": "Malagasy",
+    "mobileMoneyPhone": "Numéro Mobile Money",
+    "roles": "Rôle(s)",
+    "notSet": "Non renseigné",
+    "myBookings": "Voir mes réservations",
+    "roleTRAVELER": "Voyageur",
+    "roleCOOP_ADMIN": "Admin coopérative",
+    "roleCOOP_DRIVER": "Conducteur",
+    "roleCOOP_ASSISTANT": "Assistant",
+    "roleCOOP_CONTROLLER": "Contrôleur",
+    "roleADMIN_SUPER": "Super Admin",
+    "roleADMIN_OPS": "Admin OPS",
+    "roleADMIN_MODERATOR": "Modérateur"
   },
   "footer": {
     "copyright": "© 2024 InsTRAM — CODEL Technologies Co.",

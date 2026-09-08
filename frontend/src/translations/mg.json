@@ -26,7 +26,8 @@
     "cooperatives": "Kooperatera",
     "login": "Hiditra",
     "register": "Misoratra anarana",
-    "switchLang": "Français"
+    "switchLang": "Français",
+    "myProfile": "Ny mombamomba ahy"
   },
   "home": {
     "title": "Ambara ny diananao",
@@ -186,6 +187,29 @@
     "successRegister": "Kaonty voaforona ! Tonga soa ao InsTRAM.",
     "successRegisterBtn": "Kaonty voaforona !",
     "successLogin": "Miditra soa aman-tsara ! Alefa..."
+  },
+  "profile": {
+    "title": "Ny mombamomba ahy",
+    "travelerSection": "Antontan-kevitra manokana",
+    "accountSection": "Kaonty",
+    "name": "Anarana feno",
+    "email": "Adiresy e-mail",
+    "phone": "Laharana finday",
+    "lang": "Fiteny tianao",
+    "langFr": "Frantsay",
+    "langMg": "Malagasy",
+    "mobileMoneyPhone": "Laharana Mobile Money",
+    "roles": "Anjara",
+    "notSet": "Tsy voatondro",
+    "myBookings": "Hijery ny fandraharahako",
+    "roleTRAVELER": "Mpandeha",
+    "roleCOOP_ADMIN": "Mpitantana koperativa",
+    "roleCOOP_DRIVER": "Mpamily",
+    "roleCOOP_ASSISTANT": "Mpanampy",
+    "roleCOOP_CONTROLLER": "Mpanara-maso",
+    "roleADMIN_SUPER": "Super Admin",
+    "roleADMIN_OPS": "Admin OPS",
+    "roleADMIN_MODERATOR": "Mpitsara"
   },
   "footer": {
     "copyright": "© 2024 InsTRAM — CODEL Technologies Co.",

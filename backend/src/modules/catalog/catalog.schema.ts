@@ -10,7 +10,7 @@ export const ListCitiesQuerySchema = z.object({
   q: z.string().optional(),
   region: z.string().optional(),
   cursor: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+  limit: z.coerce.number().int().min(1).max(500).default(20),
 });
 
 export type ListCitiesQuery = z.infer<typeof ListCitiesQuerySchema>;

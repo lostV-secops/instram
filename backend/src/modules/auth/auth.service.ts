@@ -432,6 +432,27 @@ export class AuthService {
     };
   }
 
+  // ------------------------------------------------------------------
+  // getMe — profil complet de l'utilisateur connecté
+  // ------------------------------------------------------------------
+
+  async getMe(userId: string): Promise<SafeUser> {
+    const user = await this.db.user.findUnique({
+      where: { id: userId },
+      include: {
+        travelerProfile: true,
+        memberships: { include: { cooperative: true }, where: { active: true } },
+        adminProfile: true,
+      },
+    });
+    if (!user) {
+      const err = new Error('Utilisateur introuvable');
+      (err as NodeJS.ErrnoException).code = 'NOT_FOUND';
+      throw err;
+    }
+    return this._toSafeUser(user);
+  }
+
   private async _recordFailedLogin(
     userId: string | null,
     meta: { ipAddress?: string; userAgent?: string },
