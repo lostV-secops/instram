@@ -1,11 +1,13 @@
 /**
- * Playwright global setup — crée un utilisateur de test et sauvegarde la session.
+ * Playwright global setup — seed E2E + login utilisateur de test.
  *
- * L'utilisateur de test est créé via l'API (idempotent : 409 ignoré).
- * La session est sauvegardée dans e2e/.auth/user.json et réutilisée par tous
- * les tests authentifiés (storageState).
+ * 1. Lance `npm run seed:e2e` dans le répertoire backend (idempotent).
+ * 2. Crée l'utilisateur de test via l'API (409 ignoré si déjà existant).
+ * 3. Se connecte via le formulaire et sauvegarde la session dans e2e/.auth/user.json.
  */
 import { chromium, FullConfig } from '@playwright/test';
+import { execSync } from 'child_process';
+import path from 'path';
 
 const BASE = 'http://localhost:3000';
 
@@ -18,6 +20,16 @@ export const TEST_USER = {
 };
 
 export default async function globalSetup(_config: FullConfig) {
+  // 0. Seed la base de données avec les données de test (trips, coopérative, etc.)
+  const backendDir = path.resolve(__dirname, '../../backend');
+  console.log('[E2E setup] Lancement du seed E2E base de données...');
+  execSync('npm run seed:e2e', {
+    cwd: backendDir,
+    stdio: 'inherit',
+    timeout: 60_000,
+  });
+  console.log('[E2E setup] Seed E2E terminé.');
+
   const browser = await chromium.launch();
   const context = await browser.newContext({ baseURL: BASE });
   const page = await context.newPage();
