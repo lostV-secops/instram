@@ -171,9 +171,10 @@ async function handleAuthCheck(
 }
 
 function requiresAuth(pathname: string, locale: Locale): boolean {
-  return PROTECTED_PATH_SEGMENTS.some((segment) =>
-    pathname.startsWith(`/${locale}${segment}`),
-  );
+  return PROTECTED_PATH_SEGMENTS.some((segment) => {
+    const base = `/${locale}${segment}`;
+    return pathname === base || pathname.startsWith(`${base}/`);
+  });
 }
 
 function redirectToLogin(
