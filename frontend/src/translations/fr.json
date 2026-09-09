@@ -150,7 +150,14 @@
     },
     "passengers": "Passagers",
     "payment": "Paiement",
-    "trip": "Trajet"
+    "trip": "Trajet",
+    "rateTitle": "Noter ce voyage",
+    "rateSubtitle": "Votre avis aide les autres voyageurs à choisir.",
+    "rateSubmit": "Envoyer mon avis",
+    "rateSubmitting": "Envoi en cours…",
+    "rateSuccess": "Merci pour votre avis !",
+    "rateAlreadyDone": "Vous avez déjà noté ce voyage.",
+    "rateCommentPlaceholder": "Commentaire (facultatif, 2000 caractères max)"
   },
   "bookingList": {
     "title": "Mes réservations",

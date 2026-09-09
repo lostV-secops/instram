@@ -150,7 +150,14 @@
     },
     "passengers": "Mpandeha",
     "payment": "Fandoavana",
-    "trip": "Dia"
+    "trip": "Dia",
+    "rateTitle": "Omeo tsara toerana ity dia ity",
+    "rateSubtitle": "Ny hevitrao manampy ny mpandeha hafa handray fanapahan-kevitra.",
+    "rateSubmit": "Alefa ny hevitro",
+    "rateSubmitting": "Alefa…",
+    "rateSuccess": "Misaotra anao noho ny hevitrao !",
+    "rateAlreadyDone": "Efa nomenao tsara toerana ity dia ity.",
+    "rateCommentPlaceholder": "Fanehoan-kevitra (tsy voatery, 2000 litera fara-betsiny)"
   },
   "bookingList": {
     "title": "Ny fandraharahako",

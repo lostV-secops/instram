@@ -467,6 +467,11 @@ export class BookingsService {
           }
         : null;
 
+    const canRate = booking.status === BookingStatus.COMPLETED;
+    const hasRated = canRate
+      ? (await this.db.rating.count({ where: { bookingId: booking.id } })) > 0
+      : false;
+
     return {
       ...this._formatBooking(booking),
       trip: {
@@ -495,6 +500,8 @@ export class BookingsService {
         confirmedAt: p.confirmedAt?.toISOString() ?? null,
       })),
       ticket,
+      canRate,
+      hasRated,
     };
   }
 

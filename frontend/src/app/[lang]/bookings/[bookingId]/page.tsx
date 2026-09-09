@@ -14,6 +14,7 @@ import { Badge, bookingStatusVariant, paymentStatusVariant } from '@/components/
 import { AppError } from '@/lib/api';
 import type { BookingDetail, Lang } from '@/lib/types';
 import { QrCodeCanvas } from '@/components/ui/QrCodeCanvas';
+import { RatingForm } from '@/components/booking/RatingForm';
 
 interface PageProps {
   params: { lang: string; bookingId: string };
@@ -276,6 +277,34 @@ export default async function BookingDetailPage({ params }: PageProps) {
         >
           {t.booking.paymentPending}
         </div>
+      )}
+
+      {/* Notation — visible uniquement si voyage terminé */}
+      {booking.canRate && (
+        <section
+          className="bg-white rounded-xl border border-gray-200 p-4"
+          aria-labelledby="booking-rating"
+        >
+          <h2
+            id="booking-rating"
+            className="text-sm font-semibold text-brand-dark uppercase tracking-wide mb-3 text-center"
+          >
+            {t.bookingDetail.rateTitle}
+          </h2>
+          <RatingForm
+            bookingId={booking.id}
+            alreadyRated={booking.hasRated}
+            labels={{
+              rateTitle: t.bookingDetail.rateTitle,
+              rateSubtitle: t.bookingDetail.rateSubtitle,
+              rateSubmit: t.bookingDetail.rateSubmit,
+              rateSubmitting: t.bookingDetail.rateSubmitting,
+              rateSuccess: t.bookingDetail.rateSuccess,
+              rateAlreadyDone: t.bookingDetail.rateAlreadyDone,
+              rateCommentPlaceholder: t.bookingDetail.rateCommentPlaceholder,
+            }}
+          />
+        </section>
       )}
     </div>
   );

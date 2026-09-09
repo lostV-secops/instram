@@ -255,6 +255,8 @@ export interface BookingDetail extends Booking {
   }>;
   payments: Payment[];
   ticket: Ticket | null;
+  canRate: boolean;
+  hasRated: boolean;
 }
 
 // ─── Directory (annuaire public) ─────────────────────────────────────────────
