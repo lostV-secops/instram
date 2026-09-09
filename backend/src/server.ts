@@ -1,7 +1,7 @@
 import { buildApp } from './app';
 import prisma from './infra/db/prisma';
 import redis from './infra/cache/redis';
-import { scheduleTripAutoClose, createTripAutoCloseWorker } from './infra/queue/trips.queue';
+import { scheduleTripAutoClose, createTripAutoCloseWorker, scheduleTripReminder, createTripReminderWorker } from './infra/queue/trips.queue';
 import { scheduleReconcileJob, startPaymentReconcileWorker } from './infra/queue/payments.queue';
 import { startSmsWorker } from './infra/queue/sms.queue';
 import { startExportWorker } from './infra/queue/exports.queue';
@@ -50,6 +50,10 @@ async function start(): Promise<void> {
     // Planification de la clôture automatique des trajets (VH-03)
     await scheduleTripAutoClose();
     createTripAutoCloseWorker();
+
+    // Planification des rappels SMS J-1 avant départ (CDC §5.5)
+    await scheduleTripReminder();
+    createTripReminderWorker();
 
     // Workers BullMQ : réconciliation paiements, exports, SMS (architecture §2.7)
     await scheduleReconcileJob();

@@ -591,6 +591,7 @@ model TripInstance {
   actualDepartedAt      DateTime?
   completedAt           DateTime?
   cancelledAt           DateTime?
+  reminderSentAt        DateTime?     // Horodatage du SMS de rappel J-1 (null = pas encore envoyé)
   notesFr               String?
   notesMg               String?
   createdAt             DateTime      @default(now())

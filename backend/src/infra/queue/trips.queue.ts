@@ -2,6 +2,7 @@ import { Queue, Worker, type Job } from 'bullmq';
 import type { Redis as RedisType } from 'ioredis';
 import { TripStatus, AuditAction } from '@prisma/client';
 import prisma from '../db/prisma';
+import { enqueueSms } from './sms.queue';
 
 // =====================================================================
 // Worker trip.autoClose — Architecture §2.7, §6.6
@@ -185,4 +186,138 @@ export function _setTripAutoCloseQueueForTest(q: Queue): void {
 export function _resetWorkerForTest(): void {
   _worker = undefined;
   _tripAutoCloseQueue = undefined;
+}
+
+// =====================================================================
+// Worker trip.reminder — rappel SMS J-1 avant départ (CDC §5.5)
+//
+// Fréquence : toutes les heures (0 * * * *)
+// Cible : TripInstance dont departureAt est dans ]now+23h, now+25h]
+//         ET reminderSentAt IS NULL (pas encore envoyé)
+//         ET status IN (OPEN_FOR_BOOKING, CLOSED_FOR_BOOKING, DEPARTED?)
+// Pour chaque booking CONFIRMED du trajet, envoyer le SMS TRIP_REMINDER
+// dans la langue préférée de l'acheteur.
+// Les SMS de rappel respectent la plage de silence nocturne (isTransactional=false).
+// =====================================================================
+
+const REMINDER_QUEUE_NAME = 'trip.reminder';
+const REMINDER_CRON = '0 * * * *'; // toutes les heures
+
+let _tripReminderQueue: Queue | undefined;
+
+export function getTripReminderQueue(): Queue {
+  if (_tripReminderQueue) return _tripReminderQueue;
+  _tripReminderQueue = new Queue(REMINDER_QUEUE_NAME, {
+    connection: createBullConnection(),
+    defaultJobOptions: {
+      removeOnComplete: { count: 5 },
+      removeOnFail: { count: 20 },
+    },
+  });
+  return _tripReminderQueue;
+}
+
+export async function scheduleTripReminder(): Promise<void> {
+  const queue = getTripReminderQueue();
+  await queue.add('reminder', {}, {
+    repeat: { pattern: REMINDER_CRON },
+    removeOnComplete: { count: 1 },
+    removeOnFail: { count: 10 },
+  });
+  process.stdout.write(`[trip.reminder] Job répété planifié : ${REMINDER_CRON}\n`);
+}
+
+export interface ReminderResult {
+  tripsProcessed: number;
+  smsSent: number;
+}
+
+export async function runTripReminder(): Promise<ReminderResult> {
+  const now = new Date();
+  const windowStart = new Date(now.getTime() + 23 * 60 * 60 * 1000);
+  const windowEnd   = new Date(now.getTime() + 25 * 60 * 60 * 1000);
+
+  const trips = await prisma.tripInstance.findMany({
+    where: {
+      departureAt: { gt: windowStart, lte: windowEnd },
+      reminderSentAt: null,
+      status: { in: [TripStatus.OPEN_FOR_BOOKING, TripStatus.CLOSED_FOR_BOOKING] },
+    },
+    include: {
+      route: { include: { origin: true, destination: true } },
+      bookings: {
+        where: { status: 'CONFIRMED' },
+        include: {
+          buyer: { select: { phone: true, preferredLang: true } },
+          passengers: { take: 1, select: { phone: true } },
+        },
+      },
+    },
+  });
+
+  let smsSent = 0;
+
+  for (const trip of trips) {
+    const departureStr = trip.departureAt.toLocaleTimeString('fr-MG', {
+      hour: '2-digit', minute: '2-digit', timeZone: 'Indian/Antananarivo',
+    });
+
+    for (const booking of trip.bookings) {
+      const phone = booking.buyer?.phone ?? booking.passengers[0]?.phone;
+      const lang = (booking.buyer?.preferredLang ?? 'FR') as 'FR' | 'MG';
+      if (!phone) continue;
+
+      await enqueueSms({
+        phone,
+        lang,
+        templateCode: 'TRIP_REMINDER',
+        bookingId: booking.id,
+        params: {
+          origin: trip.route.origin.nameFr,
+          destination: trip.route.destination.nameFr,
+          departureAt: departureStr,
+          reference: booking.reference,
+        },
+        isTransactional: false,
+      }).catch((e: unknown) =>
+        process.stderr.write(`[trip.reminder] SMS error booking ${booking.id}: ${String(e)}\n`),
+      );
+      smsSent++;
+    }
+
+    await prisma.tripInstance.update({
+      where: { id: trip.id },
+      data: { reminderSentAt: now },
+    });
+  }
+
+  if (trips.length > 0) {
+    process.stdout.write(`[trip.reminder] ${trips.length} trajet(s), ${smsSent} SMS envoyés\n`);
+  }
+
+  return { tripsProcessed: trips.length, smsSent };
+}
+
+let _reminderWorker: Worker | undefined;
+
+export function createTripReminderWorker(): Worker {
+  if (_reminderWorker) return _reminderWorker;
+
+  _reminderWorker = new Worker(
+    REMINDER_QUEUE_NAME,
+    async (_job: Job) => runTripReminder(),
+    { connection: createBullConnection(), concurrency: 1 },
+  );
+
+  _reminderWorker.on('completed', (job, result: ReminderResult) => {
+    process.stdout.write(
+      `[trip.reminder] Job ${job.id} terminé : ${result.smsSent} SMS\n`,
+    );
+  });
+
+  _reminderWorker.on('failed', (job, err) => {
+    process.stderr.write(`[trip.reminder] Job ${job?.id} échoué : ${err.message}\n`);
+  });
+
+  return _reminderWorker;
 }
