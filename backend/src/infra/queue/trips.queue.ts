@@ -95,7 +95,15 @@ export async function runAutoClose(): Promise<AutoCloseResult> {
       status: TripStatus.DEPARTED,
       actualDepartedAt: { lt: cutoff },
     },
-    select: { id: true, status: true },
+    include: {
+      bookings: {
+        where: { status: 'CONFIRMED' },
+        include: {
+          buyer: { select: { phone: true, preferredLang: true } },
+          passengers: { take: 1, select: { phone: true } },
+        },
+      },
+    },
   });
 
   if (tripsToClose.length === 0) {
@@ -116,11 +124,10 @@ export async function runAutoClose(): Promise<AutoCloseResult> {
     });
 
     // AuditLog par trajet (RG-13 — traçabilité)
-    // Création séquentielle pour éviter une requête createMany volumineuse
     for (const trip of tripsToClose) {
       await tx.auditLog.create({
         data: {
-          actorUserId: null, // Action système, pas d'acteur humain
+          actorUserId: null,
           action: AuditAction.SCHEDULE_CHANGED,
           entityType: 'TripInstance',
           entityId: trip.id,
@@ -134,6 +141,28 @@ export async function runAutoClose(): Promise<AutoCloseResult> {
       });
     }
   });
+
+  // RATING_REQUEST SMS — inviter les voyageurs à noter (non transactionnel)
+  const appBase = process.env.FRONTEND_URL ?? 'https://instram.mg';
+  for (const trip of tripsToClose) {
+    for (const booking of trip.bookings) {
+      const phone = booking.buyer?.phone ?? booking.passengers[0]?.phone;
+      const lang = (booking.buyer?.preferredLang ?? 'FR') as 'FR' | 'MG';
+      if (!phone) continue;
+
+      const ratingUrl = `${appBase}/fr/bookings/${booking.id}`;
+      await enqueueSms({
+        phone,
+        lang,
+        templateCode: 'RATING_REQUEST',
+        bookingId: booking.id,
+        params: { ratingUrl },
+        isTransactional: false,
+      }).catch((e: unknown) =>
+        process.stderr.write(`[trip.autoClose] RATING_REQUEST SMS error: ${String(e)}\n`),
+      );
+    }
+  }
 
   process.stdout.write(
     `[trip.autoClose] ${tripIds.length} trajet(s) clôturé(s) automatiquement (72h)\n`,

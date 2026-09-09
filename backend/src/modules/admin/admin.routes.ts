@@ -40,6 +40,7 @@ import {
   AuditLogQuerySchema,
   ListRatingsQuerySchema,
   ListTripsQuerySchema,
+  ListPaymentsQuerySchema,
   UpdateSettingsBodySchema,
 } from './admin.schema';
 import prisma from '../../infra/db/prisma';
@@ -650,6 +651,26 @@ export default async function adminRoutes(fastify: FastifyInstance): Promise<voi
         return reply.send(result);
       } catch (err) {
         return handleError(err, req, reply, 'listTrips');
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
+  // GET /admin/payments — supervision des paiements
+  // ------------------------------------------------------------------
+  fastify.get(
+    '/payments',
+    { onRequest: [fastify.authenticate, requireAnyAdmin] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const parse = ListPaymentsQuerySchema.safeParse(req.query);
+      if (!parse.success) {
+        return reply.status(400).send({ code: 'VALIDATION_ERROR', message: formatZodError(parse.error) });
+      }
+      try {
+        const result = await service.listPayments(parse.data);
+        return reply.send(result);
+      } catch (err) {
+        return handleError(err, req, reply, 'listPayments');
       }
     },
   );

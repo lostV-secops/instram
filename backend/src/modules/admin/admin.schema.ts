@@ -145,6 +145,18 @@ export const ListTripsQuerySchema = z.object({
 });
 
 // ------------------------------------------------------------------
+// GET /admin/payments — supervision des paiements
+// ------------------------------------------------------------------
+export const ListPaymentsQuerySchema = z.object({
+  status: z.enum(['PENDING', 'CONFIRMED', 'FAILED', 'EXPIRED', 'REFUNDED_AT_COUNTER']).optional(),
+  cooperativeId: z.string().uuid().optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+// ------------------------------------------------------------------
 // Paramètres plateforme (PlatformFeePolicy + horaires SMS)
 // ------------------------------------------------------------------
 
@@ -181,4 +193,5 @@ export type SuspendUserBody = z.infer<typeof SuspendUserBodySchema>;
 export type AuditLogQuery = z.infer<typeof AuditLogQuerySchema>;
 export type ListRatingsQuery = z.infer<typeof ListRatingsQuerySchema>;
 export type ListTripsQuery = z.infer<typeof ListTripsQuerySchema>;
+export type ListPaymentsQuery = z.infer<typeof ListPaymentsQuerySchema>;
 export type UpdateSettingsBody = z.infer<typeof UpdateSettingsBodySchema>;

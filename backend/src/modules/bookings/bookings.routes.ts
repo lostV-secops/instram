@@ -144,6 +144,32 @@ export default async function bookingsRoutes(fastify: FastifyInstance): Promise<
     },
   );
 
+  // ------------------------------------------------------------------
+  // POST /bookings/:bookingId/resend-ticket
+  // Renvoi SMS du billet — voyageur authentifié uniquement.
+  // ------------------------------------------------------------------
+  fastify.post<{ Params: { bookingId: string } }>(
+    '/bookings/:bookingId/resend-ticket',
+    { onRequest: [fastify.authenticate] },
+    async (
+      req: FastifyRequest<{ Params: { bookingId: string } }>,
+      reply: FastifyReply,
+    ) => {
+      reply.header('Cache-Control', 'no-store');
+      try {
+        await bookingsService.resendTicket(req.params.bookingId, getUserId(req));
+        return reply.status(200).send({ message: 'Billet renvoyé par SMS' });
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'NOT_FOUND') {
+          return reply.status(404).send({ code: 'NOT_FOUND', message: (err as Error).message });
+        }
+        req.log.error(err, 'resendTicket error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
   // NOTE : POST /payments est dans payments.routes.ts (refactoring PaymentsService §3)
 
   // ------------------------------------------------------------------

@@ -506,6 +506,60 @@ export class BookingsService {
   }
 
   // ------------------------------------------------------------------
+  // POST /bookings/:bookingId/resend-ticket
+  // Renvoi SMS du billet confirmé au voyageur (transactionnel, immédiat).
+  // Seul l'acheteur authentifié peut déclencher le renvoi.
+  // ------------------------------------------------------------------
+
+  async resendTicket(bookingId: string, userId: string): Promise<void> {
+    const booking = await this.db.booking.findFirst({
+      where: { id: bookingId, buyerUserId: userId, status: BookingStatus.CONFIRMED },
+      include: {
+        buyer: { select: { phone: true, preferredLang: true } },
+        passengers: { take: 1, select: { phone: true } },
+        tripInstance: {
+          include: { route: { include: { origin: true, destination: true } } },
+        },
+      },
+    });
+
+    if (!booking) throw new NotFoundError('Réservation introuvable ou non confirmée');
+
+    const phone = booking.buyer?.phone ?? booking.passengers[0]?.phone;
+    if (!phone) throw new NotFoundError('Numéro de téléphone introuvable');
+
+    const lang = (booking.buyer?.preferredLang ?? 'FR') as 'FR' | 'MG';
+    const departureStr = booking.tripInstance.departureAt.toLocaleString('fr-MG', {
+      dateStyle: 'short', timeStyle: 'short', timeZone: 'Indian/Antananarivo',
+    });
+
+    const vars = {
+      reference: booking.reference,
+      departureAt: departureStr,
+      origin: booking.tripInstance.route.origin.nameFr,
+    };
+
+    if (this.notifications) {
+      await this.notifications.enqueue({
+        bookingId,
+        templateKey: 'BOOKING_CONFIRMED',
+        variables: vars,
+        lang,
+        phone,
+        transactional: true,
+      });
+    } else {
+      await enqueueSms({
+        phone,
+        lang,
+        templateCode: 'BOOKING_CONFIRMED',
+        params: vars,
+        isTransactional: true,
+      });
+    }
+  }
+
+  // ------------------------------------------------------------------
   // POST /coop/bookings/walk-in
   // RG-02 : PlatformFee = 0 ET Commission = 0 — vérification explicite
   // Même transaction atomique que le hold (SELECT FOR UPDATE + contraintes)

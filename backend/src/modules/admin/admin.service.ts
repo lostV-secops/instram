@@ -44,6 +44,7 @@ import type {
   AuditLogQuery,
   ListRatingsQuery,
   ListTripsQuery,
+  ListPaymentsQuery,
   UpdateSettingsBody,
 } from './admin.schema';
 
@@ -985,6 +986,61 @@ export class AdminService {
         route: { select: { id: true, displayName: true } },
         vehicle: { select: { id: true, registration: true, displayName: true } },
         _count: { select: { bookings: true, bookingSeats: true } },
+      },
+    });
+
+    const hasNext = items.length > limit;
+    const page = hasNext ? items.slice(0, limit) : items;
+
+    return {
+      items: page,
+      nextCursor: hasNext ? (page[page.length - 1] as { id: string }).id : null,
+    };
+  }
+
+  // ------------------------------------------------------------------
+  // GET /admin/payments — liste paginée de tous les paiements
+  // ------------------------------------------------------------------
+
+  async listPayments(query: ListPaymentsQuery): Promise<PaginatedResult<object>> {
+    const { status, cooperativeId, from, to, cursor, limit } = query;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = {
+      ...(status ? { status } : {}),
+      ...(cooperativeId
+        ? { booking: { cooperativeId } }
+        : {}),
+      ...(from || to
+        ? {
+            initiatedAt: {
+              ...(from ? { gte: new Date(from) } : {}),
+              ...(to ? { lte: new Date(to) } : {}),
+            },
+          }
+        : {}),
+      ...(cursor ? { id: { gt: cursor } } : {}),
+    };
+
+    const items = await this.db.payment.findMany({
+      where,
+      take: limit + 1,
+      orderBy: { initiatedAt: 'desc' },
+      select: {
+        id: true,
+        provider: true,
+        amountMga: true,
+        status: true,
+        providerTransactionId: true,
+        initiatedAt: true,
+        confirmedAt: true,
+        booking: {
+          select: {
+            id: true,
+            reference: true,
+            cooperative: { select: { id: true, displayName: true } },
+          },
+        },
       },
     });
 
