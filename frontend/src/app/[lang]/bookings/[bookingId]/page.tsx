@@ -7,13 +7,13 @@
 
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import Image from 'next/image';
 import Link from 'next/link';
 import { getTranslations, isValidLang } from '@/lib/i18n';
 import { apiGet } from '@/lib/api';
 import { Badge, bookingStatusVariant, paymentStatusVariant } from '@/components/ui/Badge';
 import { AppError } from '@/lib/api';
 import type { BookingDetail, Lang } from '@/lib/types';
+import { QrCodeCanvas } from '@/components/ui/QrCodeCanvas';
 
 interface PageProps {
   params: { lang: string; bookingId: string };
@@ -239,15 +239,12 @@ export default async function BookingDetailPage({ params }: PageProps) {
             {t.bookingDetail.ticket}
           </h2>
 
-          {booking.ticket.qrImageUrl && (
+          {booking.ticket.qrPayload && (
             <div className="flex justify-center mb-3">
-              <Image
-                src={booking.ticket.qrImageUrl}
+              <QrCodeCanvas
+                payload={booking.ticket.qrPayload}
+                size={200}
                 alt={`QR code billet ${booking.reference}`}
-                width={200}
-                height={200}
-                className="rounded-lg"
-                priority
               />
             </div>
           )}
