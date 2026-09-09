@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import { TripStatus, SeatCategory, AuditAction } from '@prisma/client';
 import type {
   CreateRouteInput,
+  UpdateRouteInput,
   CreateScheduleInput,
   UpdateScheduleInput,
   CreateTripInput,
@@ -130,6 +131,35 @@ export class TripsService {
 
     if (!route) throw new NotFoundError('Route introuvable');
     return this._formatRoute(route);
+  }
+
+  // ----------------------------------------------------------------
+  // PATCH /coop/routes/:routeId
+  // ----------------------------------------------------------------
+
+  async updateRoute(
+    cooperativeId: string,
+    routeId: string,
+    input: UpdateRouteInput,
+  ): Promise<Record<string, unknown>> {
+    const existing = await this.db.route.findFirst({ where: { id: routeId, cooperativeId } });
+    if (!existing) throw new NotFoundError('Route introuvable');
+
+    const updated = await this.db.route.update({
+      where: { id: routeId },
+      data: {
+        ...(input.displayName !== undefined && { displayName: input.displayName }),
+        ...(input.isActive !== undefined && { isActive: input.isActive }),
+        ...(input.distanceKm !== undefined && { distanceKm: input.distanceKm }),
+        ...(input.estimatedDurationMin !== undefined && { estimatedDurationMin: input.estimatedDurationMin }),
+      },
+      include: {
+        origin: { select: { id: true, nameFr: true, nameMg: true, district: true, region: true } },
+        destination: { select: { id: true, nameFr: true, nameMg: true, district: true, region: true } },
+      },
+    });
+
+    return this._formatRoute(updated);
   }
 
   // ================================================================

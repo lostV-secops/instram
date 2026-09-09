@@ -5,7 +5,7 @@
  * GET /coop/routes
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -16,7 +16,7 @@ export default function RoutesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -29,9 +29,23 @@ export default function RoutesPage() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const handleToggle = async (route: CoopRouteDetail) => {
+    try {
+      const res = await fetch(`/api/proxy/v1/coop/routes/${route.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: !route.isActive }),
+      });
+      if (!res.ok) throw new Error();
+      await load();
+    } catch {
+      setError('Impossible de modifier la ligne. Réessayez.');
+    }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   return (
     <div className="space-y-4">
@@ -89,12 +103,21 @@ export default function RoutesPage() {
                       </Badge>
                     </td>
                     <td className="py-3 px-4">
-                      <Link
-                        href={`/fr/coop/trips?routeId=${r.id}`}
-                        className="text-sm text-brand hover:underline"
-                      >
-                        Trajets
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/fr/coop/trips?routeId=${r.id}`}
+                          className="text-sm text-brand hover:underline whitespace-nowrap"
+                        >
+                          Trajets
+                        </Link>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleToggle(r)}
+                        >
+                          {r.isActive ? 'Désactiver' : 'Réactiver'}
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -25,7 +25,9 @@ export const CreateRouteSchema = z.object({
   estimatedDurationMin: z.number().int().positive().optional(),
 });
 
-export const UpdateRouteSchema = CreateRouteSchema.partial();
+export const UpdateRouteSchema = CreateRouteSchema.partial().extend({
+  isActive: z.boolean().optional(),
+});
 
 export type CreateRouteInput = z.infer<typeof CreateRouteSchema>;
 export type UpdateRouteInput = z.infer<typeof UpdateRouteSchema>;

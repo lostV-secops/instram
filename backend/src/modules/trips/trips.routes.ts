@@ -4,6 +4,7 @@ import { TripsService } from './trips.service';
 import { CooperativeService } from '../cooperative/cooperative.service';
 import {
   CreateRouteSchema,
+  UpdateRouteSchema,
   CreateScheduleSchema,
   UpdateScheduleSchema,
   CreateTripSchema,
@@ -109,6 +110,25 @@ export async function tripsCoopRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.send(route);
       } catch (err) {
         return handleError(err, req, reply, 'getRoute');
+      }
+    },
+  );
+
+  // ----------------------------------------------------------------
+  // PATCH /routes/:routeId
+  // ----------------------------------------------------------------
+  fastify.patch<{ Params: { routeId: string } }>(
+    '/routes/:routeId',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest<{ Params: { routeId: string } }>, reply: FastifyReply) => {
+      const parse = UpdateRouteSchema.safeParse(req.body);
+      if (!parse.success) return reply.status(400).send({ code: 'VALIDATION_ERROR', message: formatZodError(parse.error) });
+      try {
+        const cooperativeId = await getCoopId(getUserId(req), ['COOP_ADMIN', 'COOP_ASSISTANT']);
+        const route = await tripsService.updateRoute(cooperativeId, req.params.routeId, parse.data);
+        return reply.send(route);
+      } catch (err) {
+        return handleError(err, req, reply, 'updateRoute');
       }
     },
   );
