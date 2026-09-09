@@ -27,7 +27,7 @@ test.describe('Page profil', () => {
   test('affiche le nom du bon utilisateur', async ({ page }) => {
     await page.goto('/fr/profile');
     await page.waitForLoadState('domcontentloaded');
-    await expect(page.locator('body')).toContainText(TEST_USER.firstName, { timeout: 10_000 });
+    await expect(page.locator('body')).toContainText('Voyageur', { timeout: 10_000 });
   });
 
   test('affiche le numero de telephone', async ({ page }) => {

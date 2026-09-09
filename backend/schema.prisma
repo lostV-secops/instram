@@ -169,6 +169,11 @@ enum AuditAction {
   LOGOUT
   USER_CREATED
   USER_DELETED
+  OTP_SENT
+  OTP_VERIFIED
+  OTP_FAILED
+  PASSWORD_RESET
+  SESSION_REVOKED
   COOP_VALIDATED
   COOP_SUSPENDED
   COOP_PLAN_CHANGED
@@ -185,6 +190,11 @@ enum AuditAction {
   SEAT_HELD
   SEAT_RELEASED
   DEPARTURE_SIGNALED
+}
+
+enum OtpPurpose {
+  REGISTRATION_VERIFY
+  PASSWORD_RESET
 }
 
 // =====================================================================
@@ -217,6 +227,7 @@ model User {
   invitationsSent       Invitation[]  @relation("InvitationSender")
   exportJobs            ExportJob[]
   seatHolds             SeatHold[]
+  otpCodes              OtpCode[]
 
   @@index([status])
   @@index([preferredLang])
@@ -252,6 +263,7 @@ model AuthSession {
   id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId            String    @db.Uuid
   refreshTokenHash  String    @unique
+  deviceId          String?   // X-Device-ID header — pour révocation sélective (D9)
   userAgent         String?
   ipAddress         String?
   expiresAt         DateTime
@@ -262,6 +274,41 @@ model AuthSession {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+// =====================================================================
+// OTP — VÉRIFICATION INSCRIPTION ET RESET MOT DE PASSE (D8)
+// =====================================================================
+
+model OtpCode {
+  id         String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String?    @db.Uuid
+  target     String     // Phone ou email
+  codeHash   String     // SHA-256 du code à 6 chiffres
+  purpose    OtpPurpose
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime   @default(now())
+
+  user       User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([target, purpose])
+  @@index([expiresAt])
+}
+
+model OtpRateLimit {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  target            String
+  deviceId          String    @default("unknown")
+  sendCount         Int       @default(0)
+  sendWindowStart   DateTime  @default(now())
+  verifyCount       Int       @default(0)
+  verifyWindowStart DateTime  @default(now())
+  lockedUntil       DateTime?
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([target, deviceId])
+  @@index([target])
 }
 
 model Membership {

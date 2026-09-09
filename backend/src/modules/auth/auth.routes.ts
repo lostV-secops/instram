@@ -1,11 +1,17 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { ZodError } from 'zod';
+import { OtpPurpose } from '@prisma/client';
 import { AuthService, TokenGenerator } from './auth.service';
 import {
   RegisterSchema,
   LoginSchema,
   RefreshSchema,
   LogoutSchema,
+  VerifyOtpSchema,
+  ResendOtpSchema,
+  PasswordResetRequestSchema,
+  PasswordResetSchema,
+  RevokeSessionParamsSchema,
 } from './auth.schema';
 import prisma from '../../infra/db/prisma';
 import { requestAccountDeletion } from './auth.delete.service';
@@ -52,34 +58,88 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
   const authService = new AuthService(prisma, tokenGenerator);
 
   // ------------------------------------------------------------------
-  // POST /register
+  // POST /register — crée le compte + envoie OTP (D8)
   // ------------------------------------------------------------------
   fastify.post('/register', {
     config: { rateLimit: { max: 10, timeWindow: '15m' } },
   }, async (req: FastifyRequest, reply: FastifyReply) => {
     const parseResult = RegisterSchema.safeParse(req.body);
     if (!parseResult.success) {
-      return reply.status(400).send({
-        code: 'VALIDATION_ERROR',
-        message: formatZodError(parseResult.error),
-      });
+      return reply.status(400).send({ code: 'VALIDATION_ERROR', message: formatZodError(parseResult.error) });
     }
 
     try {
       const result = await authService.register(parseResult.data, {
         ipAddress: req.ip,
         userAgent: req.headers['user-agent'],
+        deviceId: req.headers['x-device-id'] as string | undefined,
       });
       return reply.status(201).send(result);
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       if (code === 'DUPLICATE_EMAIL' || code === 'DUPLICATE_PHONE') {
-        return reply.status(409).send({
-          code,
-          message: (err as Error).message,
-        });
+        return reply.status(409).send({ code, message: (err as Error).message });
       }
       req.log.error(err, 'register error');
+      return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+    }
+  });
+
+  // ------------------------------------------------------------------
+  // POST /verify/otp — vérifie le code OTP d'inscription
+  // ------------------------------------------------------------------
+  fastify.post('/verify/otp', {
+    config: { rateLimit: { max: 20, timeWindow: '5m' } },
+  }, async (req: FastifyRequest, reply: FastifyReply) => {
+    const parse = VerifyOtpSchema.safeParse(req.body);
+    if (!parse.success) {
+      return reply.status(400).send({ code: 'VALIDATION_ERROR', message: formatZodError(parse.error) });
+    }
+
+    const { target, code, purpose } = parse.data;
+
+    try {
+      if (purpose === 'REGISTRATION_VERIFY') {
+        const result = await authService.verifyRegistrationOtp(target, code, {
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+          deviceId: req.headers['x-device-id'] as string | undefined,
+        });
+        return reply.status(200).send(result);
+      }
+      return reply.status(400).send({ code: 'INVALID_PURPOSE', message: 'Utilisez /password/reset pour ce type d\'OTP' });
+    } catch (err) {
+      const errCode = (err as NodeJS.ErrnoException).code;
+      if (errCode === 'OTP_INVALID') return reply.status(400).send({ code: errCode, message: (err as Error).message });
+      if (errCode === 'OTP_TARGET_LOCKED') return reply.status(429).send({ code: errCode, message: (err as Error).message });
+      req.log.error(err, 'verify otp error');
+      return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+    }
+  });
+
+  // ------------------------------------------------------------------
+  // POST /verify/resend — renvoie un OTP
+  // ------------------------------------------------------------------
+  fastify.post('/verify/resend', {
+    config: { rateLimit: { max: 5, timeWindow: '10m' } },
+  }, async (req: FastifyRequest, reply: FastifyReply) => {
+    const parse = ResendOtpSchema.safeParse(req.body);
+    if (!parse.success) {
+      return reply.status(400).send({ code: 'VALIDATION_ERROR', message: formatZodError(parse.error) });
+    }
+
+    try {
+      await authService.resendOtp(
+        parse.data.target,
+        parse.data.purpose === 'REGISTRATION_VERIFY' ? OtpPurpose.REGISTRATION_VERIFY : OtpPurpose.PASSWORD_RESET,
+        req.headers['x-device-id'] as string | undefined,
+      );
+      return reply.status(200).send({ message: 'Code renvoyé' });
+    } catch (err) {
+      const errCode = (err as NodeJS.ErrnoException).code;
+      if (errCode === 'OTP_RATE_LIMITED') return reply.status(429).send({ code: errCode, message: (err as Error).message });
+      if (errCode === 'OTP_TARGET_LOCKED') return reply.status(429).send({ code: errCode, message: (err as Error).message });
+      req.log.error(err, 'resend otp error');
       return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
     }
   });
@@ -111,6 +171,9 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       }
       if (code === 'ACCOUNT_INACTIVE') {
         return reply.status(401).send({ code, message: (err as Error).message });
+      }
+      if (code === 'ACCOUNT_NOT_VERIFIED') {
+        return reply.status(403).send({ code, message: (err as Error).message, target: (err as any).target });
       }
       req.log.error(err, 'login error');
       return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
@@ -186,6 +249,115 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         return reply.status(204).send();
       } catch (err) {
         req.log.error(err, 'delete account error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
+  // POST /password/reset-request — demande un OTP de réinitialisation
+  // ------------------------------------------------------------------
+  fastify.post('/password/reset-request', {
+    config: { rateLimit: { max: 5, timeWindow: '15m' } },
+  }, async (req: FastifyRequest, reply: FastifyReply) => {
+    const parse = PasswordResetRequestSchema.safeParse(req.body);
+    if (!parse.success) {
+      return reply.status(400).send({ code: 'VALIDATION_ERROR', message: formatZodError(parse.error) });
+    }
+
+    // Toujours 200 — timing-safe, ne révèle pas l'existence du compte
+    await authService.sendPasswordResetOtp(
+      parse.data.target,
+      req.headers['x-device-id'] as string | undefined,
+    ).catch((err) => req.log.warn(err, 'password reset otp silent error'));
+
+    return reply.status(200).send({ message: 'Si ce compte existe, un code a été envoyé' });
+  });
+
+  // ------------------------------------------------------------------
+  // POST /password/reset — réinitialise le mot de passe via OTP
+  // ------------------------------------------------------------------
+  fastify.post('/password/reset', {
+    config: { rateLimit: { max: 10, timeWindow: '15m' } },
+  }, async (req: FastifyRequest, reply: FastifyReply) => {
+    const parse = PasswordResetSchema.safeParse(req.body);
+    if (!parse.success) {
+      return reply.status(400).send({ code: 'VALIDATION_ERROR', message: formatZodError(parse.error) });
+    }
+
+    try {
+      await authService.resetPassword(
+        parse.data.target,
+        parse.data.code,
+        parse.data.newPassword,
+        req.headers['x-device-id'] as string | undefined,
+      );
+      return reply.status(200).send({ message: 'Mot de passe réinitialisé' });
+    } catch (err) {
+      const errCode = (err as NodeJS.ErrnoException).code;
+      if (errCode === 'OTP_INVALID') return reply.status(400).send({ code: errCode, message: (err as Error).message });
+      if (errCode === 'OTP_TARGET_LOCKED') return reply.status(429).send({ code: errCode, message: (err as Error).message });
+      req.log.error(err, 'password reset error');
+      return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+    }
+  });
+
+  // ------------------------------------------------------------------
+  // GET /sessions — liste les sessions actives (D9)
+  // ------------------------------------------------------------------
+  fastify.get(
+    '/sessions',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const userId = (req.user as { sub: string }).sub;
+      try {
+        const sessions = await authService.getSessions(userId);
+        return reply.status(200).send(sessions);
+      } catch (err) {
+        req.log.error(err, 'get sessions error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
+  // DELETE /sessions/:sessionId — révoque une session précise
+  // ------------------------------------------------------------------
+  fastify.delete(
+    '/sessions/:sessionId',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const userId = (req.user as { sub: string }).sub;
+      const parse = RevokeSessionParamsSchema.safeParse(req.params);
+      if (!parse.success) {
+        return reply.status(400).send({ code: 'VALIDATION_ERROR', message: formatZodError(parse.error) });
+      }
+
+      try {
+        await authService.revokeSession(userId, parse.data.sessionId);
+        return reply.status(204).send();
+      } catch (err) {
+        const errCode = (err as NodeJS.ErrnoException).code;
+        if (errCode === 'SESSION_NOT_FOUND') return reply.status(404).send({ code: errCode, message: (err as Error).message });
+        req.log.error(err, 'revoke session error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
+  // DELETE /sessions — révoque toutes les sessions
+  // ------------------------------------------------------------------
+  fastify.delete(
+    '/sessions',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const userId = (req.user as { sub: string }).sub;
+      try {
+        await authService.revokeAllSessions(userId);
+        return reply.status(204).send();
+      } catch (err) {
+        req.log.error(err, 'revoke all sessions error');
         return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
       }
     },

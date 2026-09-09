@@ -67,11 +67,59 @@ export type RefreshInput = z.infer<typeof RefreshSchema>;
 
 /**
  * POST /v1/auth/logout
- * Le refresh token courant est transmis en body.
- * Hypothèse : si non fourni, on révoque la session identifiée par le JWT d'accès.
  */
 export const LogoutSchema = z.object({
   refreshToken: z.string().min(1).optional(),
 });
 
 export type LogoutInput = z.infer<typeof LogoutSchema>;
+
+/**
+ * POST /v1/auth/verify/otp
+ */
+export const VerifyOtpSchema = z.object({
+  target: z.string().min(1, 'Cible OTP requise'),
+  code: z.string().regex(/^\d{6}$/, 'Code OTP à 6 chiffres requis'),
+  purpose: z.enum(['REGISTRATION_VERIFY', 'PASSWORD_RESET']),
+});
+
+export type VerifyOtpInput = z.infer<typeof VerifyOtpSchema>;
+
+/**
+ * POST /v1/auth/verify/resend
+ */
+export const ResendOtpSchema = z.object({
+  target: z.string().min(1, 'Cible OTP requise'),
+  purpose: z.enum(['REGISTRATION_VERIFY', 'PASSWORD_RESET']),
+});
+
+export type ResendOtpInput = z.infer<typeof ResendOtpSchema>;
+
+/**
+ * POST /v1/auth/password/reset-request
+ */
+export const PasswordResetRequestSchema = z.object({
+  target: z.string().min(1, 'Email ou téléphone requis'),
+});
+
+export type PasswordResetRequestInput = z.infer<typeof PasswordResetRequestSchema>;
+
+/**
+ * POST /v1/auth/password/reset
+ */
+export const PasswordResetSchema = z.object({
+  target: z.string().min(1, 'Email ou téléphone requis'),
+  code: z.string().regex(/^\d{6}$/, 'Code OTP à 6 chiffres requis'),
+  newPassword: z.string().min(10, 'Le mot de passe doit contenir au moins 10 caractères'),
+});
+
+export type PasswordResetInput = z.infer<typeof PasswordResetSchema>;
+
+/**
+ * DELETE /v1/auth/sessions/:sessionId
+ */
+export const RevokeSessionParamsSchema = z.object({
+  sessionId: z.string().uuid('UUID de session invalide'),
+});
+
+export type RevokeSessionParams = z.infer<typeof RevokeSessionParamsSchema>;

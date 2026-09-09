@@ -39,6 +39,16 @@ export const COOP_ADMIN = {
   lastName: 'E2E',
 };
 
+// Utilisateur voyageur pour les tests d'inscription/réservation
+const TEST_USER_ID      = 'e2e00000-0000-0000-0003-000000000001';
+const TEST_USER_PROFILE_ID = 'e2e00000-0000-0000-0003-000000000002';
+export const TEST_USER = {
+  phone: '+261340000001',
+  password: 'TestUser2024!',
+  firstName: 'Voyageur',
+  lastName: 'E2E',
+};
+
 // Villes issues du seed officiel des villes
 const CITY_TANA_ID    = '770b9808-5087-431b-8342-243848dcb4fe'; // Antananarivo
 const CITY_TOAMA_ID   = 'd90e8189-f95c-4ea7-9238-396c127f870c'; // Toamasina
@@ -180,17 +190,19 @@ async function main() {
   }
 
   // 7. Utilisateur COOP_ADMIN + TravelerProfile + Membership
-  const passwordHash = await argon2.hash(COOP_ADMIN.password);
+  const coopAdminHash = await argon2.hash(COOP_ADMIN.password);
+  const verifiedAt = new Date();
 
   await db.user.upsert({
     where: { id: COOP_ADMIN_USER_ID },
-    update: { passwordHash },
+    update: { passwordHash: coopAdminHash, phoneVerifiedAt: verifiedAt },
     create: {
       id: COOP_ADMIN_USER_ID,
       phone: COOP_ADMIN.phone,
-      passwordHash,
+      passwordHash: coopAdminHash,
       preferredLang: 'FR',
       status: 'ACTIVE',
+      phoneVerifiedAt: verifiedAt,
     },
   });
 
@@ -217,6 +229,34 @@ async function main() {
     },
   });
   console.log(`[seed-e2e] ✓ Utilisateur COOP_ADMIN (${COOP_ADMIN.phone})`);
+
+  // 8. Utilisateur voyageur E2E (pré-vérifié, sans OTP)
+  const testUserHash = await argon2.hash(TEST_USER.password);
+
+  await db.user.upsert({
+    where: { id: TEST_USER_ID },
+    update: { passwordHash: testUserHash, phoneVerifiedAt: verifiedAt },
+    create: {
+      id: TEST_USER_ID,
+      phone: TEST_USER.phone,
+      passwordHash: testUserHash,
+      preferredLang: 'FR',
+      status: 'ACTIVE',
+      phoneVerifiedAt: verifiedAt,
+    },
+  });
+
+  await db.travelerProfile.upsert({
+    where: { id: TEST_USER_PROFILE_ID },
+    update: {},
+    create: {
+      id: TEST_USER_PROFILE_ID,
+      userId: TEST_USER_ID,
+      firstName: TEST_USER.firstName,
+      lastName: TEST_USER.lastName,
+    },
+  });
+  console.log(`[seed-e2e] ✓ Utilisateur voyageur (${TEST_USER.phone})`);
 
   console.log('[seed-e2e] Seed E2E terminé avec succès.');
 }

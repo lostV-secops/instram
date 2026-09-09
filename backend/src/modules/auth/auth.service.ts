@@ -1,7 +1,8 @@
 import argon2 from 'argon2';
 import crypto from 'crypto';
-import { PrismaClient, User, Lang } from '@prisma/client';
+import { PrismaClient, User, Lang, OtpPurpose } from '@prisma/client';
 import { RegisterInput, LoginInput } from './auth.schema';
+import { createSmsProvider } from '../../infra/sms/provider';
 
 // =====================================================================
 // Types de retour
@@ -39,6 +40,26 @@ export interface TokenGenerator {
   signRefreshToken(payload: object): string;
   /** Durée du token d'accès en secondes */
   accessExpiresInSeconds: number;
+}
+
+export interface RegisterPendingResult {
+  requiresVerification: true;
+  userId: string;
+  target: string;
+}
+
+export interface SessionInfo {
+  id: string;
+  deviceId: string | null;
+  userAgent: string | null;
+  ipAddress: string | null;
+  createdAt: Date;
+  expiresAt: Date;
+}
+
+export interface SessionsResult {
+  sessions: SessionInfo[];
+  cooperativeContexts: Array<{ coopId: string; coopName: string; role: string }>;
 }
 
 // =====================================================================
@@ -88,18 +109,15 @@ export class AuthService {
   ) {}
 
   // ------------------------------------------------------------------
-  // register
+  // register — crée le compte et envoie l'OTP de vérification (D8)
   // ------------------------------------------------------------------
 
   async register(
     input: RegisterInput,
-    meta: { ipAddress?: string; userAgent?: string } = {},
-  ): Promise<AuthResult> {
-    // Vérification unicité email/phone
+    meta: { ipAddress?: string; userAgent?: string; deviceId?: string } = {},
+  ): Promise<RegisterPendingResult> {
     if (input.email) {
-      const existing = await this.db.user.findUnique({
-        where: { email: input.email },
-      });
+      const existing = await this.db.user.findUnique({ where: { email: input.email } });
       if (existing) {
         const err = new Error('Email déjà utilisé');
         (err as NodeJS.ErrnoException).code = 'DUPLICATE_EMAIL';
@@ -107,9 +125,7 @@ export class AuthService {
       }
     }
     if (input.phone) {
-      const existing = await this.db.user.findUnique({
-        where: { phone: input.phone },
-      });
+      const existing = await this.db.user.findUnique({ where: { phone: input.phone } });
       if (existing) {
         const err = new Error('Téléphone déjà utilisé');
         (err as NodeJS.ErrnoException).code = 'DUPLICATE_PHONE';
@@ -117,15 +133,13 @@ export class AuthService {
       }
     }
 
-    // Hash Argon2id (VH-12)
     const passwordHash = await argon2.hash(input.password, {
       type: argon2.argon2id,
-      memoryCost: 65536, // 64 MiB
+      memoryCost: 65536,
       timeCost: 3,
       parallelism: 4,
     });
 
-    // Création utilisateur + profil voyageur en transaction
     const user = await this.db.$transaction(async (tx) => {
       const created = await tx.user.create({
         data: {
@@ -134,16 +148,8 @@ export class AuthService {
           passwordHash,
           preferredLang: (input.preferredLang as Lang) ?? Lang.FR,
           travelerProfile: {
-            create: {
-              firstName: input.firstName,
-              lastName: input.lastName,
-            },
+            create: { firstName: input.firstName, lastName: input.lastName },
           },
-        },
-        include: {
-          travelerProfile: true,
-          memberships: { include: { cooperative: true } },
-          adminProfile: true,
         },
       });
 
@@ -161,7 +167,17 @@ export class AuthService {
       return created;
     });
 
-    return this._issueTokens(user, meta);
+    // Cible = phone en priorité, sinon email
+    const target = input.phone ?? input.email!;
+    await this._generateAndSendOtp(
+      user.id,
+      target,
+      OtpPurpose.REGISTRATION_VERIFY,
+      user.preferredLang,
+      meta.deviceId,
+    );
+
+    return { requiresVerification: true, userId: user.id, target };
   }
 
   // ------------------------------------------------------------------
@@ -170,7 +186,7 @@ export class AuthService {
 
   async login(
     input: LoginInput,
-    meta: { ipAddress?: string; userAgent?: string } = {},
+    meta: { ipAddress?: string; userAgent?: string; deviceId?: string } = {},
   ): Promise<AuthResult> {
     // Recherche de l'utilisateur
     let user: (User & {
@@ -212,6 +228,15 @@ export class AuthService {
       throw err;
     }
 
+    // Compte non vérifié par OTP — exiger vérification (D8)
+    if (!user.emailVerifiedAt && !user.phoneVerifiedAt) {
+      const target = input.phone ?? input.email!;
+      const err = new Error('Compte non vérifié — OTP requis');
+      (err as NodeJS.ErrnoException & { target: string }).code = 'ACCOUNT_NOT_VERIFIED';
+      (err as NodeJS.ErrnoException & { target: string }).target = target;
+      throw err;
+    }
+
     // Vérification du mot de passe (Argon2id)
     const valid = await argon2.verify(user.passwordHash, input.password);
     if (!valid) {
@@ -236,7 +261,7 @@ export class AuthService {
 
   async refresh(
     rawRefreshToken: string,
-    meta: { ipAddress?: string; userAgent?: string } = {},
+    meta: { ipAddress?: string; userAgent?: string; deviceId?: string } = {},
   ): Promise<TokenPair> {
     const tokenHash = hashRefreshToken(rawRefreshToken);
 
@@ -342,13 +367,318 @@ export class AuthService {
   // Helpers privés
   // ------------------------------------------------------------------
 
+  // ------------------------------------------------------------------
+  // verifyOtp — vérifie le code OTP et émet les tokens (inscription)
+  // ou confirme l'identité (reset mot de passe)
+  // ------------------------------------------------------------------
+
+  async verifyRegistrationOtp(
+    target: string,
+    code: string,
+    meta: { ipAddress?: string; userAgent?: string; deviceId?: string } = {},
+  ): Promise<AuthResult> {
+    const deviceId = meta.deviceId ?? 'unknown';
+    await this._checkAndIncrementVerifyLimit(target, deviceId);
+
+    const codeHash = this._hashOtp(code);
+    const now = new Date();
+
+    const otp = await this.db.otpCode.findFirst({
+      where: {
+        target,
+        codeHash,
+        purpose: OtpPurpose.REGISTRATION_VERIFY,
+        usedAt: null,
+        expiresAt: { gt: now },
+      },
+      include: { user: { include: { travelerProfile: true, memberships: { include: { cooperative: true }, where: { active: true } }, adminProfile: true } } },
+    });
+
+    if (!otp || !otp.user) {
+      await this.db.auditLog.create({ data: { action: 'OTP_FAILED', entityType: 'OtpCode', entityId: null, ipAddress: meta.ipAddress ?? null, userAgent: meta.userAgent ?? null } });
+      const err = new Error('Code invalide ou expiré');
+      (err as NodeJS.ErrnoException).code = 'OTP_INVALID';
+      throw err;
+    }
+
+    await this.db.$transaction([
+      this.db.otpCode.update({ where: { id: otp.id }, data: { usedAt: now } }),
+      // Marquer le compte comme vérifié
+      otp.target.startsWith('+')
+        ? this.db.user.update({ where: { id: otp.user.id }, data: { phoneVerifiedAt: now } })
+        : this.db.user.update({ where: { id: otp.user.id }, data: { emailVerifiedAt: now } }),
+      this.db.auditLog.create({ data: { actorUserId: otp.user.id, action: 'OTP_VERIFIED', entityType: 'User', entityId: otp.user.id, ipAddress: meta.ipAddress ?? null, userAgent: meta.userAgent ?? null } }),
+    ]);
+
+    // Réinitialiser les compteurs de vérification
+    await this.db.otpRateLimit.updateMany({
+      where: { target, deviceId },
+      data: { verifyCount: 0 },
+    });
+
+    const updatedUser = { ...otp.user, phoneVerifiedAt: now };
+    return this._issueTokens(updatedUser as typeof otp.user, meta);
+  }
+
+  // ------------------------------------------------------------------
+  // resendOtp — renvoie un nouveau code (limité en fréquence)
+  // ------------------------------------------------------------------
+
+  async resendOtp(
+    target: string,
+    purpose: OtpPurpose,
+    deviceId?: string,
+    lang?: Lang,
+  ): Promise<void> {
+    const effectiveLang = lang ?? Lang.FR;
+    const dId = deviceId ?? 'unknown';
+
+    // Vérifier lockout
+    const rl = await this.db.otpRateLimit.findUnique({ where: { target_deviceId: { target, deviceId: dId } } });
+    if (rl?.lockedUntil && rl.lockedUntil > new Date()) {
+      const err = new Error('Trop de tentatives — réessayez dans 24h');
+      (err as NodeJS.ErrnoException).code = 'OTP_TARGET_LOCKED';
+      throw err;
+    }
+
+    // Trouver le user pour REGISTRATION_VERIFY
+    let userId: string | undefined;
+    if (purpose === OtpPurpose.REGISTRATION_VERIFY) {
+      const user = await this.db.user.findFirst({ where: target.startsWith('+') ? { phone: target } : { email: target } });
+      userId = user?.id;
+    } else {
+      const user = await this.db.user.findFirst({ where: target.startsWith('+') ? { phone: target } : { email: target } });
+      userId = user?.id;
+    }
+
+    await this._generateAndSendOtp(userId ?? null, target, purpose, effectiveLang, dId);
+  }
+
+  // ------------------------------------------------------------------
+  // sendPasswordResetOtp — démarre le flux reset mot de passe
+  // ------------------------------------------------------------------
+
+  async sendPasswordResetOtp(target: string, deviceId?: string): Promise<void> {
+    const user = await this.db.user.findFirst({
+      where: target.startsWith('+') ? { phone: target } : { email: target },
+    });
+
+    // Ne pas révéler si le compte existe ou non (timing-safe)
+    if (!user || user.status !== 'ACTIVE') return;
+
+    await this._generateAndSendOtp(user.id, target, OtpPurpose.PASSWORD_RESET, user.preferredLang, deviceId);
+  }
+
+  // ------------------------------------------------------------------
+  // resetPassword — vérifie OTP et met à jour le mot de passe
+  // ------------------------------------------------------------------
+
+  async resetPassword(target: string, code: string, newPassword: string, deviceId?: string): Promise<void> {
+    const dId = deviceId ?? 'unknown';
+    await this._checkAndIncrementVerifyLimit(target, dId);
+
+    const codeHash = this._hashOtp(code);
+    const now = new Date();
+
+    const otp = await this.db.otpCode.findFirst({
+      where: { target, codeHash, purpose: OtpPurpose.PASSWORD_RESET, usedAt: null, expiresAt: { gt: now } },
+      include: { user: true },
+    });
+
+    if (!otp || !otp.user) {
+      await this.db.auditLog.create({ data: { action: 'OTP_FAILED', entityType: 'OtpCode', entityId: null } });
+      const err = new Error('Code invalide ou expiré');
+      (err as NodeJS.ErrnoException).code = 'OTP_INVALID';
+      throw err;
+    }
+
+    const passwordHash = await argon2.hash(newPassword, { type: argon2.argon2id, memoryCost: 65536, timeCost: 3, parallelism: 4 });
+
+    await this.db.$transaction([
+      this.db.otpCode.update({ where: { id: otp.id }, data: { usedAt: now } }),
+      this.db.user.update({ where: { id: otp.user.id }, data: { passwordHash } }),
+      // Révoquer toutes les sessions sauf la courante — précaution sécurité
+      this.db.authSession.updateMany({ where: { userId: otp.user.id, revokedAt: null }, data: { revokedAt: now } }),
+      this.db.auditLog.create({ data: { actorUserId: otp.user.id, action: 'PASSWORD_RESET', entityType: 'User', entityId: otp.user.id } }),
+    ]);
+  }
+
+  // ------------------------------------------------------------------
+  // getSessions — liste les sessions actives + contextes coopératives
+  // ------------------------------------------------------------------
+
+  async getSessions(userId: string): Promise<SessionsResult> {
+    const [sessions, memberships] = await Promise.all([
+      this.db.authSession.findMany({
+        where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.db.membership.findMany({
+        where: { userId, active: true },
+        include: { cooperative: { select: { id: true, displayName: true } } },
+      }),
+    ]);
+
+    return {
+      sessions: sessions.map((s) => ({
+        id: s.id,
+        deviceId: s.deviceId,
+        userAgent: s.userAgent,
+        ipAddress: s.ipAddress,
+        createdAt: s.createdAt,
+        expiresAt: s.expiresAt,
+      })),
+      cooperativeContexts: memberships.map((m) => ({
+        coopId: m.cooperativeId,
+        coopName: m.cooperative.displayName,
+        role: m.role,
+      })),
+    };
+  }
+
+  // ------------------------------------------------------------------
+  // revokeSession — révoque une session spécifique
+  // ------------------------------------------------------------------
+
+  async revokeSession(userId: string, sessionId: string): Promise<void> {
+    const session = await this.db.authSession.findUnique({ where: { id: sessionId } });
+    if (!session || session.userId !== userId) {
+      const err = new Error('Session introuvable');
+      (err as NodeJS.ErrnoException).code = 'NOT_FOUND';
+      throw err;
+    }
+    await this.db.authSession.update({ where: { id: sessionId }, data: { revokedAt: new Date() } });
+    await this.db.auditLog.create({ data: { actorUserId: userId, action: 'SESSION_REVOKED', entityType: 'AuthSession', entityId: sessionId } });
+  }
+
+  // ------------------------------------------------------------------
+  // revokeAllSessions — révoque toutes les sessions (changement de mdp, etc.)
+  // ------------------------------------------------------------------
+
+  async revokeAllSessions(userId: string): Promise<void> {
+    await this.db.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
+    await this.db.auditLog.create({ data: { actorUserId: userId, action: 'SESSION_REVOKED', entityType: 'AuthSession', entityId: userId } });
+  }
+
+  // ------------------------------------------------------------------
+  // Helpers privés OTP
+  // ------------------------------------------------------------------
+
+  private _hashOtp(code: string): string {
+    return crypto.createHash('sha256').update(code).digest('hex');
+  }
+
+  private async _generateAndSendOtp(
+    userId: string | null | undefined,
+    target: string,
+    purpose: OtpPurpose,
+    lang: Lang,
+    deviceId?: string,
+  ): Promise<void> {
+    const dId = deviceId ?? 'unknown';
+
+    // Vérifier rate limit envoi (max 5 par heure par target)
+    const rl = await this.db.otpRateLimit.upsert({
+      where: { target_deviceId: { target, deviceId: dId } },
+      create: { target, deviceId: dId, sendCount: 1, sendWindowStart: new Date() },
+      update: {},
+    });
+
+    const windowAge = Date.now() - rl.sendWindowStart.getTime();
+    const inWindow = windowAge < 3_600_000; // 1 heure
+    if (inWindow && rl.sendCount >= 5) {
+      const err = new Error('Trop d\'envois OTP — réessayez dans 1h');
+      (err as NodeJS.ErrnoException).code = 'OTP_RATE_LIMITED';
+      throw err;
+    }
+
+    // Réinitialiser fenêtre si expirée
+    await this.db.otpRateLimit.update({
+      where: { target_deviceId: { target, deviceId: dId } },
+      data: inWindow
+        ? { sendCount: { increment: 1 } }
+        : { sendCount: 1, sendWindowStart: new Date() },
+    });
+
+    // Invalider les codes précédents non utilisés du même purpose
+    await this.db.otpCode.updateMany({
+      where: { target, purpose, usedAt: null, expiresAt: { gt: new Date() } },
+      data: { usedAt: new Date() },
+    });
+
+    // Générer le code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const codeHash = this._hashOtp(code);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 min
+
+    await this.db.otpCode.create({
+      data: { userId: userId ?? null, target, codeHash, purpose, expiresAt },
+    });
+
+    // Templates SMS (max 160 chars)
+    const templates: Record<OtpPurpose, Record<Lang, string>> = {
+      [OtpPurpose.REGISTRATION_VERIFY]: {
+        [Lang.FR]: `InsTRAM: Votre code de vérification est ${code}. Expire dans 10 min.`,
+        [Lang.MG]: `InsTRAM: Ny kaody fanamafisanao: ${code}. Lany amin'ny 10 min.`,
+      },
+      [OtpPurpose.PASSWORD_RESET]: {
+        [Lang.FR]: `InsTRAM: Votre code de réinitialisation: ${code}. Expire dans 10 min.`,
+        [Lang.MG]: `InsTRAM: Ny kaody fanavaozana: ${code}. Lany amin'ny 10 min.`,
+      },
+    };
+
+    const isPhone = target.startsWith('+');
+    if (isPhone) {
+      const sms = createSmsProvider();
+      await sms.send({ to: target, text: templates[purpose][lang], lang: lang as 'FR' | 'MG' });
+    }
+
+    await this.db.auditLog.create({
+      data: {
+        actorUserId: userId ?? null,
+        action: 'OTP_SENT',
+        entityType: 'OtpCode',
+        entityId: null,
+      },
+    });
+  }
+
+  private async _checkAndIncrementVerifyLimit(target: string, deviceId: string): Promise<void> {
+    const rl = await this.db.otpRateLimit.findUnique({ where: { target_deviceId: { target, deviceId } } });
+
+    if (rl?.lockedUntil && rl.lockedUntil > new Date()) {
+      const err = new Error('Trop de tentatives — réessayez dans 24h');
+      (err as NodeJS.ErrnoException).code = 'OTP_TARGET_LOCKED';
+      throw err;
+    }
+
+    const windowAge = rl ? Date.now() - rl.verifyWindowStart.getTime() : Infinity;
+    const inWindow = windowAge < 3_600_000;
+    const newCount = inWindow ? (rl?.verifyCount ?? 0) + 1 : 1;
+    const locked = newCount >= 10;
+
+    await this.db.otpRateLimit.upsert({
+      where: { target_deviceId: { target, deviceId } },
+      create: { target, deviceId, verifyCount: 1, verifyWindowStart: new Date(), lockedUntil: null },
+      update: inWindow
+        ? { verifyCount: { increment: 1 }, lockedUntil: locked ? new Date(Date.now() + 86_400_000) : null }
+        : { verifyCount: 1, verifyWindowStart: new Date(), lockedUntil: null },
+    });
+
+    if (locked) {
+      const err = new Error('Compte bloqué 24h suite à trop d\'échecs OTP');
+      (err as NodeJS.ErrnoException).code = 'OTP_TARGET_LOCKED';
+      throw err;
+    }
+  }
+
   private async _issueTokens(
     user: User & {
       travelerProfile: { firstName: string; lastName: string; mobileMoneyPhone: string | null } | null;
       memberships: Array<{ cooperativeId: string; role: string; cooperative: { id: string; displayName: string } }>;
       adminProfile: { role: string } | null;
     },
-    meta: { ipAddress?: string; userAgent?: string },
+    meta: { ipAddress?: string; userAgent?: string; deviceId?: string },
   ): Promise<AuthResult> {
     const accessPayload = this._buildAccessPayload(user);
     const accessToken = this.tokenGenerator.signAccessToken(accessPayload);
@@ -361,6 +691,7 @@ export class AuthService {
       data: {
         userId: user.id,
         refreshTokenHash,
+        deviceId: meta.deviceId ?? null,
         userAgent: meta.userAgent ?? null,
         ipAddress: meta.ipAddress ?? null,
         expiresAt,

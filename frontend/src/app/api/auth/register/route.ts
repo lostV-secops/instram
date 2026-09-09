@@ -1,18 +1,10 @@
 /**
  * Route Handler : POST /api/auth/register
- * Crée un compte voyageur et stocke les tokens dans des cookies.
+ * Crée un compte voyageur. Le backend renvoie maintenant {requiresVerification: true, target}
+ * (D8 CDC) — pas de tokens ici, la vérification OTP suit.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  COOKIE_ACCESS,
-  COOKIE_REFRESH,
-  COOKIE_USER_INFO,
-  ACCESS_TOKEN_MAX_AGE,
-  REFRESH_TOKEN_MAX_AGE,
-  sessionCookieOptions,
-} from '@/lib/auth';
-import type { AuthTokens } from '@/lib/types';
 
 const BACKEND_URL =
   process.env.BACKEND_URL ||
@@ -44,46 +36,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  const responseBody = await backendResponse.json().catch(() => ({
+    code: 'REGISTER_ERROR',
+    message: 'Inscription échouée',
+  }));
+
   if (!backendResponse.ok) {
-    const errorBody = await backendResponse.json().catch(() => ({
-      code: 'REGISTER_ERROR',
-      message: 'Inscription échouée',
-    }));
-    return NextResponse.json(errorBody, { status: backendResponse.status });
+    return NextResponse.json(responseBody, { status: backendResponse.status });
   }
 
-  const authData = (await backendResponse.json()) as AuthTokens;
-
-  const response = NextResponse.json({ success: true }, { status: 201 });
-
-  response.cookies.set(COOKIE_ACCESS, authData.accessToken, {
-    ...sessionCookieOptions,
-    maxAge: ACCESS_TOKEN_MAX_AGE,
-  });
-
-  response.cookies.set(COOKIE_REFRESH, authData.refreshToken, {
-    ...sessionCookieOptions,
-    maxAge: REFRESH_TOKEN_MAX_AGE,
-  });
-
-  if (authData.user) {
-    const publicUserInfo = {
-      id: authData.user.id,
-      email: authData.user.email,
-      roles: authData.user.roles,
-    };
-    response.cookies.set(
-      COOKIE_USER_INFO,
-      encodeURIComponent(JSON.stringify(publicUserInfo)),
-      {
-        httpOnly: false,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: REFRESH_TOKEN_MAX_AGE,
-      },
-    );
-  }
-
-  return response;
+  // Le backend renvoie { requiresVerification: true, userId, target }
+  // On transmet directement au client pour qu'il redirige vers /auth/verify
+  return NextResponse.json(responseBody, { status: 201 });
 }

@@ -77,6 +77,16 @@ export default function LoginPage() {
         body: JSON.stringify(body),
       });
 
+      if (response.status === 403) {
+        const body = await response.json().catch(() => null);
+        if (body?.code === 'ACCOUNT_NOT_VERIFIED' && body?.target) {
+          router.push(`/${lang}/auth/verify?target=${encodeURIComponent(body.target)}`);
+          return;
+        }
+        setGlobalError(t.auth.accountNotVerified);
+        return;
+      }
+
       if (response.status === 401) {
         setGlobalError(t.auth.errorInvalidCredentials);
         return;

@@ -90,8 +90,13 @@ export default function RegisterPage() {
         return;
       }
 
-      router.push(`/${lang}`);
-      router.refresh();
+      const data = await response.json().catch(() => null);
+      if (data?.requiresVerification && data?.target) {
+        router.push(`/${lang}/auth/verify?target=${encodeURIComponent(data.target)}`);
+      } else {
+        router.push(`/${lang}`);
+        router.refresh();
+      }
     } catch {
       setGlobalError(t.common.errorNetwork);
     } finally {
