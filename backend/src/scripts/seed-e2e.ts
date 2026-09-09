@@ -29,9 +29,6 @@ const VEHICLE_ID           = 'e2e00000-0000-0000-0000-000000000003';
 const ROUTE_ID             = 'e2e00000-0000-0000-0000-000000000004';
 
 // Utilisateur COOP_ADMIN pour les tests du back-office
-const COOP_ADMIN_USER_ID   = 'e2e00000-0000-0000-0002-000000000001';
-const COOP_ADMIN_PROFILE_ID = 'e2e00000-0000-0000-0002-000000000002';
-const COOP_ADMIN_MEMBER_ID  = 'e2e00000-0000-0000-0002-000000000003';
 export const COOP_ADMIN = {
   phone: '+261340000002',
   password: 'CoopAdmin2024!',
@@ -40,8 +37,6 @@ export const COOP_ADMIN = {
 };
 
 // Utilisateur voyageur pour les tests d'inscription/réservation
-const TEST_USER_ID      = 'e2e00000-0000-0000-0003-000000000001';
-const TEST_USER_PROFILE_ID = 'e2e00000-0000-0000-0003-000000000002';
 export const TEST_USER = {
   phone: '+261340000001',
   password: 'TestUser2024!',
@@ -190,14 +185,14 @@ async function main() {
   }
 
   // 7. Utilisateur COOP_ADMIN + TravelerProfile + Membership
+  // Upsert par téléphone (champ unique) pour éviter les conflits d'ID
   const coopAdminHash = await argon2.hash(COOP_ADMIN.password);
   const verifiedAt = new Date();
 
-  await db.user.upsert({
-    where: { id: COOP_ADMIN_USER_ID },
-    update: { passwordHash: coopAdminHash, phoneVerifiedAt: verifiedAt },
+  const coopAdmin = await db.user.upsert({
+    where: { phone: COOP_ADMIN.phone },
+    update: { passwordHash: coopAdminHash, phoneVerifiedAt: verifiedAt, status: 'ACTIVE' },
     create: {
-      id: COOP_ADMIN_USER_ID,
       phone: COOP_ADMIN.phone,
       passwordHash: coopAdminHash,
       preferredLang: 'FR',
@@ -207,37 +202,43 @@ async function main() {
   });
 
   await db.travelerProfile.upsert({
-    where: { id: COOP_ADMIN_PROFILE_ID },
+    where: { userId: coopAdmin.id },
     update: {},
     create: {
-      id: COOP_ADMIN_PROFILE_ID,
-      userId: COOP_ADMIN_USER_ID,
+      userId: coopAdmin.id,
       firstName: COOP_ADMIN.firstName,
       lastName: COOP_ADMIN.lastName,
     },
   });
 
-  await db.membership.upsert({
-    where: { id: COOP_ADMIN_MEMBER_ID },
-    update: { active: true },
-    create: {
-      id: COOP_ADMIN_MEMBER_ID,
-      userId: COOP_ADMIN_USER_ID,
-      cooperativeId: COOP_ID,
-      role: 'COOP_ADMIN',
-      active: true,
-    },
+  // Vérifier si un membership COOP_ADMIN existe déjà pour cet user
+  const existingMembership = await db.membership.findFirst({
+    where: { userId: coopAdmin.id, cooperativeId: COOP_ID },
   });
+  if (!existingMembership) {
+    await db.membership.create({
+      data: {
+        userId: coopAdmin.id,
+        cooperativeId: COOP_ID,
+        role: 'COOP_ADMIN',
+        active: true,
+      },
+    });
+  } else {
+    await db.membership.update({
+      where: { id: existingMembership.id },
+      data: { active: true },
+    });
+  }
   console.log(`[seed-e2e] ✓ Utilisateur COOP_ADMIN (${COOP_ADMIN.phone})`);
 
   // 8. Utilisateur voyageur E2E (pré-vérifié, sans OTP)
   const testUserHash = await argon2.hash(TEST_USER.password);
 
-  await db.user.upsert({
-    where: { id: TEST_USER_ID },
-    update: { passwordHash: testUserHash, phoneVerifiedAt: verifiedAt },
+  const testUser = await db.user.upsert({
+    where: { phone: TEST_USER.phone },
+    update: { passwordHash: testUserHash, phoneVerifiedAt: verifiedAt, status: 'ACTIVE' },
     create: {
-      id: TEST_USER_ID,
       phone: TEST_USER.phone,
       passwordHash: testUserHash,
       preferredLang: 'FR',
@@ -247,11 +248,10 @@ async function main() {
   });
 
   await db.travelerProfile.upsert({
-    where: { id: TEST_USER_PROFILE_ID },
+    where: { userId: testUser.id },
     update: {},
     create: {
-      id: TEST_USER_PROFILE_ID,
-      userId: TEST_USER_ID,
+      userId: testUser.id,
       firstName: TEST_USER.firstName,
       lastName: TEST_USER.lastName,
     },
