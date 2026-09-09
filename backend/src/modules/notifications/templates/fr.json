@@ -5,5 +5,6 @@
   "TRIP_REMINDER": "Rappel : votre trajet {{origin}} → {{destination}} part demain à {{departureAt}}. Ref : {{reference}}.",
   "RATING_REQUEST": "Votre trajet est terminé. Notez votre expérience sur InsTRAM : {{ratingUrl}}",
   "BOOKING_CANCELLED": "Votre réservation {{reference}} a été annulée au guichet. Contactez la coopérative pour toute question.",
+  "PAYMENT_FAILED": "Le paiement pour la réservation {{reference}} a échoué. Veuillez réessayer depuis l'application InsTRAM.",
   "COOP_INVITE": "Vous êtes invité(e) à rejoindre {{cooperativeName}} sur InsTRAM. Lien : {{inviteUrl}}"
 }

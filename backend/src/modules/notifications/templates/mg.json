@@ -5,5 +5,6 @@
   "TRIP_REMINDER": "Tsahivina: ny dia {{origin}} → {{destination}} dia amin'ny rahampitso amin'ny {{departureAt}}. Ref: {{reference}}.",
   "RATING_REQUEST": "Vita ny dianao. Omeo vahana ny traikefanao ao amin'ny InsTRAM: {{ratingUrl}}",
   "BOOKING_CANCELLED": "Voafafa ny fangatahana {{reference}} tao amin'ny guichet. Mifandraisa amin'ny kooperatiava ho an'ny fanontaniana rehetra.",
+  "PAYMENT_FAILED": "Tsy nisy ny fandoavana ho an'ny fandraharahana {{reference}}. Avereno amin'ny application InsTRAM.",
   "COOP_INVITE": "Voasatroka ho tonga any {{cooperativeName}} amin'ny InsTRAM. Rohy: {{inviteUrl}}"
 }

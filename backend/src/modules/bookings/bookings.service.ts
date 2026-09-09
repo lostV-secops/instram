@@ -804,6 +804,8 @@ export class BookingsService {
       include: {
         seats: { where: { isActive: true } },
         payments: true,
+        buyer: true,
+        passengers: { take: 1 },
       },
     });
 
@@ -877,6 +879,31 @@ export class BookingsService {
           bookingId,
         }),
       );
+    }
+
+    // Notification SMS annulation (transactionnelle — envoi immédiat)
+    const cancelPhone = booking.buyer?.phone ?? booking.passengers[0]?.phone;
+    const cancelLang = (booking.buyer?.preferredLang ?? 'FR') as 'FR' | 'MG';
+    if (cancelPhone) {
+      const vars = { reference: booking.reference };
+      if (this.notifications) {
+        await this.notifications.enqueue({
+          bookingId,
+          templateKey: 'BOOKING_CANCELLED',
+          variables: vars,
+          lang: cancelLang,
+          phone: cancelPhone,
+          transactional: true,
+        }).catch((e: unknown) => console.error('[BookingsService] cancelAtCounter SMS error', e));
+      } else {
+        await enqueueSms({
+          phone: cancelPhone,
+          lang: cancelLang,
+          templateCode: 'BOOKING_CANCELLED',
+          params: vars,
+          isTransactional: true,
+        }).catch((e: unknown) => console.error('[BookingsService] cancelAtCounter SMS fallback error', e));
+      }
     }
 
     return this._formatBooking(updated);
