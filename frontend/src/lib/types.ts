@@ -540,3 +540,32 @@ export interface CoopPolicy {
   version: number;
   isActive: boolean;
 }
+
+// ─── Plans tarifaires coopérative ─────────────────────────────────────────────
+export type PricingPlanType = 'COMMISSION' | 'SUBSCRIPTION';
+
+export interface CoopPricingPlan {
+  id: string;
+  cooperativeId: string;
+  type: PricingPlanType;
+  commissionRate: number | null;
+  monthlyFeeMga: number | null;
+  effectiveFrom: string;
+  effectiveUntil: string | null;
+  createdAt: string;
+}
+
+// ─── Abonnements coopérative ──────────────────────────────────────────────────
+export type SubscriptionStatus = 'MANUAL' | 'PAID';
+
+export interface CoopSubscription {
+  id: string;
+  cooperativeId: string;
+  periodStart: string;
+  periodEnd: string;
+  amountMga: number;
+  status: SubscriptionStatus;
+  paidAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

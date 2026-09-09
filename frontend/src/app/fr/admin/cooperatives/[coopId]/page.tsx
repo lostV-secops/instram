@@ -26,7 +26,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { useAdmin } from '@/app/fr/admin/layout';
-import type { Cooperative, CooperativeStatus } from '@/lib/types';
+import type { Cooperative, CooperativeStatus, CoopPricingPlan, CoopSubscription, PricingPlanType } from '@/lib/types';
 
 const statusLabels: Record<CooperativeStatus, string> = {
   PENDING_VALIDATION: 'En attente de validation',
@@ -43,7 +43,20 @@ const statusBadgeVariants: Record<CooperativeStatus, 'warning' | 'success' | 'er
     REJECTED: 'neutral',
   };
 
-type ActionModal = 'suspend' | null;
+type ActionModal = 'suspend' | 'new-plan' | 'new-sub' | null;
+
+const PLAN_TYPE_LABELS: Record<PricingPlanType, string> = {
+  COMMISSION: 'Commission',
+  SUBSCRIPTION: 'Abonnement mensuel',
+};
+
+function formatMGA(amount: number): string {
+  return new Intl.NumberFormat('fr-MG').format(amount) + ' Ar';
+}
+
+function fmtDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
 
 export default function AdminCoopDetailPage() {
   const params = useParams();
@@ -65,6 +78,22 @@ export default function AdminCoopDetailPage() {
   const [suspendReason, setSuspendReason] = useState('');
   const [suspendReasonError, setSuspendReasonError] = useState<string | undefined>(undefined);
 
+  // Plans tarifaires
+  const [plans, setPlans] = useState<CoopPricingPlan[]>([]);
+  const [plansLoading, setPlansLoading] = useState(false);
+  const [planForm, setPlanForm] = useState<{ type: PricingPlanType; commissionRate: string; monthlyFeeMga: string; effectiveFrom: string }>({
+    type: 'COMMISSION', commissionRate: '', monthlyFeeMga: '', effectiveFrom: new Date().toISOString().slice(0, 10),
+  });
+  const [planSaving, setPlanSaving] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
+
+  // Abonnements
+  const [subs, setSubs] = useState<CoopSubscription[]>([]);
+  const [subsLoading, setSubsLoading] = useState(false);
+  const [subForm, setSubForm] = useState({ periodStart: '', periodEnd: '', amountMga: '' });
+  const [subSaving, setSubSaving] = useState(false);
+  const [subError, setSubError] = useState<string | null>(null);
+
   const loadCoop = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -82,9 +111,96 @@ export default function AdminCoopDetailPage() {
     }
   }, [coopId]);
 
+  const loadPlans = useCallback(async () => {
+    setPlansLoading(true);
+    try {
+      const res = await fetch(`/api/proxy/v1/admin/cooperatives/${coopId}/pricing-plans`, { cache: 'no-store' });
+      if (res.ok) setPlans(await res.json());
+    } finally {
+      setPlansLoading(false);
+    }
+  }, [coopId]);
+
+  const loadSubs = useCallback(async () => {
+    setSubsLoading(true);
+    try {
+      const res = await fetch(`/api/proxy/v1/admin/cooperatives/${coopId}/subscriptions`, { cache: 'no-store' });
+      if (res.ok) setSubs(await res.json());
+    } finally {
+      setSubsLoading(false);
+    }
+  }, [coopId]);
+
+  const handleCreatePlan = async () => {
+    setPlanError(null);
+    const body: Record<string, unknown> = {
+      type: planForm.type,
+      effectiveFrom: new Date(planForm.effectiveFrom).toISOString(),
+    };
+    if (planForm.type === 'COMMISSION') {
+      const rate = parseFloat(planForm.commissionRate);
+      if (!planForm.commissionRate || isNaN(rate)) { setPlanError('Taux de commission requis (ex. 4).'); return; }
+      body.commissionRate = rate;
+    } else {
+      const fee = parseInt(planForm.monthlyFeeMga, 10);
+      if (!planForm.monthlyFeeMga || isNaN(fee)) { setPlanError('Montant mensuel requis.'); return; }
+      body.monthlyFeeMga = fee;
+    }
+    setPlanSaving(true);
+    try {
+      const res = await fetch(`/api/proxy/v1/admin/cooperatives/${coopId}/pricing-plan`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error((d as {message?: string}).message ?? `HTTP ${res.status}`); }
+      setActionModal(null);
+      await loadPlans();
+    } catch (err) {
+      setPlanError(err instanceof Error ? err.message : 'Erreur lors de la création du plan.');
+    } finally {
+      setPlanSaving(false);
+    }
+  };
+
+  const handleCreateSub = async () => {
+    setSubError(null);
+    const amount = parseInt(subForm.amountMga, 10);
+    if (!subForm.periodStart || !subForm.periodEnd) { setSubError('Dates de période requises.'); return; }
+    if (!subForm.amountMga || isNaN(amount)) { setSubError('Montant requis.'); return; }
+    setSubSaving(true);
+    try {
+      const res = await fetch(`/api/proxy/v1/admin/cooperatives/${coopId}/subscriptions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ periodStart: new Date(subForm.periodStart).toISOString(), periodEnd: new Date(subForm.periodEnd).toISOString(), amountMga: amount }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error((d as {message?: string}).message ?? `HTTP ${res.status}`); }
+      setActionModal(null);
+      setSubForm({ periodStart: '', periodEnd: '', amountMga: '' });
+      await loadSubs();
+    } catch (err) {
+      setSubError(err instanceof Error ? err.message : "Erreur lors de la création de l'abonnement.");
+    } finally {
+      setSubSaving(false);
+    }
+  };
+
+  const handleMarkPaid = async (subId: string) => {
+    try {
+      const res = await fetch(`/api/proxy/v1/admin/subscriptions/${subId}/mark-paid`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (res.ok) await loadSubs();
+    } catch { /* ignore */ }
+  };
+
   useEffect(() => {
     loadCoop();
-  }, [loadCoop]);
+    loadPlans();
+    loadSubs();
+  }, [loadCoop, loadPlans, loadSubs]);
 
   const handleValidate = async () => {
     setActionLoading('validate');
@@ -298,6 +414,100 @@ export default function AdminCoopDetailPage() {
         )}
       </div>
 
+      {/* ─── Plans tarifaires ─────────────────────────────────────────────── */}
+      <section aria-labelledby="plans-heading">
+        <div className="flex items-center justify-between mb-3">
+          <h2 id="plans-heading" className="text-base font-semibold text-gray-900">Plans tarifaires</h2>
+          {canAct && (
+            <Button variant="secondary" size="sm" onClick={() => { setPlanError(null); setActionModal('new-plan'); }}>
+              + Nouveau plan
+            </Button>
+          )}
+        </div>
+        {plansLoading ? (
+          <div className="bg-white border border-gray-200 rounded-xl p-4 text-center animate-pulse">
+            <p className="text-xs text-gray-400">Chargement…</p>
+          </div>
+        ) : plans.length === 0 ? (
+          <div className="bg-white border border-gray-200 rounded-xl p-4 text-center">
+            <p className="text-xs text-gray-500">Aucun plan configuré.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {plans.map((plan) => (
+              <div key={plan.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-brand-dark">{PLAN_TYPE_LABELS[plan.type]}</p>
+                  <p className="text-xs text-gray-500">
+                    {plan.type === 'COMMISSION'
+                      ? `${plan.commissionRate ?? 0} % de commission`
+                      : `${formatMGA(plan.monthlyFeeMga ?? 0)} / mois`}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Depuis le {fmtDate(plan.effectiveFrom)}
+                    {plan.effectiveUntil ? ` — jusqu'au ${fmtDate(plan.effectiveUntil)}` : ' (actif)'}
+                  </p>
+                </div>
+                {!plan.effectiveUntil && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                    Actif
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* ─── Abonnements ──────────────────────────────────────────────────── */}
+      <section aria-labelledby="subs-heading">
+        <div className="flex items-center justify-between mb-3">
+          <h2 id="subs-heading" className="text-base font-semibold text-gray-900">Abonnements</h2>
+          {canAct && (
+            <Button variant="secondary" size="sm" onClick={() => { setSubError(null); setActionModal('new-sub'); }}>
+              + Nouvel abonnement
+            </Button>
+          )}
+        </div>
+        {subsLoading ? (
+          <div className="bg-white border border-gray-200 rounded-xl p-4 text-center animate-pulse">
+            <p className="text-xs text-gray-400">Chargement…</p>
+          </div>
+        ) : subs.length === 0 ? (
+          <div className="bg-white border border-gray-200 rounded-xl p-4 text-center">
+            <p className="text-xs text-gray-500">Aucun abonnement enregistré.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {subs.map((sub) => (
+              <div key={sub.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-brand-dark">{formatMGA(sub.amountMga)}</p>
+                  <p className="text-xs text-gray-500">
+                    {fmtDate(sub.periodStart)} → {fmtDate(sub.periodEnd)}
+                  </p>
+                  {sub.paidAt && (
+                    <p className="text-xs text-green-600 mt-0.5">Payé le {fmtDate(sub.paidAt)}</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                    sub.status === 'PAID' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                  }`}>
+                    {sub.status === 'PAID' ? 'Payé' : 'En attente'}
+                  </span>
+                  {sub.status !== 'PAID' && canAct && (
+                    <Button variant="secondary" size="sm" onClick={() => handleMarkPaid(sub.id)}>
+                      Marquer payé
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* Modal de confirmation de suspension */}
       {actionModal === 'suspend' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
@@ -343,6 +553,99 @@ export default function AdminCoopDetailPage() {
                   setSuspendReasonError(undefined);
                 }}
               >
+                Annuler
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal nouveau plan tarifaire */}
+      {actionModal === 'new-plan' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <h2 className="text-base font-bold text-brand-dark">Nouveau plan tarifaire</h2>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
+              <select
+                value={planForm.type}
+                onChange={(e) => setPlanForm((p) => ({ ...p, type: e.target.value as PricingPlanType }))}
+                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand/30"
+              >
+                <option value="COMMISSION">Commission (%)</option>
+                <option value="SUBSCRIPTION">Abonnement mensuel (Ar)</option>
+              </select>
+            </div>
+            {planForm.type === 'COMMISSION' ? (
+              <Input
+                label="Taux de commission (%)"
+                type="number"
+                min={0}
+                max={100}
+                step={0.1}
+                value={planForm.commissionRate}
+                onChange={(e) => setPlanForm((p) => ({ ...p, commissionRate: e.target.value }))}
+                placeholder="4"
+              />
+            ) : (
+              <Input
+                label="Montant mensuel (Ar)"
+                type="number"
+                min={0}
+                value={planForm.monthlyFeeMga}
+                onChange={(e) => setPlanForm((p) => ({ ...p, monthlyFeeMga: e.target.value }))}
+                placeholder="50000"
+              />
+            )}
+            <Input
+              label="Date d'effet"
+              type="date"
+              value={planForm.effectiveFrom}
+              onChange={(e) => setPlanForm((p) => ({ ...p, effectiveFrom: e.target.value }))}
+            />
+            {planError && <p role="alert" className="text-xs text-red-600">{planError}</p>}
+            <div className="flex gap-3 pt-2">
+              <Button variant="action" fullWidth isLoading={planSaving} onClick={handleCreatePlan}>
+                Appliquer
+              </Button>
+              <Button variant="ghost" fullWidth disabled={planSaving} onClick={() => setActionModal(null)}>
+                Annuler
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal nouvel abonnement */}
+      {actionModal === 'new-sub' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <h2 className="text-base font-bold text-brand-dark">Nouvel abonnement</h2>
+            <Input
+              label="Début de période"
+              type="date"
+              value={subForm.periodStart}
+              onChange={(e) => setSubForm((p) => ({ ...p, periodStart: e.target.value }))}
+            />
+            <Input
+              label="Fin de période"
+              type="date"
+              value={subForm.periodEnd}
+              onChange={(e) => setSubForm((p) => ({ ...p, periodEnd: e.target.value }))}
+            />
+            <Input
+              label="Montant (Ar)"
+              type="number"
+              min={0}
+              value={subForm.amountMga}
+              onChange={(e) => setSubForm((p) => ({ ...p, amountMga: e.target.value }))}
+              placeholder="50000"
+            />
+            {subError && <p role="alert" className="text-xs text-red-600">{subError}</p>}
+            <div className="flex gap-3 pt-2">
+              <Button variant="action" fullWidth isLoading={subSaving} onClick={handleCreateSub}>
+                Créer
+              </Button>
+              <Button variant="ghost" fullWidth disabled={subSaving} onClick={() => setActionModal(null)}>
                 Annuler
               </Button>
             </div>
