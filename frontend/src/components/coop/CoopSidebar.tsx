@@ -94,10 +94,20 @@ const IconSettings = () => (
   </svg>
 );
 
+const IconTruck = () => (
+  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+    <rect x="1" y="3" width="15" height="13" rx="1" />
+    <path d="M16 8h4l3 5v4h-7V8z" />
+    <circle cx="5.5" cy="18.5" r="2.5" />
+    <circle cx="18.5" cy="18.5" r="2.5" />
+  </svg>
+);
+
 const NAV_ITEMS: NavItem[] = [
   { href: '/fr/coop', label: 'Tableau de bord', icon: <IconGrid /> },
   { href: '/fr/coop/trips', label: 'Trajets', icon: <IconCalendar /> },
   { href: '/fr/coop/routes', label: 'Lignes', icon: <IconMap /> },
+  { href: '/fr/coop/vehicles', label: 'Véhicules', icon: <IconTruck /> },
   { href: '/fr/coop/fares', label: 'Tarifs', icon: <IconTag /> },
   { href: '/fr/coop/bookings', label: 'Réservations', icon: <IconClipboard /> },
   { href: '/fr/coop/walk-in', label: 'Walk-in guichet', icon: <IconUserPlus /> },

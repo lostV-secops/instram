@@ -23,6 +23,7 @@ import driverRoutes from './modules/driver/driver.routes';
 import ratingsRoutes from './modules/ratings/ratings.routes';
 import exportsRoutes from './modules/exports/exports.routes';
 import adminRoutes from './modules/admin/admin.routes';
+import directoryRoutes from './modules/directory/directory.routes';
 
 // =====================================================================
 // Déclaration d'augmentation de types Fastify pour authenticate
@@ -213,6 +214,9 @@ export async function buildApp(): Promise<FastifyInstance> {
 
       // Search (public, no auth)
       await v1.register(searchRoutes, { prefix: '/search' });
+
+      // Directory — annuaire public /directory/cooperatives (public, no auth)
+      await v1.register(directoryRoutes, { prefix: '/directory' });
 
       // Seats — GET/POST/DELETE /trips/:tripInstanceId/seats/*
       await v1.register(seatsRoutes);

@@ -98,6 +98,15 @@ const IconShield = () => (
   </svg>
 );
 
+const IconScrollText = () => (
+  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+    <path d="M8 21h12a2 2 0 0 0 2-2v-2H10v2a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v3h4" />
+    <path d="M19 3H7a2 2 0 0 0-2 2v14" />
+    <line x1="11" y1="9" x2="17" y2="9" />
+    <line x1="11" y1="13" x2="17" y2="13" />
+  </svg>
+);
+
 const NAV_ITEMS: NavItem[] = [
   { href: '/fr/admin', label: 'Tableau de bord', icon: <IconGrid /> },
   { href: '/fr/admin/cooperatives', label: 'Coopératives', icon: <IconBuilding /> },
@@ -107,6 +116,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/fr/admin/users', label: 'Utilisateurs', icon: <IconUsers /> },
   { href: '/fr/admin/reports', label: 'Rapports financiers', icon: <IconBarChart /> },
   { href: '/fr/admin/exports', label: 'Exports', icon: <IconDownload /> },
+  { href: '/fr/admin/audit-logs', label: 'Journal d\'audit', icon: <IconScrollText /> },
   { href: '/fr/admin/admins', label: 'Administrateurs', icon: <IconShield /> },
   { href: '/fr/admin/settings', label: 'Paramètres plateforme', icon: <IconSettings /> },
 ];
