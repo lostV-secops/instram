@@ -145,6 +145,30 @@ export default async function bookingsRoutes(fastify: FastifyInstance): Promise<
   );
 
   // ------------------------------------------------------------------
+  // GET /bookings/:bookingId/ticket — billet QR (contrat §/bookings/{id}/ticket)
+  // ------------------------------------------------------------------
+  fastify.get<{ Params: { bookingId: string } }>(
+    '/bookings/:bookingId/ticket',
+    { onRequest: [fastify.authenticate] },
+    async (
+      req: FastifyRequest<{ Params: { bookingId: string } }>,
+      reply: FastifyReply,
+    ) => {
+      reply.header('Cache-Control', 'no-store');
+      try {
+        const ticket = await bookingsService.getBookingTicket(req.params.bookingId, getUserId(req));
+        return reply.status(200).send(ticket);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'NOT_FOUND') return reply.status(404).send({ code: 'NOT_FOUND', message: (err as Error).message });
+        if (code === 'FORBIDDEN') return reply.status(403).send({ code: 'FORBIDDEN', message: (err as Error).message });
+        req.log.error(err, 'getBookingTicket error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
   // POST /bookings/:bookingId/resend-ticket
   // Renvoi SMS du billet — voyageur authentifié uniquement.
   // ------------------------------------------------------------------

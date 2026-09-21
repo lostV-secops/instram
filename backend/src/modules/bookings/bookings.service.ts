@@ -506,6 +506,36 @@ export class BookingsService {
   }
 
   // ------------------------------------------------------------------
+  // GET /bookings/:bookingId/ticket — billet QR seul (contrat §/bookings/{id}/ticket)
+  // Retourne uniquement le bloc ticket sans les détails complets du booking.
+  // ------------------------------------------------------------------
+
+  async getBookingTicket(bookingId: string, userId: string): Promise<Record<string, unknown>> {
+    const booking = await this.db.booking.findFirst({
+      where: { id: bookingId, buyerUserId: userId },
+      select: {
+        reference: true,
+        status: true,
+        qrPayload: true,
+        confirmedAt: true,
+        createdAt: true,
+      },
+    });
+    if (!booking) throw new NotFoundError('Réservation introuvable');
+    if (booking.status !== BookingStatus.CONFIRMED) {
+      const err = new Error('Billet disponible uniquement pour les réservations confirmées') as NodeJS.ErrnoException;
+      err.code = 'FORBIDDEN';
+      throw err;
+    }
+    return {
+      reference: booking.reference,
+      qrPayload: booking.qrPayload,
+      qrImageUrl: null,
+      issuedAt: booking.confirmedAt?.toISOString() ?? booking.createdAt.toISOString(),
+    };
+  }
+
+  // ------------------------------------------------------------------
   // POST /bookings/:bookingId/resend-ticket
   // Renvoi SMS du billet confirmé au voyageur (transactionnel, immédiat).
   // Seul l'acheteur authentifié peut déclencher le renvoi.
