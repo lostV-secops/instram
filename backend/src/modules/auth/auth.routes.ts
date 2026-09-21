@@ -280,7 +280,20 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
   );
 
   // ------------------------------------------------------------------
-  // POST /password/reset-request — demande un OTP de réinitialisation
+  // POST /password/forgot (contrat) + alias /password/reset-request — demande OTP
+  // ------------------------------------------------------------------
+  const passwordForgotHandler = async (req: FastifyRequest, reply: FastifyReply) => {
+    const parse = PasswordResetRequestSchema.safeParse(req.body);
+    if (!parse.success) {
+      return reply.status(400).send({ code: 'VALIDATION_ERROR', message: formatZodError(parse.error) });
+    }
+    await authService.sendPasswordResetOtp(
+      parse.data.target,
+      req.headers['x-device-id'] as string | undefined,
+    ).catch((err) => req.log.warn(err, 'password reset otp silent error'));
+    return reply.status(204).send();
+  };
+  fastify.post('/password/forgot', { config: { rateLimit: { max: 5, timeWindow: '15m' } } }, passwordForgotHandler);
   // ------------------------------------------------------------------
   fastify.post('/password/reset-request', {
     config: { rateLimit: { max: 5, timeWindow: '15m' } },
@@ -410,6 +423,42 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         return reply.status(204).send();
       } catch (err) {
         req.log.error(err, 'logout error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
+  // POST /invitations/:token/accept — accepter une invitation
+  // ------------------------------------------------------------------
+  fastify.post(
+    '/invitations/:token/accept',
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const { token } = req.params as { token: string };
+      const body = req.body as { password?: string; firstName?: string; lastName?: string };
+
+      if (!body.password || body.password.length < 10) {
+        return reply.status(400).send({ code: 'VALIDATION_ERROR', message: 'Mot de passe requis (min 10 caractères)' });
+      }
+
+      try {
+        const result = await authService.acceptInvitation(
+          token,
+          body.password,
+          body.firstName,
+          body.lastName,
+          {
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'],
+          },
+        );
+        return reply.status(200).send(result);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'NOT_FOUND') return reply.status(404).send({ code, message: (err as Error).message });
+        if (code === 'INVITATION_ALREADY_USED' || code === 'INVITATION_EXPIRED')
+          return reply.status(400).send({ code, message: (err as Error).message });
+        req.log.error(err, 'acceptInvitation error');
         return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
       }
     },

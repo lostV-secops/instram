@@ -1,6 +1,6 @@
 import argon2 from 'argon2';
 import crypto from 'crypto';
-import { PrismaClient, User, Lang, OtpPurpose } from '@prisma/client';
+import { PrismaClient, User, Lang, OtpPurpose, InvitationStatus } from '@prisma/client';
 import { RegisterInput, LoginInput, UpdateMeInput } from './auth.schema';
 import { createSmsProvider } from '../../infra/sms/provider';
 
@@ -813,6 +813,96 @@ export class AuthService {
       throw err;
     }
     return this._toSafeUser(user);
+  }
+
+  // ------------------------------------------------------------------
+  // acceptInvitation — POST /auth/invitations/:token/accept
+  // ------------------------------------------------------------------
+
+  async acceptInvitation(
+    rawToken: string,
+    password: string,
+    firstName?: string,
+    lastName?: string,
+    meta: { ipAddress?: string; userAgent?: string; deviceId?: string } = {},
+  ): Promise<AuthResult> {
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const invitation = await this.db.invitation.findUnique({ where: { tokenHash } });
+
+    if (!invitation) {
+      const err = new Error('Invitation introuvable ou déjà utilisée');
+      (err as NodeJS.ErrnoException).code = 'NOT_FOUND';
+      throw err;
+    }
+    if (invitation.status !== InvitationStatus.PENDING) {
+      const err = new Error('Invitation déjà utilisée ou révoquée');
+      (err as NodeJS.ErrnoException).code = 'INVITATION_ALREADY_USED';
+      throw err;
+    }
+    if (invitation.expiresAt < new Date()) {
+      await this.db.invitation.update({ where: { id: invitation.id }, data: { status: InvitationStatus.EXPIRED } });
+      const err = new Error('Invitation expirée');
+      (err as NodeJS.ErrnoException).code = 'INVITATION_EXPIRED';
+      throw err;
+    }
+
+    const passwordHash = await argon2.hash(password, { type: argon2.argon2id, memoryCost: 65536, timeCost: 3, parallelism: 4 });
+    const now = new Date();
+
+    const existing = invitation.email
+      ? await this.db.user.findUnique({ where: { email: invitation.email } })
+      : invitation.phone
+        ? await this.db.user.findUnique({ where: { phone: invitation.phone } })
+        : null;
+
+    let createdUserId: string;
+
+    await this.db.$transaction(async (tx) => {
+      let userId: string;
+      if (existing) {
+        userId = existing.id;
+        await tx.user.update({ where: { id: userId }, data: { passwordHash } });
+      } else {
+        const user = await tx.user.create({
+          data: {
+            email: invitation.email ?? null,
+            phone: invitation.phone ?? null,
+            passwordHash,
+            status: 'ACTIVE',
+            emailVerifiedAt: invitation.email ? now : null,
+            phoneVerifiedAt: invitation.phone ? now : null,
+            travelerProfile: {
+              create: { firstName: firstName ?? '', lastName: lastName ?? '' },
+            },
+          },
+        });
+        userId = user.id;
+        await tx.auditLog.create({
+          data: { actorUserId: userId, action: 'USER_CREATED', entityType: 'User', entityId: userId, ipAddress: meta.ipAddress ?? null, userAgent: meta.userAgent ?? null },
+        });
+      }
+      await tx.membership.upsert({
+        where: { userId_cooperativeId_role: { userId, cooperativeId: invitation.cooperativeId, role: invitation.role } },
+        create: { userId, cooperativeId: invitation.cooperativeId, role: invitation.role, active: true },
+        update: { active: true },
+      });
+      await tx.invitation.update({
+        where: { id: invitation.id },
+        data: { status: InvitationStatus.ACCEPTED, acceptedAt: now },
+      });
+      createdUserId = userId;
+    });
+
+    const finalUser = await this.db.user.findUniqueOrThrow({
+      where: { id: createdUserId! },
+      include: {
+        travelerProfile: true,
+        memberships: { include: { cooperative: true }, where: { active: true } },
+        adminProfile: true,
+      },
+    });
+
+    return this._issueTokens(finalUser, meta);
   }
 
   private async _recordFailedLogin(

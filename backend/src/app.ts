@@ -256,6 +256,21 @@ export async function buildApp(): Promise<FastifyInstance> {
       // Admin — /admin/cooperatives, /admin/users, /admin/ratings,
       //          /admin/dashboard, /admin/audit-logs, /admin/subscriptions
       await v1.register(adminRoutes, { prefix: '/admin' });
+
+      // Realtime — GET /realtime/ws-endpoint (contrat §Realtime)
+      v1.get(
+        '/realtime/ws-endpoint',
+        { onRequest: [app.authenticate] },
+        async (req, reply) => {
+          const user = req.user as { sub: string; roles: string[] };
+          const ticket = app.jwt.sign(
+            { sub: user.sub, roles: user.roles },
+            { expiresIn: '60s' },
+          );
+          const wsUrl = process.env.WS_URL ?? `wss://${req.hostname}/ws`;
+          return reply.status(200).send({ wsUrl, ticket });
+        },
+      );
     },
     { prefix: '/v1' },
   );
