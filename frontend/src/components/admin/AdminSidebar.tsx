@@ -118,6 +118,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/fr/admin/exports', label: 'Exports', icon: <IconDownload /> },
   { href: '/fr/admin/audit-logs', label: 'Journal d\'audit', icon: <IconScrollText /> },
   { href: '/fr/admin/admins', label: 'Administrateurs', icon: <IconShield /> },
+  { href: '/fr/admin/notifications', label: 'Templates SMS', icon: <IconScrollText /> },
   { href: '/fr/admin/settings', label: 'Paramètres plateforme', icon: <IconSettings /> },
 ];
 

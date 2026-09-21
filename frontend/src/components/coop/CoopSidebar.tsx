@@ -113,6 +113,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/fr/coop/walk-in', label: 'Walk-in guichet', icon: <IconUserPlus /> },
   { href: '/fr/coop/members', label: 'Équipe', icon: <IconUsers /> },
   { href: '/fr/coop/exports', label: 'Exports', icon: <IconDownload /> },
+  { href: '/fr/coop/billing', label: 'Facturation', icon: <IconTag /> },
   { href: '/fr/coop/settings', label: 'Paramètres', icon: <IconSettings /> },
 ];
 
