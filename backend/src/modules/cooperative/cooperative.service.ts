@@ -8,6 +8,9 @@ import type {
   UpdateVehicleInput,
   UpdateCooperativeInput,
   UpsertPolicyInput,
+  CreateSeatMapInput,
+  UpdateSeatMapInput,
+  DashboardQuery,
 } from './cooperative.schema';
 
 // =====================================================================
@@ -673,5 +676,228 @@ export class CooperativeService {
       where: { id: vehicleId },
       data: { isActive: false },
     });
+  }
+
+  // ================================================================
+  // GAP A — Plans de sièges (/coop/seat-maps)
+  // ================================================================
+
+  async listSeatMaps(cooperativeId: string): Promise<unknown[]> {
+    const maps = await this.db.seatMap.findMany({
+      where: { cooperativeId },
+      include: { seats: { orderBy: [{ row: 'asc' }, { column: 'asc' }] } },
+      orderBy: { createdAt: 'desc' },
+    });
+    return maps.map((m) => this._formatSeatMap(m));
+  }
+
+  async createSeatMap(
+    cooperativeId: string,
+    input: CreateSeatMapInput,
+  ): Promise<Record<string, unknown>> {
+    const capacity = input.seats.length;
+    const seatMap = await this.db.$transaction(async (tx) => {
+      const sm = await tx.seatMap.create({
+        data: {
+          cooperativeId,
+          name: input.name,
+          capacity,
+          layout: { rows: input.rows, cols: input.cols },
+        },
+      });
+      await tx.seatDefinition.createMany({
+        data: input.seats.map((s) => ({
+          seatMapId: sm.id,
+          code: s.code,
+          category: s.category,
+          row: s.row ?? null,
+          column: s.col ?? null,
+        })),
+      });
+      return tx.seatMap.findUnique({
+        where: { id: sm.id },
+        include: { seats: { orderBy: [{ row: 'asc' }, { column: 'asc' }] } },
+      });
+    });
+    return this._formatSeatMap(seatMap!);
+  }
+
+  async getSeatMap(
+    cooperativeId: string,
+    seatMapId: string,
+  ): Promise<Record<string, unknown>> {
+    const sm = await this.db.seatMap.findFirst({
+      where: { id: seatMapId, cooperativeId },
+      include: { seats: { orderBy: [{ row: 'asc' }, { column: 'asc' }] } },
+    });
+    if (!sm) throw new NotFoundError('Plan de sièges introuvable');
+    return this._formatSeatMap(sm);
+  }
+
+  async updateSeatMap(
+    cooperativeId: string,
+    seatMapId: string,
+    input: UpdateSeatMapInput,
+  ): Promise<Record<string, unknown>> {
+    const existing = await this.db.seatMap.findFirst({
+      where: { id: seatMapId, cooperativeId },
+    });
+    if (!existing) throw new NotFoundError('Plan de sièges introuvable');
+
+    const updated = await this.db.seatMap.update({
+      where: { id: seatMapId },
+      data: { name: input.name },
+      include: { seats: { orderBy: [{ row: 'asc' }, { column: 'asc' }] } },
+    });
+    return this._formatSeatMap(updated);
+  }
+
+  async deleteSeatMap(cooperativeId: string, seatMapId: string): Promise<void> {
+    const existing = await this.db.seatMap.findFirst({
+      where: { id: seatMapId, cooperativeId },
+    });
+    if (!existing) throw new NotFoundError('Plan de sièges introuvable');
+
+    const vehicleCount = await this.db.vehicle.count({
+      where: { seatMapId, isActive: true },
+    });
+    if (vehicleCount > 0) {
+      throw new ConflictError(
+        `Plan utilisé par ${vehicleCount} véhicule(s) actif(s) — désactiver les véhicules d'abord`,
+      );
+    }
+    await this.db.seatMap.delete({ where: { id: seatMapId } });
+  }
+
+  private _formatSeatMap(sm: {
+    id: string;
+    cooperativeId: string;
+    name: string;
+    capacity: number;
+    layout: unknown;
+    createdAt: Date;
+    updatedAt: Date;
+    seats: Array<{ id: string; code: string; category: string; row?: number | null; column?: number | null }>;
+  }): Record<string, unknown> {
+    return {
+      id: sm.id,
+      cooperativeId: sm.cooperativeId,
+      name: sm.name,
+      capacity: sm.capacity,
+      layout: sm.layout,
+      createdAt: sm.createdAt.toISOString(),
+      updatedAt: sm.updatedAt.toISOString(),
+      seats: sm.seats.map((s) => ({
+        id: s.id,
+        code: s.code,
+        category: s.category,
+        row: s.row ?? null,
+        column: s.column ?? null,
+      })),
+    };
+  }
+
+  // ================================================================
+  // GAP B — Tableau de bord (/coop/dashboard)
+  // ================================================================
+
+  async getCoopDashboard(
+    cooperativeId: string,
+    query: DashboardQuery,
+  ): Promise<Record<string, unknown>> {
+    const now = new Date();
+    const from = query.from ? new Date(query.from) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = query.to ? new Date(query.to) : now;
+
+    const [bookingAgg, upcomingTrips, totalTrips] = await Promise.all([
+      this.db.booking.aggregate({
+        where: {
+          cooperativeId,
+          status: 'CONFIRMED',
+          confirmedAt: { gte: from, lte: to },
+        },
+        _count: { id: true },
+        _sum: { seatSubtotalMga: true, platformFeeMga: true, totalAmountMga: true },
+      }),
+      this.db.tripInstance.count({
+        where: {
+          cooperativeId,
+          status: 'OPEN_FOR_BOOKING',
+          departureAt: { gte: now },
+        },
+      }),
+      this.db.tripInstance.findMany({
+        where: {
+          cooperativeId,
+          departureAt: { gte: from, lte: to },
+          status: { notIn: ['DRAFT', 'CANCELLED'] },
+        },
+        include: {
+          vehicle: { select: { capacity: true } },
+          _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
+        },
+      }),
+    ]);
+
+    const totalCapacity = totalTrips.reduce((s, t) => s + (t.vehicle?.capacity ?? 0), 0);
+    const totalConfirmedSeats = totalTrips.reduce((s, t) => s + (t._count?.bookings ?? 0), 0);
+    const avgFillRate = totalCapacity > 0
+      ? Math.round((totalConfirmedSeats / totalCapacity) * 100)
+      : 0;
+
+    return {
+      period: { from: from.toISOString(), to: to.toISOString() },
+      totalBookings: bookingAgg._count.id,
+      totalRevenueMga: bookingAgg._sum.seatSubtotalMga ?? 0,
+      totalPlatformFeesMga: bookingAgg._sum.platformFeeMga ?? 0,
+      avgFillRatePct: avgFillRate,
+      upcomingTrips,
+    };
+  }
+
+  // ================================================================
+  // GAP C — Plan tarifaire actif (/coop/pricing-plan)
+  // ================================================================
+
+  async getCoopPricingPlan(cooperativeId: string): Promise<Record<string, unknown> | null> {
+    const now = new Date();
+    const plan = await this.db.cooperativePricingPlan.findFirst({
+      where: {
+        cooperativeId,
+        effectiveFrom: { lte: now },
+        OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: now } }],
+      },
+      orderBy: { effectiveFrom: 'desc' },
+    });
+    if (!plan) return null;
+    return {
+      id: plan.id,
+      type: plan.type,
+      commissionRate: plan.commissionRate ?? null,
+      monthlyFeeMga: plan.monthlyFeeMga ?? null,
+      effectiveFrom: plan.effectiveFrom.toISOString(),
+      effectiveUntil: plan.effectiveUntil?.toISOString() ?? null,
+      createdAt: plan.createdAt.toISOString(),
+    };
+  }
+
+  // ================================================================
+  // GAP D — Abonnements (/coop/subscriptions)
+  // ================================================================
+
+  async getCoopSubscriptions(cooperativeId: string): Promise<unknown[]> {
+    const subs = await this.db.cooperativeSubscription.findMany({
+      where: { cooperativeId },
+      orderBy: { periodStart: 'desc' },
+    });
+    return subs.map((s) => ({
+      id: s.id,
+      periodStart: s.periodStart.toISOString(),
+      periodEnd: s.periodEnd.toISOString(),
+      amountMga: s.amountMga,
+      status: s.status,
+      paidAt: s.paidAt?.toISOString() ?? null,
+      createdAt: s.createdAt.toISOString(),
+    }));
   }
 }

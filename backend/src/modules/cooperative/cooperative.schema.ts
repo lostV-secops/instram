@@ -100,6 +100,34 @@ export const UpsertPolicySchema = z.object({
 });
 
 // ------------------------------------------------------------------
+// Plans de sièges (GAP A — CDC §4.1)
+// ------------------------------------------------------------------
+
+export const CreateSeatMapSchema = z.object({
+  name: z.string().min(1).max(100),
+  rows: z.number().int().positive(),
+  cols: z.number().int().positive(),
+  seats: z.array(SeatDefinitionInputSchema).min(1),
+});
+
+export const UpdateSeatMapSchema = z
+  .object({
+    name: z.string().min(1).max(100).optional(),
+  })
+  .refine((d) => d.name !== undefined, {
+    message: 'Au moins un champ est requis',
+  });
+
+// ------------------------------------------------------------------
+// Dashboard (GAP B)
+// ------------------------------------------------------------------
+
+export const DashboardQuerySchema = z.object({
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+});
+
+// ------------------------------------------------------------------
 // Types exportés
 // ------------------------------------------------------------------
 
@@ -109,3 +137,6 @@ export type CreateVehicleInput = z.infer<typeof CreateVehicleSchema>;
 export type UpdateVehicleInput = z.infer<typeof UpdateVehicleSchema>;
 export type UpdateCooperativeInput = z.infer<typeof UpdateCooperativeSchema>;
 export type UpsertPolicyInput = z.infer<typeof UpsertPolicySchema>;
+export type CreateSeatMapInput = z.infer<typeof CreateSeatMapSchema>;
+export type UpdateSeatMapInput = z.infer<typeof UpdateSeatMapSchema>;
+export type DashboardQuery = z.infer<typeof DashboardQuerySchema>;
