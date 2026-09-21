@@ -1282,4 +1282,67 @@ export class AdminService {
       nextCursor: hasNext ? page[page.length - 1].id : null,
     };
   }
+
+  // =====================================================================
+  // Templates de notifications (GAP 5 — CDC §5.5)
+  // =====================================================================
+
+  async listTemplates() {
+    const templates = await this.db.notificationTemplate.findMany({
+      orderBy: { code: 'asc' },
+    });
+    return { templates };
+  }
+
+  async getTemplate(code: string) {
+    const template = await this.db.notificationTemplate.findUnique({ where: { code } });
+    if (!template) {
+      const err = new Error('Template introuvable') as Error & { code?: string };
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+    return template;
+  }
+
+  async createTemplate(input: { code: string; bodyFr: string; bodyMg: string }) {
+    const existing = await this.db.notificationTemplate.findUnique({ where: { code: input.code } });
+    if (existing) {
+      const err = new Error('Un template avec ce code existe déjà') as Error & { code?: string };
+      err.code = 'CONFLICT';
+      throw err;
+    }
+    return this.db.notificationTemplate.create({
+      data: {
+        code: input.code,
+        category: this._categoryFromCode(input.code),
+        bodyFr: input.bodyFr,
+        bodyMg: input.bodyMg,
+        version: 1,
+        isActive: true,
+      },
+    });
+  }
+
+  async updateTemplate(code: string, input: { bodyFr?: string; bodyMg?: string; isActive?: boolean }) {
+    const existing = await this.db.notificationTemplate.findUnique({ where: { code } });
+    if (!existing) {
+      const err = new Error('Template introuvable') as Error & { code?: string };
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+    const data: Record<string, unknown> = {};
+    if (input.bodyFr !== undefined) data.bodyFr = input.bodyFr;
+    if (input.bodyMg !== undefined) data.bodyMg = input.bodyMg;
+    if (input.isActive !== undefined) data.isActive = input.isActive;
+    // Incrémenter la version à chaque modification du contenu
+    if (input.bodyFr !== undefined || input.bodyMg !== undefined) {
+      data.version = { increment: 1 };
+    }
+    return this.db.notificationTemplate.update({ where: { code }, data });
+  }
+
+  private _categoryFromCode(code: string): import('@prisma/client').NotificationCategory {
+    const criticals = ['BOOKING_CONFIRMED', 'BOOKING_CANCELLED', 'PAYMENT_FAILED', 'TICKET_RESEND', 'WALK_IN_CONFIRMED'];
+    return criticals.includes(code) ? 'TRANSACTIONAL' : 'REMINDER';
+  }
 }

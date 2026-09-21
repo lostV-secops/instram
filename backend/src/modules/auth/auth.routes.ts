@@ -12,6 +12,7 @@ import {
   PasswordResetRequestSchema,
   PasswordResetSchema,
   RevokeSessionParamsSchema,
+  UpdateMeSchema,
 } from './auth.schema';
 import prisma from '../../infra/db/prisma';
 import { requestAccountDeletion } from './auth.delete.service';
@@ -229,6 +230,30 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
           return reply.status(404).send({ code, message: 'Utilisateur introuvable' });
         }
         req.log.error(err, 'getMe error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
+  // PATCH /me — Mise à jour du profil voyageur
+  // ------------------------------------------------------------------
+  fastify.patch(
+    '/me',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const parse = UpdateMeSchema.safeParse(req.body);
+      if (!parse.success) {
+        return reply.status(400).send({ code: 'VALIDATION_ERROR', message: formatZodError(parse.error) });
+      }
+      const userId = (req.user as { sub: string }).sub;
+      try {
+        const user = await authService.updateMe(userId, parse.data);
+        return reply.status(200).send(user);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'NOT_FOUND') return reply.status(404).send({ code, message: 'Utilisateur introuvable' });
+        req.log.error(err, 'updateMe error');
         return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
       }
     },

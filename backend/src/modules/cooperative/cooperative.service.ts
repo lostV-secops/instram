@@ -5,6 +5,9 @@ import type {
   InviteMemberInput,
   UpdateMemberInput,
   CreateVehicleInput,
+  UpdateVehicleInput,
+  UpdateCooperativeInput,
+  UpsertPolicyInput,
 } from './cooperative.schema';
 
 // =====================================================================
@@ -136,6 +139,111 @@ export class CooperativeService {
     }
 
     return this._formatCoop(coop);
+  }
+
+  // ----------------------------------------------------------------
+  // PATCH /coop/cooperatives/current
+  // ----------------------------------------------------------------
+
+  async updateCoopMe(
+    userId: string,
+    input: UpdateCooperativeInput,
+  ): Promise<Record<string, unknown>> {
+    const { cooperativeId } = await this.requireMembership(userId, ['COOP_ADMIN']);
+
+    const data: Record<string, unknown> = {};
+    if (input.displayName !== undefined) data.displayName = input.displayName || undefined;
+    if (input.contactEmail !== undefined) data.contactEmail = input.contactEmail || null;
+    if (input.contactPhone !== undefined) data.contactPhone = input.contactPhone || null;
+    if (input.descriptionFr !== undefined) data.descriptionFr = input.descriptionFr || null;
+    if (input.descriptionMg !== undefined) data.descriptionMg = input.descriptionMg || null;
+    if (input.logoUrl !== undefined) data.logoUrl = input.logoUrl || null;
+
+    const updated = await this.db.cooperative.update({
+      where: { id: cooperativeId },
+      data,
+    });
+
+    return this._formatCoop(updated);
+  }
+
+  // ----------------------------------------------------------------
+  // GET /coop/policies/current
+  // ----------------------------------------------------------------
+
+  async getPolicy(cooperativeId: string): Promise<Record<string, unknown> | null> {
+    const policy = await this.db.cooperativePolicy.findFirst({
+      where: { cooperativeId, isActive: true },
+      orderBy: { version: 'desc' },
+    });
+    if (!policy) return null;
+    return this._formatPolicy(policy);
+  }
+
+  // ----------------------------------------------------------------
+  // PUT /coop/policies/current — upsert (crée ou incrémente la version)
+  // ----------------------------------------------------------------
+
+  async upsertPolicy(
+    cooperativeId: string,
+    input: UpsertPolicyInput,
+  ): Promise<Record<string, unknown>> {
+    const existing = await this.db.cooperativePolicy.findFirst({
+      where: { cooperativeId, isActive: true },
+      orderBy: { version: 'desc' },
+    });
+
+    let policy;
+    if (existing) {
+      policy = await this.db.cooperativePolicy.update({
+        where: { id: existing.id },
+        data: {
+          titleFr: input.titleFr,
+          titleMg: input.titleMg,
+          bodyFr: input.bodyFr,
+          bodyMg: input.bodyMg,
+          version: { increment: 1 },
+        },
+      });
+    } else {
+      policy = await this.db.cooperativePolicy.create({
+        data: {
+          cooperativeId,
+          titleFr: input.titleFr,
+          titleMg: input.titleMg,
+          bodyFr: input.bodyFr,
+          bodyMg: input.bodyMg,
+          version: 1,
+          isActive: true,
+        },
+      });
+    }
+
+    return this._formatPolicy(policy);
+  }
+
+  private _formatPolicy(p: {
+    id: string;
+    titleFr: string;
+    titleMg: string;
+    bodyFr: string;
+    bodyMg: string;
+    version: number;
+    isActive: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+  }): Record<string, unknown> {
+    return {
+      id: p.id,
+      titleFr: p.titleFr,
+      titleMg: p.titleMg,
+      bodyFr: p.bodyFr,
+      bodyMg: p.bodyMg,
+      version: p.version,
+      isActive: p.isActive,
+      createdAt: p.createdAt.toISOString(),
+      updatedAt: p.updatedAt.toISOString(),
+    };
   }
 
   // ----------------------------------------------------------------
@@ -394,6 +502,36 @@ export class CooperativeService {
   }
 
   // ----------------------------------------------------------------
+  // PATCH /coop/vehicles/:vehicleId
+  // ----------------------------------------------------------------
+
+  async updateVehicle(
+    cooperativeId: string,
+    vehicleId: string,
+    input: UpdateVehicleInput,
+  ): Promise<Record<string, unknown>> {
+    const existing = await this.db.vehicle.findFirst({
+      where: { id: vehicleId, cooperativeId },
+    });
+    if (!existing) throw new NotFoundError('Véhicule introuvable');
+
+    const updated = await this.db.vehicle.update({
+      where: { id: vehicleId },
+      data: {
+        ...(input.isActive !== undefined && { isActive: input.isActive }),
+        ...(input.displayName !== undefined && { displayName: input.displayName }),
+      },
+      include: {
+        seatMap: {
+          include: { seats: { orderBy: [{ row: 'asc' }, { column: 'asc' }] } },
+        },
+      },
+    });
+
+    return this._formatVehicle(updated);
+  }
+
+  // ----------------------------------------------------------------
   // Formatage DTOs
   // ----------------------------------------------------------------
 
@@ -483,5 +621,57 @@ export class CooperativeService {
         })),
       },
     };
+  }
+
+  // ----------------------------------------------------------------
+  // DELETE /coop/members/:memberId — désactiver un membre
+  // ----------------------------------------------------------------
+
+  async deleteMember(
+    cooperativeId: string,
+    memberId: string,
+  ): Promise<void> {
+    const membership = await this.db.membership.findFirst({
+      where: { id: memberId, cooperativeId },
+    });
+    if (!membership) throw new NotFoundError('Membre introuvable');
+
+    await this.db.membership.update({
+      where: { id: memberId },
+      data: { active: false },
+    });
+  }
+
+  // ----------------------------------------------------------------
+  // DELETE /coop/vehicles/:vehicleId — désactiver un véhicule
+  // Bloqué si des trajets actifs (non CANCELLED/COMPLETED) utilisent ce véhicule.
+  // ----------------------------------------------------------------
+
+  async deleteVehicle(
+    cooperativeId: string,
+    vehicleId: string,
+  ): Promise<void> {
+    const vehicle = await this.db.vehicle.findFirst({
+      where: { id: vehicleId, cooperativeId },
+    });
+    if (!vehicle) throw new NotFoundError('Véhicule introuvable');
+
+    const activeTrips = await this.db.tripInstance.count({
+      where: {
+        vehicleId,
+        status: { notIn: ['CANCELLED', 'COMPLETED'] },
+      },
+    });
+
+    if (activeTrips > 0) {
+      const err = new Error(`Impossible de supprimer : ${activeTrips} trajet(s) actif(s) utilise(nt) ce véhicule`) as NodeJS.ErrnoException;
+      err.code = 'CONFLICT';
+      throw err;
+    }
+
+    await this.db.vehicle.update({
+      where: { id: vehicleId },
+      data: { isActive: false },
+    });
   }
 }

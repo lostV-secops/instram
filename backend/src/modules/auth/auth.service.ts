@@ -1,7 +1,7 @@
 import argon2 from 'argon2';
 import crypto from 'crypto';
 import { PrismaClient, User, Lang, OtpPurpose } from '@prisma/client';
-import { RegisterInput, LoginInput } from './auth.schema';
+import { RegisterInput, LoginInput, UpdateMeInput } from './auth.schema';
 import { createSmsProvider } from '../../infra/sms/provider';
 
 // =====================================================================
@@ -761,6 +761,37 @@ export class AuthService {
           }
         : null,
     };
+  }
+
+  // ------------------------------------------------------------------
+  // updateMe — mise à jour du profil voyageur
+  // ------------------------------------------------------------------
+
+  async updateMe(userId: string, input: UpdateMeInput): Promise<SafeUser> {
+    await this.db.$transaction(async (tx) => {
+      if (input.preferredLang !== undefined) {
+        await tx.user.update({
+          where: { id: userId },
+          data: { preferredLang: input.preferredLang as Lang },
+        });
+      }
+
+      const profileData: Record<string, unknown> = {};
+      if (input.firstName !== undefined) profileData.firstName = input.firstName;
+      if (input.lastName !== undefined) profileData.lastName = input.lastName;
+      if (input.mobileMoneyPhone !== undefined) {
+        profileData.mobileMoneyPhone = input.mobileMoneyPhone || null;
+      }
+
+      if (Object.keys(profileData).length > 0) {
+        await tx.travelerProfile.update({
+          where: { userId },
+          data: profileData,
+        });
+      }
+    });
+
+    return this.getMe(userId);
   }
 
   // ------------------------------------------------------------------

@@ -42,6 +42,8 @@ import {
   ListTripsQuerySchema,
   ListPaymentsQuerySchema,
   UpdateSettingsBodySchema,
+  CreateTemplateSchema,
+  UpdateTemplateSchema,
 } from './admin.schema';
 import prisma from '../../infra/db/prisma';
 
@@ -712,6 +714,74 @@ export default async function adminRoutes(fastify: FastifyInstance): Promise<voi
         return reply.send(result);
       } catch (err) {
         return handleError(err, req, reply, 'updateSettings');
+      }
+    },
+  );
+
+  // =====================================================================
+  // Templates de notifications (GAP 5 — CDC §5.5)
+  // =====================================================================
+
+  // GET /admin/notifications/templates — liste tous les templates
+  fastify.get(
+    '/notifications/templates',
+    { onRequest: [fastify.authenticate, requireSuperOrOps] },
+    async (_req: FastifyRequest, reply: FastifyReply) => {
+      try {
+        return reply.send(await service.listTemplates());
+      } catch (err) {
+        return handleError(err, _req, reply, 'listTemplates');
+      }
+    },
+  );
+
+  // GET /admin/notifications/templates/:code — détail d'un template
+  fastify.get(
+    '/notifications/templates/:code',
+    { onRequest: [fastify.authenticate, requireSuperOrOps] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const { code } = req.params as { code: string };
+      try {
+        return reply.send(await service.getTemplate(code));
+      } catch (err) {
+        return handleError(err, req, reply, 'getTemplate');
+      }
+    },
+  );
+
+  // POST /admin/notifications/templates — créer un template
+  fastify.post(
+    '/notifications/templates',
+    { onRequest: [fastify.authenticate, requireSuperOrOps] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const parse = CreateTemplateSchema.safeParse(req.body);
+      if (!parse.success) {
+        return reply.status(400).send({ code: 'VALIDATION_ERROR', message: formatZodError(parse.error) });
+      }
+      try {
+        const template = await service.createTemplate(parse.data);
+        return reply.status(201).send(template);
+      } catch (err) {
+        return handleError(err, req, reply, 'createTemplate');
+      }
+    },
+  );
+
+  // PATCH /admin/notifications/templates/:code — modifier un template
+  fastify.patch(
+    '/notifications/templates/:code',
+    { onRequest: [fastify.authenticate, requireSuperOrOps] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const { code } = req.params as { code: string };
+      const parse = UpdateTemplateSchema.safeParse(req.body);
+      if (!parse.success) {
+        return reply.status(400).send({ code: 'VALIDATION_ERROR', message: formatZodError(parse.error) });
+      }
+      try {
+        const updated = await service.updateTemplate(code, parse.data);
+        return reply.send(updated);
+      } catch (err) {
+        return handleError(err, req, reply, 'updateTemplate');
       }
     },
   );

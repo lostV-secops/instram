@@ -6,6 +6,7 @@ import type {
   CreateScheduleInput,
   UpdateScheduleInput,
   CreateTripInput,
+  UpdateTripInput,
   FareItem,
   TripListQuery,
 } from './trips.schema';
@@ -1051,5 +1052,139 @@ export class TripsService {
       createdAt: trip.createdAt.toISOString(),
       updatedAt: trip.updatedAt.toISOString(),
     };
+  }
+
+  // ----------------------------------------------------------------
+  // PATCH /coop/trips/:tripInstanceId — modifier un trajet (DRAFT only)
+  // ----------------------------------------------------------------
+
+  async updateTrip(
+    cooperativeId: string,
+    tripInstanceId: string,
+    input: UpdateTripInput,
+  ): Promise<Record<string, unknown>> {
+    const trip = await this.db.tripInstance.findFirst({
+      where: { id: tripInstanceId, cooperativeId },
+    });
+    if (!trip) throw new NotFoundError('Trajet introuvable');
+
+    const err = new Error('Seuls les trajets en statut DRAFT peuvent être modifiés') as NodeJS.ErrnoException;
+    err.code = 'CONFLICT';
+    if (trip.status !== 'DRAFT') throw err;
+
+    const data: Record<string, unknown> = {};
+    if (input.vehicleId !== undefined) data.vehicleId = input.vehicleId;
+    if (input.departureAt !== undefined) data.departureAt = new Date(input.departureAt);
+    if (input.arrivalEstimatedAt !== undefined) data.arrivalEstimatedAt = input.arrivalEstimatedAt ? new Date(input.arrivalEstimatedAt) : null;
+    if (input.notesFr !== undefined) data.notesFr = input.notesFr;
+    if (input.notesMg !== undefined) data.notesMg = input.notesMg;
+
+    const updated = await this.db.tripInstance.update({
+      where: { id: tripInstanceId },
+      data,
+      include: {
+        route: { include: { origin: true, destination: true } },
+        vehicle: true,
+        schedule: true,
+        fares: true,
+      },
+    });
+
+    return this._formatTripSummary(updated);
+  }
+
+  // ----------------------------------------------------------------
+  // DELETE /coop/trips/:tripInstanceId — annuler (→ CANCELLED)
+  // Bloqué si des réservations CONFIRMED existent.
+  // ----------------------------------------------------------------
+
+  async cancelTrip(
+    cooperativeId: string,
+    tripInstanceId: string,
+  ): Promise<void> {
+    const trip = await this.db.tripInstance.findFirst({
+      where: { id: tripInstanceId, cooperativeId },
+    });
+    if (!trip) throw new NotFoundError('Trajet introuvable');
+
+    if (trip.status === 'CANCELLED') return;
+
+    const confirmedBookings = await this.db.booking.count({
+      where: { tripInstanceId, status: { in: ['CONFIRMED', 'PENDING_PAYMENT'] } },
+    });
+
+    if (confirmedBookings > 0) {
+      const err = new Error(`Impossible d'annuler : ${confirmedBookings} réservation(s) active(s)`) as NodeJS.ErrnoException;
+      err.code = 'CONFLICT';
+      throw err;
+    }
+
+    await this.db.tripInstance.update({
+      where: { id: tripInstanceId },
+      data: { status: 'CANCELLED' },
+    });
+  }
+
+  // ----------------------------------------------------------------
+  // DELETE /coop/routes/:routeId — désactiver une route
+  // Bloqué si trajets actifs (non CANCELLED/COMPLETED) existent.
+  // ----------------------------------------------------------------
+
+  async deleteRoute(
+    cooperativeId: string,
+    routeId: string,
+  ): Promise<void> {
+    const route = await this.db.route.findFirst({
+      where: { id: routeId, cooperativeId },
+    });
+    if (!route) throw new NotFoundError('Route introuvable');
+
+    const activeTrips = await this.db.tripInstance.count({
+      where: {
+        routeId,
+        status: { notIn: ['CANCELLED', 'COMPLETED'] },
+      },
+    });
+
+    if (activeTrips > 0) {
+      const err = new Error(`Impossible de supprimer : ${activeTrips} trajet(s) actif(s) sur cette route`) as NodeJS.ErrnoException;
+      err.code = 'CONFLICT';
+      throw err;
+    }
+
+    await this.db.route.update({
+      where: { id: routeId },
+      data: { isActive: false },
+    });
+  }
+
+  // ----------------------------------------------------------------
+  // DELETE /coop/schedules/:scheduleId — supprimer un gabarit
+  // Bloqué si trajets actifs existent.
+  // ----------------------------------------------------------------
+
+  async deleteSchedule(
+    cooperativeId: string,
+    scheduleId: string,
+  ): Promise<void> {
+    const schedule = await this.db.schedule.findFirst({
+      where: { id: scheduleId, cooperativeId },
+    });
+    if (!schedule) throw new NotFoundError('Gabarit introuvable');
+
+    const activeTrips = await this.db.tripInstance.count({
+      where: {
+        scheduleId,
+        status: { notIn: ['CANCELLED', 'COMPLETED'] },
+      },
+    });
+
+    if (activeTrips > 0) {
+      const err = new Error(`Impossible de supprimer : ${activeTrips} trajet(s) actif(s) sur ce gabarit`) as NodeJS.ErrnoException;
+      err.code = 'CONFLICT';
+      throw err;
+    }
+
+    await this.db.schedule.delete({ where: { id: scheduleId } });
   }
 }

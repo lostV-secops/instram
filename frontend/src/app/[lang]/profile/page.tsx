@@ -6,6 +6,7 @@ import { getTranslations, isValidLang } from '@/lib/i18n';
 import { apiGet } from '@/lib/api';
 import { COOKIE_USER_INFO, parseUserInfoCookie } from '@/lib/auth';
 import type { Me } from '@/lib/types';
+import { ProfileEditor } from './ProfileEditor';
 
 interface ProfilePageProps {
   params: { lang: string };
@@ -93,6 +94,15 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
         >
           {t.profile.myBookings}
         </Link>
+
+        <Link
+          href={`/${lang}/notifications`}
+          className="block w-full text-center border border-gray-200 text-gray-700 font-medium rounded-xl px-4 py-3 hover:bg-gray-50 transition-colors"
+        >
+          Mes notifications
+        </Link>
+
+        {me && <ProfileEditor me={me} lang={lang} />}
 
         <form action="/api/auth/logout" method="POST">
           <button

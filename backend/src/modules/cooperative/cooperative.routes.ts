@@ -5,6 +5,9 @@ import {
   InviteMemberSchema,
   UpdateMemberSchema,
   CreateVehicleSchema,
+  UpdateVehicleSchema,
+  UpdateCooperativeSchema,
+  UpsertPolicySchema,
 } from './cooperative.schema';
 import prisma from '../../infra/db/prisma';
 
@@ -65,6 +68,83 @@ export default async function cooperativeRoutes(
 
   // Alias /me (demandé par la tâche, non présent dans le contrat — documenté)
   fastify.get('/me', { onRequest: [fastify.authenticate] }, getCoopMeHandler);
+
+  // ------------------------------------------------------------------
+  // PATCH /cooperatives/current — modifier le profil public de la coop
+  // Réservé aux COOP_ADMIN.
+  // ------------------------------------------------------------------
+  fastify.patch(
+    '/cooperatives/current',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const parseResult = UpdateCooperativeSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return reply.status(400).send({
+          code: 'VALIDATION_ERROR',
+          message: formatZodError(parseResult.error),
+        });
+      }
+      try {
+        const coop = await service.updateCoopMe(getUserId(req), parseResult.data);
+        return reply.send(coop);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'FORBIDDEN' || code === 'COOPERATIVE_SUSPENDED') return reply.status(403).send({ code, message: (err as Error).message });
+        if (code === 'NOT_FOUND') return reply.status(404).send({ code, message: (err as Error).message });
+        req.log.error(err, 'updateCoopMe error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
+  // GET /policies/current — politique d'annulation active
+  // ------------------------------------------------------------------
+  fastify.get(
+    '/policies/current',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { cooperativeId } = await service.requireMembership(getUserId(req));
+        const policy = await service.getPolicy(cooperativeId);
+        if (!policy) return reply.status(404).send({ code: 'NOT_FOUND', message: 'Aucune politique active' });
+        return reply.send(policy);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'FORBIDDEN' || code === 'COOPERATIVE_SUSPENDED') return reply.status(403).send({ code, message: (err as Error).message });
+        req.log.error(err, 'getPolicy error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
+  // PUT /policies/current — créer ou mettre à jour la politique d'annulation
+  // Réservé aux COOP_ADMIN.
+  // ------------------------------------------------------------------
+  fastify.put(
+    '/policies/current',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const parseResult = UpsertPolicySchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return reply.status(400).send({
+          code: 'VALIDATION_ERROR',
+          message: formatZodError(parseResult.error),
+        });
+      }
+      try {
+        const { cooperativeId } = await service.requireMembership(getUserId(req), ['COOP_ADMIN']);
+        const policy = await service.upsertPolicy(cooperativeId, parseResult.data);
+        return reply.send(policy);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'FORBIDDEN' || code === 'COOPERATIVE_SUSPENDED') return reply.status(403).send({ code, message: (err as Error).message });
+        req.log.error(err, 'upsertPolicy error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
 
   // ------------------------------------------------------------------
   // GET /members — liste des membres de la coopérative
@@ -165,6 +245,31 @@ export default async function cooperativeRoutes(
   );
 
   // ------------------------------------------------------------------
+  // DELETE /members/:memberId — désactiver un membre
+  // Réservé aux COOP_ADMIN.
+  // ------------------------------------------------------------------
+  fastify.delete<{ Params: { memberId: string } }>(
+    '/members/:memberId',
+    { onRequest: [fastify.authenticate] },
+    async (
+      req: FastifyRequest<{ Params: { memberId: string } }>,
+      reply: FastifyReply,
+    ) => {
+      try {
+        const { cooperativeId } = await service.requireMembership(getUserId(req), ['COOP_ADMIN']);
+        await service.deleteMember(cooperativeId, req.params.memberId);
+        return reply.status(204).send();
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'FORBIDDEN' || code === 'COOPERATIVE_SUSPENDED') return reply.status(403).send({ code, message: (err as Error).message });
+        if (code === 'NOT_FOUND') return reply.status(404).send({ code, message: (err as Error).message });
+        req.log.error(err, 'deleteMember error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
   // GET /vehicles — liste des véhicules de la coopérative
   // ------------------------------------------------------------------
   fastify.get(
@@ -235,6 +340,64 @@ export default async function cooperativeRoutes(
         if (code === 'FORBIDDEN' || code === 'COOPERATIVE_SUSPENDED') return reply.status(403).send({ code, message: (err as Error).message });
         if (code === 'NOT_FOUND') return reply.status(404).send({ code, message: (err as Error).message });
         req.log.error(err, 'getVehicle error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
+  // DELETE /vehicles/:vehicleId — désactiver un véhicule
+  // Réservé aux COOP_ADMIN. Bloqué si trajets actifs existent.
+  // ------------------------------------------------------------------
+  fastify.delete<{ Params: { vehicleId: string } }>(
+    '/vehicles/:vehicleId',
+    { onRequest: [fastify.authenticate] },
+    async (
+      req: FastifyRequest<{ Params: { vehicleId: string } }>,
+      reply: FastifyReply,
+    ) => {
+      try {
+        const { cooperativeId } = await service.requireMembership(getUserId(req), ['COOP_ADMIN']);
+        await service.deleteVehicle(cooperativeId, req.params.vehicleId);
+        return reply.status(204).send();
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'FORBIDDEN' || code === 'COOPERATIVE_SUSPENDED') return reply.status(403).send({ code, message: (err as Error).message });
+        if (code === 'NOT_FOUND') return reply.status(404).send({ code, message: (err as Error).message });
+        if (code === 'CONFLICT') return reply.status(409).send({ code, message: (err as Error).message });
+        req.log.error(err, 'deleteVehicle error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
+  // PATCH /vehicles/:vehicleId — activer/désactiver, renommer
+  // Réservé aux COOP_ADMIN.
+  // ------------------------------------------------------------------
+  fastify.patch<{ Params: { vehicleId: string } }>(
+    '/vehicles/:vehicleId',
+    { onRequest: [fastify.authenticate] },
+    async (
+      req: FastifyRequest<{ Params: { vehicleId: string } }>,
+      reply: FastifyReply,
+    ) => {
+      const parseResult = UpdateVehicleSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return reply.status(400).send({
+          code: 'VALIDATION_ERROR',
+          message: formatZodError(parseResult.error),
+        });
+      }
+      try {
+        const { cooperativeId } = await service.requireMembership(getUserId(req), ['COOP_ADMIN']);
+        const vehicle = await service.updateVehicle(cooperativeId, req.params.vehicleId, parseResult.data);
+        return reply.send(vehicle);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'FORBIDDEN' || code === 'COOPERATIVE_SUSPENDED') return reply.status(403).send({ code, message: (err as Error).message });
+        if (code === 'NOT_FOUND') return reply.status(404).send({ code, message: (err as Error).message });
+        req.log.error(err, 'updateVehicle error');
         return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
       }
     },

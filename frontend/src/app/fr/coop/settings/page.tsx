@@ -13,7 +13,7 @@ import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import type { Cooperative, CooperativeStatus } from '@/lib/types';
+import type { Cooperative, CooperativeStatus, CoopPolicy } from '@/lib/types';
 
 const STATUS_LABELS: Record<CooperativeStatus, string> = {
   PENDING_VALIDATION: 'En attente de validation',
@@ -46,6 +46,16 @@ export default function SettingsPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  // Policy state
+  const [policy, setPolicy] = useState<CoopPolicy | null>(null);
+  const [policyTitleFr, setPolicyTitleFr] = useState('');
+  const [policyTitleMg, setPolicyTitleMg] = useState('');
+  const [policyBodyFr, setPolicyBodyFr] = useState('');
+  const [policyBodyMg, setPolicyBodyMg] = useState('');
+  const [policySubmitting, setPolicySubmitting] = useState(false);
+  const [policyError, setPolicyError] = useState<string | null>(null);
+  const [policySuccess, setPolicySuccess] = useState(false);
+
   useEffect(() => {
     const load = async () => {
       setLoadError(null);
@@ -59,6 +69,17 @@ export default function SettingsPage() {
         setContactPhone(data.contactPhone ?? '');
         setDescriptionFr(data.description ?? '');
         setLogoUrl(data.logoUrl ?? '');
+
+        // Load policy (optional — 404 is acceptable)
+        const pRes = await fetch('/api/proxy/v1/coop/policies/current', { cache: 'no-store' });
+        if (pRes.ok) {
+          const p: CoopPolicy = await pRes.json();
+          setPolicy(p);
+          setPolicyTitleFr(p.titleFr);
+          setPolicyTitleMg(p.titleMg);
+          setPolicyBodyFr(p.bodyFr);
+          setPolicyBodyMg(p.bodyMg);
+        }
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : 'Erreur réseau.');
       } finally {
@@ -105,6 +126,40 @@ export default function SettingsPage() {
       );
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handlePolicySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPolicyError(null);
+    setPolicySuccess(false);
+    if (!policyTitleFr.trim() || !policyTitleMg.trim() || !policyBodyFr.trim() || !policyBodyMg.trim()) {
+      setPolicyError('Tous les champs de la politique sont requis.');
+      return;
+    }
+    setPolicySubmitting(true);
+    try {
+      const res = await fetch('/api/proxy/v1/coop/policies/current', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          titleFr: policyTitleFr.trim(),
+          titleMg: policyTitleMg.trim(),
+          bodyFr: policyBodyFr.trim(),
+          bodyMg: policyBodyMg.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { message?: string };
+        throw new Error(body.message ?? `Erreur ${res.status}`);
+      }
+      const updated: CoopPolicy = await res.json();
+      setPolicy(updated);
+      setPolicySuccess(true);
+    } catch (err) {
+      setPolicyError(err instanceof Error ? err.message : 'Erreur lors de la sauvegarde.');
+    } finally {
+      setPolicySubmitting(false);
     }
   };
 
@@ -215,6 +270,81 @@ export default function SettingsPage() {
           Enregistrer
         </Button>
       </form>
+
+      {/* Politique d'annulation */}
+      <section>
+        <h2 className="text-lg font-semibold text-brand-dark mb-3">
+          Politique d'annulation
+          {policy && (
+            <span className="ml-2 text-xs font-normal text-gray-400">v{policy.version}</span>
+          )}
+        </h2>
+        <form onSubmit={handlePolicySubmit} className="space-y-4 bg-white border border-gray-200 rounded-xl p-5" noValidate>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-gray-800">Titre (français)</label>
+              <input
+                type="text"
+                value={policyTitleFr}
+                onChange={(e) => setPolicyTitleFr(e.target.value)}
+                className="block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base text-gray-900 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand"
+                disabled={policySubmitting}
+                placeholder="Politique d'annulation"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-gray-800">Titre (malagasy)</label>
+              <input
+                type="text"
+                value={policyTitleMg}
+                onChange={(e) => setPolicyTitleMg(e.target.value)}
+                className="block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base text-gray-900 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand"
+                disabled={policySubmitting}
+                placeholder="Fitsipiky fanilana"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-800">Contenu (français)</label>
+            <textarea
+              value={policyBodyFr}
+              onChange={(e) => setPolicyBodyFr(e.target.value)}
+              rows={4}
+              className="block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base text-gray-900 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand resize-none"
+              disabled={policySubmitting}
+              placeholder="Décrivez les conditions d'annulation..."
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-800">Contenu (malagasy)</label>
+            <textarea
+              value={policyBodyMg}
+              onChange={(e) => setPolicyBodyMg(e.target.value)}
+              rows={4}
+              className="block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base text-gray-900 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand resize-none"
+              disabled={policySubmitting}
+              placeholder="Lazao ny fepetra fanilana..."
+            />
+          </div>
+
+          {policyError && (
+            <div role="alert" className="bg-red-50 border border-red-300 text-red-700 rounded-lg px-4 py-3 text-sm">
+              {policyError}
+            </div>
+          )}
+          {policySuccess && (
+            <div role="status" className="bg-green-50 border border-green-300 text-green-700 rounded-lg px-4 py-3 text-sm">
+              Politique enregistrée (v{policy?.version}).
+            </div>
+          )}
+
+          <Button type="submit" variant="action" fullWidth isLoading={policySubmitting}>
+            Enregistrer la politique
+          </Button>
+        </form>
+      </section>
     </div>
   );
 }

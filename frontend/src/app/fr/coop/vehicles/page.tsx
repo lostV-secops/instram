@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
@@ -199,6 +200,9 @@ export default function VehiclesPage() {
                 <Badge variant={v.isActive ? 'success' : 'neutral'}>
                   {v.isActive ? 'Actif' : 'Inactif'}
                 </Badge>
+                <Link href={`/fr/coop/vehicles/${v.id}`}>
+                  <Button variant="secondary" size="sm">Voir</Button>
+                </Link>
                 <Button
                   variant="secondary"
                   size="sm"

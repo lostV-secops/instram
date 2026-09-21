@@ -5,13 +5,18 @@
  * skipDuplicates) pour pouvoir être relancé sans erreur.
  *
  * Données créées :
- * - 1 coopérative de test (VALIDATED)
+ * - 2 coopératives de test (VALIDATED + PENDING_VALIDATION)
  * - 1 SeatMap (6 sièges : 2 VIP + 4 STANDARD)
  * - 1 Vehicle
  * - 1 Route Antananarivo → Toamasina
  * - 2 TripInstances OPEN_FOR_BOOKING (demain + dans 7 jours)
  * - Fares pour chaque trip
- * - 1 utilisateur COOP_ADMIN (phone +261340000002) + Membership E2E
+ * - 1 utilisateur COOP_ADMIN     (phone +261340000002) + Membership
+ * - 1 utilisateur voyageur E2E   (phone +261340000001)
+ * - 1 utilisateur COOP_DRIVER    (phone +261340000003) + Membership
+ * - 1 utilisateur INSTRAM_ADMIN  (phone +261340000004) + AdminProfile
+ * - 1 utilisateur COOP_ASSISTANT (phone +261340000005) + Membership
+ * - 1 utilisateur à supprimer    (phone +261340000006)
  *
  * Usage :
  *   npx ts-node -r tsconfig-paths/register src/scripts/seed-e2e.ts
@@ -24,6 +29,7 @@ const db = new PrismaClient();
 
 // IDs fixes pour idempotence (générés une fois, hardcodés)
 const COOP_ID              = 'e2e00000-0000-0000-0000-000000000001';
+const COOP_PENDING_ID      = 'e2e00000-0000-0000-coop-000000000002';
 const SEATMAP_ID           = 'e2e00000-0000-0000-0000-000000000002';
 const VEHICLE_ID           = 'e2e00000-0000-0000-0000-000000000003';
 const ROUTE_ID             = 'e2e00000-0000-0000-0000-000000000004';
@@ -44,6 +50,38 @@ export const TEST_USER = {
   lastName: 'E2E',
 };
 
+// Conducteur pour les tests de l'app driver
+export const DRIVER_USER = {
+  phone: '+261340000003',
+  password: 'DriverE2E2024!',
+  firstName: 'Conducteur',
+  lastName: 'E2E',
+};
+
+// Administrateur InsTRAM pour la console admin
+export const ADMIN_USER = {
+  phone: '+261340000004',
+  password: 'AdminInsTRAM2024!',
+  firstName: 'AdminInsTRAM',
+  lastName: 'E2E',
+};
+
+// Assistant coopérative (droits limités)
+export const ASSISTANT_USER = {
+  phone: '+261340000005',
+  password: 'AssistantE2E2024!',
+  firstName: 'Assistant',
+  lastName: 'E2E',
+};
+
+// Utilisateur destiné à être supprimé dans les tests VH-08
+export const USER_TO_DELETE = {
+  phone: '+261340000006',
+  password: 'DeleteMe2024!!',
+  firstName: 'ToDelete',
+  lastName: 'E2E',
+};
+
 // Villes issues du seed officiel des villes
 const CITY_TANA_ID    = '770b9808-5087-431b-8342-243848dcb4fe'; // Antananarivo
 const CITY_TOAMA_ID   = 'd90e8189-f95c-4ea7-9238-396c127f870c'; // Toamasina
@@ -51,7 +89,7 @@ const CITY_TOAMA_ID   = 'd90e8189-f95c-4ea7-9238-396c127f870c'; // Toamasina
 async function main() {
   console.log('[seed-e2e] Début du seed E2E...');
 
-  // 1. Coopérative
+  // 1. Coopératives
   await db.cooperative.upsert({
     where: { id: COOP_ID },
     update: {},
@@ -66,7 +104,22 @@ async function main() {
       validatedAt: new Date(),
     },
   });
-  console.log('[seed-e2e] ✓ Coopérative');
+
+  // Coopérative en attente de validation (pour les tests admin)
+  await db.cooperative.upsert({
+    where: { id: COOP_PENDING_ID },
+    update: {},
+    create: {
+      id: COOP_PENDING_ID,
+      slug: 'e2e-pending-coop',
+      legalName: 'Coopérative E2E En Attente',
+      displayName: 'InsTRAM E2E Pending',
+      status: 'PENDING_VALIDATION',
+      contactEmail: 'pending@instram.mg',
+      contactPhone: '+261340000098',
+    },
+  });
+  console.log('[seed-e2e] ✓ Coopératives (VALIDATED + PENDING_VALIDATION)');
 
   // 2. SeatMap (layout minimaliste)
   await db.seatMap.upsert({
@@ -257,6 +310,115 @@ async function main() {
     },
   });
   console.log(`[seed-e2e] ✓ Utilisateur voyageur (${TEST_USER.phone})`);
+
+  // 9. Conducteur (COOP_DRIVER)
+  const driverHash = await argon2.hash(DRIVER_USER.password);
+  const driver = await db.user.upsert({
+    where: { phone: DRIVER_USER.phone },
+    update: { passwordHash: driverHash, phoneVerifiedAt: verifiedAt, status: 'ACTIVE' },
+    create: {
+      phone: DRIVER_USER.phone,
+      passwordHash: driverHash,
+      preferredLang: 'FR',
+      status: 'ACTIVE',
+      phoneVerifiedAt: verifiedAt,
+    },
+  });
+  await db.travelerProfile.upsert({
+    where: { userId: driver.id },
+    update: {},
+    create: { userId: driver.id, firstName: DRIVER_USER.firstName, lastName: DRIVER_USER.lastName },
+  });
+  const existingDriverMembership = await db.membership.findFirst({
+    where: { userId: driver.id, cooperativeId: COOP_ID },
+  });
+  if (!existingDriverMembership) {
+    await db.membership.create({
+      data: { userId: driver.id, cooperativeId: COOP_ID, role: 'COOP_DRIVER', active: true },
+    });
+  } else {
+    await db.membership.update({ where: { id: existingDriverMembership.id }, data: { active: true } });
+  }
+  console.log(`[seed-e2e] ✓ Utilisateur COOP_DRIVER (${DRIVER_USER.phone})`);
+
+  // 10. Administrateur InsTRAM (AdminProfile — rôle ADMIN_OPS)
+  const adminHash = await argon2.hash(ADMIN_USER.password);
+  const adminUser = await db.user.upsert({
+    where: { phone: ADMIN_USER.phone },
+    update: { passwordHash: adminHash, phoneVerifiedAt: verifiedAt, status: 'ACTIVE' },
+    create: {
+      phone: ADMIN_USER.phone,
+      passwordHash: adminHash,
+      preferredLang: 'FR',
+      status: 'ACTIVE',
+      phoneVerifiedAt: verifiedAt,
+    },
+  });
+  await db.travelerProfile.upsert({
+    where: { userId: adminUser.id },
+    update: {},
+    create: { userId: adminUser.id, firstName: ADMIN_USER.firstName, lastName: ADMIN_USER.lastName },
+  });
+  await db.adminProfile.upsert({
+    where: { userId: adminUser.id },
+    update: { role: 'ADMIN_OPS' },
+    create: { userId: adminUser.id, role: 'ADMIN_OPS' },
+  });
+  console.log(`[seed-e2e] ✓ Utilisateur INSTRAM_ADMIN (${ADMIN_USER.phone})`);
+
+  // 11. Assistant coopérative (COOP_ASSISTANT)
+  const assistantHash = await argon2.hash(ASSISTANT_USER.password);
+  const assistant = await db.user.upsert({
+    where: { phone: ASSISTANT_USER.phone },
+    update: { passwordHash: assistantHash, phoneVerifiedAt: verifiedAt, status: 'ACTIVE' },
+    create: {
+      phone: ASSISTANT_USER.phone,
+      passwordHash: assistantHash,
+      preferredLang: 'FR',
+      status: 'ACTIVE',
+      phoneVerifiedAt: verifiedAt,
+    },
+  });
+  await db.travelerProfile.upsert({
+    where: { userId: assistant.id },
+    update: {},
+    create: { userId: assistant.id, firstName: ASSISTANT_USER.firstName, lastName: ASSISTANT_USER.lastName },
+  });
+  const existingAssistantMembership = await db.membership.findFirst({
+    where: { userId: assistant.id, cooperativeId: COOP_ID },
+  });
+  if (!existingAssistantMembership) {
+    await db.membership.create({
+      data: { userId: assistant.id, cooperativeId: COOP_ID, role: 'COOP_ASSISTANT', active: true },
+    });
+  } else {
+    await db.membership.update({ where: { id: existingAssistantMembership.id }, data: { active: true } });
+  }
+  console.log(`[seed-e2e] ✓ Utilisateur COOP_ASSISTANT (${ASSISTANT_USER.phone})`);
+
+  // 12. Utilisateur à supprimer (tests VH-08 anonymisation)
+  const deleteHash = await argon2.hash(USER_TO_DELETE.password);
+  await db.user.upsert({
+    where: { phone: USER_TO_DELETE.phone },
+    update: { passwordHash: deleteHash, phoneVerifiedAt: verifiedAt, status: 'ACTIVE' },
+    create: {
+      phone: USER_TO_DELETE.phone,
+      passwordHash: deleteHash,
+      preferredLang: 'FR',
+      status: 'ACTIVE',
+      phoneVerifiedAt: verifiedAt,
+    },
+  });
+  // TravelerProfile créé via upsert (on ne le récupère pas)
+  const userToDeleteDb = await db.user.findUnique({ where: { phone: USER_TO_DELETE.phone } });
+  if (userToDeleteDb) {
+    await db.travelerProfile.upsert({
+      where: { userId: userToDeleteDb.id },
+      update: {},
+      create: { userId: userToDeleteDb.id, firstName: USER_TO_DELETE.firstName, lastName: USER_TO_DELETE.lastName },
+    });
+  }
+  console.log(`[seed-e2e] ✓ Utilisateur à supprimer (${USER_TO_DELETE.phone})`);
 
   console.log('[seed-e2e] Seed E2E terminé avec succès.');
 }

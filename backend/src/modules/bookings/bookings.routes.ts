@@ -173,6 +173,78 @@ export default async function bookingsRoutes(fastify: FastifyInstance): Promise<
   // NOTE : POST /payments est dans payments.routes.ts (refactoring PaymentsService §3)
 
   // ------------------------------------------------------------------
+  // GET /coop/bookings — liste des réservations de la coopérative (paginée)
+  // Auth + rôle coop requis.
+  // ------------------------------------------------------------------
+  fastify.get(
+    '/coop/bookings',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const parseResult = BookingListQuerySchema.safeParse(req.query);
+      if (!parseResult.success) {
+        return reply.status(400).send({ code: 'VALIDATION_ERROR', message: formatZodError(parseResult.error) });
+      }
+
+      const user = req.user as { sub: string; roles: string[] };
+      const hasCoopRole = user.roles.some((r) => r.startsWith('COOP_'));
+      if (!hasCoopRole) {
+        return reply.status(403).send({ code: 'FORBIDDEN', message: 'Rôle coopérative requis' });
+      }
+
+      const membership = await prisma.membership.findFirst({
+        where: { userId: user.sub, active: true },
+        select: { cooperativeId: true },
+      });
+      if (!membership) {
+        return reply.status(403).send({ code: 'FORBIDDEN', message: 'Membership coopérative actif introuvable' });
+      }
+
+      try {
+        const result = await bookingsService.getCoopBookings(membership.cooperativeId, parseResult.data);
+        return reply.send(result);
+      } catch (err) {
+        req.log.error(err, 'getCoopBookings error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
+  // GET /coop/bookings/:bookingId — détail d'une réservation (vue coop)
+  // ------------------------------------------------------------------
+  fastify.get<{ Params: { bookingId: string } }>(
+    '/coop/bookings/:bookingId',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest<{ Params: { bookingId: string } }>, reply: FastifyReply) => {
+      reply.header('Cache-Control', 'no-store');
+
+      const user = req.user as { sub: string; roles: string[] };
+      const hasCoopRole = user.roles.some((r) => r.startsWith('COOP_'));
+      if (!hasCoopRole) {
+        return reply.status(403).send({ code: 'FORBIDDEN', message: 'Rôle coopérative requis' });
+      }
+
+      const membership = await prisma.membership.findFirst({
+        where: { userId: user.sub, active: true },
+        select: { cooperativeId: true },
+      });
+      if (!membership) {
+        return reply.status(403).send({ code: 'FORBIDDEN', message: 'Membership coopérative actif introuvable' });
+      }
+
+      try {
+        const result = await bookingsService.getCoopBookingById(membership.cooperativeId, req.params.bookingId);
+        return reply.send(result);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'NOT_FOUND') return reply.status(404).send({ code, message: (err as Error).message });
+        req.log.error(err, 'getCoopBookingById error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
   // POST /coop/bookings/walk-in
   // Auth obligatoire + rôle COOP_ADMIN ou COOP_ASSISTANT requis
   // RG-02 : PlatformFee = 0, Commission = 0

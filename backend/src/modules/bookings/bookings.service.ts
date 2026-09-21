@@ -1008,4 +1008,125 @@ export class BookingsService {
       seatCodes,
     };
   }
+
+  // ------------------------------------------------------------------
+  // GET /coop/bookings — liste des réservations de la coopérative
+  // ------------------------------------------------------------------
+
+  async getCoopBookings(
+    cooperativeId: string,
+    query: BookingListQueryInput,
+  ): Promise<Record<string, unknown>> {
+    const { status, cursor, limit } = query;
+
+    const where: Record<string, unknown> = {
+      tripInstance: { cooperativeId },
+    };
+    if (status) where.status = status;
+    if (cursor) where.id = { lt: cursor };
+
+    const items = await this.db.booking.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit + 1,
+      include: {
+        tripInstance: {
+          include: {
+            route: { include: { origin: true, destination: true } },
+          },
+        },
+        buyer: { select: { phone: true, email: true } },
+        passengers: { take: 1, select: { firstName: true, lastName: true } },
+      },
+    });
+
+    const hasMore = items.length > limit;
+    const page = hasMore ? items.slice(0, limit) : items;
+    const nextCursor = hasMore ? page[page.length - 1].id : null;
+
+    return {
+      items: page.map((b) => ({
+        id: b.id,
+        reference: b.reference,
+        status: b.status,
+        channel: b.channel,
+        totalAmountMga: b.totalAmountMga,
+        tripInstanceId: b.tripInstanceId,
+        createdAt: b.createdAt.toISOString(),
+        buyer: {
+          phone: b.buyer?.phone ?? null,
+          email: b.buyer?.email ?? null,
+          firstName: b.passengers[0]?.firstName ?? null,
+          lastName: b.passengers[0]?.lastName ?? null,
+        },
+        tripInstance: {
+          departureAt: b.tripInstance.departureAt.toISOString(),
+          route: {
+            origin: b.tripInstance.route.origin.nameFr,
+            destination: b.tripInstance.route.destination.nameFr,
+          },
+        },
+      })),
+      nextCursor,
+    };
+  }
+
+  // ------------------------------------------------------------------
+  // GET /coop/bookings/:bookingId — détail d'une réservation (vue coop)
+  // ------------------------------------------------------------------
+
+  async getCoopBookingById(
+    cooperativeId: string,
+    bookingId: string,
+  ): Promise<Record<string, unknown>> {
+    const booking = await this.db.booking.findFirst({
+      where: { id: bookingId, tripInstance: { cooperativeId } },
+      include: {
+        tripInstance: {
+          include: {
+            route: { include: { origin: true, destination: true } },
+          },
+        },
+        buyer: { select: { id: true, phone: true, email: true } },
+        passengers: true,
+        payments: true,
+        seats: { include: { seatDefinition: { select: { code: true, category: true } } } },
+      },
+    });
+
+    if (!booking) throw new NotFoundError('Réservation introuvable');
+
+    return {
+      ...this._formatBooking(booking),
+      buyer: {
+        id: booking.buyer?.id ?? null,
+        phone: booking.buyer?.phone ?? null,
+        email: booking.buyer?.email ?? null,
+      },
+      trip: {
+        id: booking.tripInstance.id,
+        departureAt: booking.tripInstance.departureAt.toISOString(),
+        status: booking.tripInstance.status,
+        route: {
+          origin: booking.tripInstance.route.origin.nameFr,
+          destination: booking.tripInstance.route.destination.nameFr,
+        },
+      },
+      passengers: booking.passengers.map((p) => ({
+        firstName: p.firstName,
+        lastName: p.lastName,
+        seatCode: p.seatCode,
+        phone: p.phone,
+        nationalIdRef: p.nationalIdRef,
+      })),
+      payments: booking.payments.map((p) => ({
+        id: p.id,
+        provider: p.provider,
+        amountMga: p.amountMga,
+        status: p.status,
+        initiatedAt: p.initiatedAt.toISOString(),
+        confirmedAt: p.confirmedAt?.toISOString() ?? null,
+      })),
+    };
+  }
 }

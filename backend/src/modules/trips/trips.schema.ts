@@ -80,6 +80,26 @@ export const CreateTripSchema = z
 
 export type CreateTripInput = z.infer<typeof CreateTripSchema>;
 
+export const UpdateTripSchema = z
+  .object({
+    vehicleId: z.string().uuid().optional(),
+    departureAt: z.string().datetime().optional(),
+    arrivalEstimatedAt: z.string().datetime().optional().nullable(),
+    notesFr: z.string().max(2000).optional().nullable(),
+    notesMg: z.string().max(2000).optional().nullable(),
+  })
+  .refine(
+    (d) =>
+      d.vehicleId !== undefined ||
+      d.departureAt !== undefined ||
+      d.arrivalEstimatedAt !== undefined ||
+      d.notesFr !== undefined ||
+      d.notesMg !== undefined,
+    { message: 'Au moins un champ est requis' },
+  );
+
+export type UpdateTripInput = z.infer<typeof UpdateTripSchema>;
+
 // ------------------------------------------------------------------
 // Tarifs
 // ------------------------------------------------------------------

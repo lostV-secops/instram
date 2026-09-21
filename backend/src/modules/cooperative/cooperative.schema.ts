@@ -55,6 +55,50 @@ export const CreateVehicleSchema = z.object({
   seatMap: SeatMapInputSchema,
 });
 
+export const UpdateVehicleSchema = z
+  .object({
+    isActive: z.boolean().optional(),
+    displayName: z.string().min(1).max(100).optional(),
+  })
+  .refine((d) => d.isActive !== undefined || d.displayName !== undefined, {
+    message: 'Au moins un champ est requis',
+  });
+
+// ------------------------------------------------------------------
+// Coopérative — mise à jour du profil public
+// ------------------------------------------------------------------
+
+export const UpdateCooperativeSchema = z
+  .object({
+    displayName: z.string().min(1).max(120).optional(),
+    contactEmail: z.string().email().optional().or(z.literal('')),
+    contactPhone: z.string().min(8).max(30).optional().or(z.literal('')),
+    descriptionFr: z.string().max(2000).optional().or(z.literal('')),
+    descriptionMg: z.string().max(2000).optional().or(z.literal('')),
+    logoUrl: z.string().url().optional().or(z.literal('')),
+  })
+  .refine(
+    (d) =>
+      d.displayName !== undefined ||
+      d.contactEmail !== undefined ||
+      d.contactPhone !== undefined ||
+      d.descriptionFr !== undefined ||
+      d.descriptionMg !== undefined ||
+      d.logoUrl !== undefined,
+    { message: 'Au moins un champ est requis' },
+  );
+
+// ------------------------------------------------------------------
+// Politique d'annulation — upsert
+// ------------------------------------------------------------------
+
+export const UpsertPolicySchema = z.object({
+  titleFr: z.string().min(1).max(200),
+  titleMg: z.string().min(1).max(200),
+  bodyFr: z.string().min(1).max(5000),
+  bodyMg: z.string().min(1).max(5000),
+});
+
 // ------------------------------------------------------------------
 // Types exportés
 // ------------------------------------------------------------------
@@ -62,3 +106,6 @@ export const CreateVehicleSchema = z.object({
 export type InviteMemberInput = z.infer<typeof InviteMemberSchema>;
 export type UpdateMemberInput = z.infer<typeof UpdateMemberSchema>;
 export type CreateVehicleInput = z.infer<typeof CreateVehicleSchema>;
+export type UpdateVehicleInput = z.infer<typeof UpdateVehicleSchema>;
+export type UpdateCooperativeInput = z.infer<typeof UpdateCooperativeSchema>;
+export type UpsertPolicyInput = z.infer<typeof UpsertPolicySchema>;

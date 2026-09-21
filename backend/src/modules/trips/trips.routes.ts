@@ -8,6 +8,7 @@ import {
   CreateScheduleSchema,
   UpdateScheduleSchema,
   CreateTripSchema,
+  UpdateTripSchema,
   UpsertFaresSchema,
   TripListQuerySchema,
 } from './trips.schema';
@@ -307,6 +308,76 @@ export async function tripsCoopRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.send(fares);
       } catch (err) {
         return handleError(err, req, reply, 'upsertFares');
+      }
+    },
+  );
+
+  // ----------------------------------------------------------------
+  // PATCH /trips/:tripInstanceId — modifier un trajet (DRAFT uniquement)
+  // ----------------------------------------------------------------
+  fastify.patch<{ Params: { tripInstanceId: string } }>(
+    '/trips/:tripInstanceId',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest<{ Params: { tripInstanceId: string } }>, reply: FastifyReply) => {
+      const parse = UpdateTripSchema.safeParse(req.body);
+      if (!parse.success) return reply.status(400).send({ code: 'VALIDATION_ERROR', message: formatZodError(parse.error) });
+      try {
+        const cooperativeId = await getCoopId(getUserId(req), ['COOP_ADMIN', 'COOP_ASSISTANT']);
+        const trip = await tripsService.updateTrip(cooperativeId, req.params.tripInstanceId, parse.data);
+        return reply.send(trip);
+      } catch (err) {
+        return handleError(err, req, reply, 'updateTrip');
+      }
+    },
+  );
+
+  // ----------------------------------------------------------------
+  // DELETE /trips/:tripInstanceId — annuler un trajet (→ CANCELLED)
+  // ----------------------------------------------------------------
+  fastify.delete<{ Params: { tripInstanceId: string } }>(
+    '/trips/:tripInstanceId',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest<{ Params: { tripInstanceId: string } }>, reply: FastifyReply) => {
+      try {
+        const cooperativeId = await getCoopId(getUserId(req), ['COOP_ADMIN', 'COOP_ASSISTANT']);
+        await tripsService.cancelTrip(cooperativeId, req.params.tripInstanceId);
+        return reply.status(204).send();
+      } catch (err) {
+        return handleError(err, req, reply, 'cancelTrip');
+      }
+    },
+  );
+
+  // ----------------------------------------------------------------
+  // DELETE /routes/:routeId — désactiver une route
+  // ----------------------------------------------------------------
+  fastify.delete<{ Params: { routeId: string } }>(
+    '/routes/:routeId',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest<{ Params: { routeId: string } }>, reply: FastifyReply) => {
+      try {
+        const cooperativeId = await getCoopId(getUserId(req), ['COOP_ADMIN', 'COOP_ASSISTANT']);
+        await tripsService.deleteRoute(cooperativeId, req.params.routeId);
+        return reply.status(204).send();
+      } catch (err) {
+        return handleError(err, req, reply, 'deleteRoute');
+      }
+    },
+  );
+
+  // ----------------------------------------------------------------
+  // DELETE /schedules/:scheduleId — supprimer un gabarit
+  // ----------------------------------------------------------------
+  fastify.delete<{ Params: { scheduleId: string } }>(
+    '/schedules/:scheduleId',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest<{ Params: { scheduleId: string } }>, reply: FastifyReply) => {
+      try {
+        const cooperativeId = await getCoopId(getUserId(req), ['COOP_ADMIN', 'COOP_ASSISTANT']);
+        await tripsService.deleteSchedule(cooperativeId, req.params.scheduleId);
+        return reply.status(204).send();
+      } catch (err) {
+        return handleError(err, req, reply, 'deleteSchedule');
       }
     },
   );

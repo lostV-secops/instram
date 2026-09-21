@@ -180,6 +180,35 @@ export const UpdateSettingsBodySchema = z.object({
 });
 
 // ------------------------------------------------------------------
+// Templates de notifications (GAP 5 — CDC §5.5)
+// ------------------------------------------------------------------
+
+const NOTIFICATION_CODES = [
+  'BOOKING_CONFIRMED',
+  'BOOKING_CANCELLED',
+  'DEPARTURE_REMINDER',
+  'PAYMENT_FAILED',
+  'RATING_REQUEST',
+  'TICKET_RESEND',
+  'WALK_IN_CONFIRMED',
+] as const;
+
+export const CreateTemplateSchema = z.object({
+  code: z.enum(NOTIFICATION_CODES),
+  bodyFr: z.string().min(1).max(1000),
+  bodyMg: z.string().min(1).max(1000),
+});
+
+export const UpdateTemplateSchema = z.object({
+  bodyFr: z.string().min(1).max(1000).optional(),
+  bodyMg: z.string().min(1).max(1000).optional(),
+  isActive: z.boolean().optional(),
+}).refine(
+  (d) => d.bodyFr !== undefined || d.bodyMg !== undefined || d.isActive !== undefined,
+  { message: 'Au moins un champ est requis' },
+);
+
+// ------------------------------------------------------------------
 // Types exportés
 // ------------------------------------------------------------------
 
@@ -195,3 +224,5 @@ export type ListRatingsQuery = z.infer<typeof ListRatingsQuerySchema>;
 export type ListTripsQuery = z.infer<typeof ListTripsQuerySchema>;
 export type ListPaymentsQuery = z.infer<typeof ListPaymentsQuerySchema>;
 export type UpdateSettingsBody = z.infer<typeof UpdateSettingsBodySchema>;
+export type CreateTemplateInput = z.infer<typeof CreateTemplateSchema>;
+export type UpdateTemplateInput = z.infer<typeof UpdateTemplateSchema>;

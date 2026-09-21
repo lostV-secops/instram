@@ -482,12 +482,31 @@ export interface ExportJob {
 export interface CoopVehicle {
   id: string;
   cooperativeId: string;
-  seatMapId: string;
   registration: string;
   displayName: string;
   model: string | null;
   capacity: number;
   isActive: boolean;
+}
+
+export interface SeatDefinition {
+  id: string;
+  code: string;
+  category: SeatCategory;
+  row: number | null;
+  column: number | null;
+}
+
+export interface CoopVehicleDetail extends CoopVehicle {
+  createdAt: string;
+  updatedAt: string;
+  seatMap: {
+    id: string;
+    name: string;
+    capacity: number;
+    layout: { rows: number; cols: number };
+    seats: SeatDefinition[];
+  };
 }
 
 // ─── Admin — Console InsTRAM ─────────────────────────────────────────────────

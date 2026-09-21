@@ -123,3 +123,29 @@ export const RevokeSessionParamsSchema = z.object({
 });
 
 export type RevokeSessionParams = z.infer<typeof RevokeSessionParamsSchema>;
+
+/**
+ * PATCH /v1/auth/me — mise à jour du profil voyageur
+ * Tous les champs sont optionnels ; au moins un doit être présent.
+ */
+export const UpdateMeSchema = z
+  .object({
+    firstName: z.string().min(1).max(80).optional(),
+    lastName: z.string().min(1).max(80).optional(),
+    preferredLang: z.enum(['FR', 'MG']).optional(),
+    mobileMoneyPhone: z
+      .string()
+      .regex(/^\+[1-9]\d{6,14}$/, 'Format international requis')
+      .optional()
+      .or(z.literal('')),
+  })
+  .refine(
+    (d) =>
+      d.firstName !== undefined ||
+      d.lastName !== undefined ||
+      d.preferredLang !== undefined ||
+      d.mobileMoneyPhone !== undefined,
+    { message: 'Au moins un champ est requis' },
+  );
+
+export type UpdateMeInput = z.infer<typeof UpdateMeSchema>;
