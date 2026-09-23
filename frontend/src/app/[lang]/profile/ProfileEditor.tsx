@@ -147,7 +147,7 @@ export function ProfileEditor({ me, lang }: Props) {
           )}
 
           <div className="flex gap-3">
-            <Button type="submit" variant="action" isLoading={saving}>
+            <Button type="submit" variant="primary" isLoading={saving}>
               Enregistrer
             </Button>
             <Button

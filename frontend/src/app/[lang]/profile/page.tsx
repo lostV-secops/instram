@@ -25,7 +25,7 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
   const cookieStore = cookies();
   const userInfo = parseUserInfoCookie(cookieStore.get(COOKIE_USER_INFO)?.value);
   if (!userInfo) {
-    redirect(`/${lang}/auth/login?redirectTo=/${lang}/profile`);
+    redirect(`/${lang}/auth/login?redirect=/${lang}/profile`);
   }
 
   const t = getTranslations(lang);

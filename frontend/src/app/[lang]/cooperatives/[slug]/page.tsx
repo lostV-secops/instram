@@ -328,7 +328,7 @@ export default async function CooperativeDetailPage({ params }: PageProps) {
                 </div>
                 {/* Lien "Voir les trajets" — bleu primaire (navigation) */}
                 <Link
-                  href={`/${lang}/search?cooperativeSlug=${encodeURIComponent(coop.slug)}`}
+                  href={`/${lang}`}
                   className="text-xs text-brand hover:text-brand-dark border border-brand rounded-lg px-3 py-1.5 transition-colors flex-shrink-0 font-medium"
                 >
                   {tc.seeTrips}
@@ -462,7 +462,7 @@ export default async function CooperativeDetailPage({ params }: PageProps) {
           ══════════════════════════════════════════════════════════════════ */}
       <div className="sticky bottom-4 pt-4">
         <Link
-          href={`/${lang}/search?cooperativeSlug=${encodeURIComponent(coop.slug)}`}
+          href={`/${lang}`}
           className="block w-full text-center bg-brand text-white font-semibold text-base px-6 py-3.5 rounded-xl hover:bg-brand-dark transition-colors shadow-md"
         >
           {tc.searchTrip}
