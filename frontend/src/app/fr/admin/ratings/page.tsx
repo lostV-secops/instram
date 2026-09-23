@@ -55,10 +55,10 @@ export default function AdminRatingsPage() {
     try {
       const res = await fetch(buildUrl(), { cache: 'no-store' });
       if (!res.ok) throw new Error();
-      const data: Rating[] = await res.json();
-      // L'API retourne un tableau direct (pas d'objet paginé selon le contrat)
+      const result = await res.json();
+      const data: Rating[] = result.items ?? result;
       setRatings(data ?? []);
-      setNextCursor(null); // La pagination cursor n'est pas documentée sur ce retour
+      setNextCursor(result.nextCursor ?? null);
     } catch {
       setError('Impossible de charger les avis. Vérifiez votre connexion.');
     } finally {
@@ -174,8 +174,10 @@ export default function AdminRatingsPage() {
                   try {
                     const res = await fetch(buildUrl(nextCursor), { cache: 'no-store' });
                     if (!res.ok) throw new Error();
-                    const data: Rating[] = await res.json();
+                    const result2 = await res.json();
+                    const data: Rating[] = result2.items ?? result2;
                     setRatings((prev) => [...prev, ...(data ?? [])]);
+                    setNextCursor(result2.nextCursor ?? null);
                   } catch { /* silencieux */ }
                   finally { setLoadingMore(false); }
                 }}

@@ -48,7 +48,7 @@ export default function DriverLayout({ children }: DriverLayoutProps) {
     // Enregistrer le Service Worker PWA
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker
-        .register('/sw.js')
+        .register('/sw.js', { scope: '/fr/driver/' })
         .catch(() => {
           // SW non critique — on ignore silencieusement
         });
@@ -57,7 +57,7 @@ export default function DriverLayout({ children }: DriverLayoutProps) {
     // Vérifier l'authentification et le rôle
     const checkAuth = async () => {
       try {
-        const response = await fetch('/api/proxy/v1/me', { cache: 'no-store' });
+        const response = await fetch('/api/proxy/v1/auth/me', { cache: 'no-store' });
 
         if (response.status === 401) {
           router.replace(

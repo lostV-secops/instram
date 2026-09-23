@@ -230,6 +230,7 @@ export class DriverService {
       tripInstanceId: string;
       departureAt: Date;
       route: { origin: string; destination: string };
+      vehicleRegistration?: string;
       status: string;
       boardedCount: number;
       totalPassengers: number;
@@ -261,11 +262,12 @@ export class DriverService {
             destination: { select: { nameFr: true } },
           },
         },
+        vehicle: { select: { registration: true } },
         // Embarqués : nombre de BoardingEvent pour ce trajet
         boardingEvents: { select: { id: true } },
-        // Passagers confirmés : bookings avec statut CONFIRMED
+        // Passagers confirmés : bookings avec statut CONFIRMED ou COMPLETED
         bookings: {
-          where: { status: 'CONFIRMED' },
+          where: { status: { in: ['CONFIRMED', 'COMPLETED', 'NO_SHOW'] } },
           select: { id: true },
         },
       },
@@ -279,6 +281,7 @@ export class DriverService {
         origin: t.route.origin.nameFr,
         destination: t.route.destination.nameFr,
       },
+      vehicleRegistration: t.vehicle.registration ?? undefined,
       status: t.status,
       boardedCount: t.boardingEvents.length,
       totalPassengers: t.bookings.length,
@@ -319,16 +322,13 @@ export class DriverService {
 
     await this.assertDriverForCoop(userId, trip.cooperativeId);
 
-    // Récupère les réservations confirmées avec passagers, sièges et paiements
+    // Récupère les réservations embarquables (confirmées, terminées, absentes)
     const bookings = await this.db.booking.findMany({
-      where: { tripInstanceId, status: 'CONFIRMED' },
+      where: { tripInstanceId, status: { in: ['CONFIRMED', 'COMPLETED', 'NO_SHOW'] } },
       include: {
+        // Passenger records sont toujours créés à la réservation (contrairement à BookingSeat)
         passengers: {
           select: { firstName: true, lastName: true, seatCode: true },
-        },
-        seats: {
-          where: { isActive: true },
-          select: { seatCode: true },
         },
         payments: {
           select: { provider: true, status: true },
@@ -338,7 +338,7 @@ export class DriverService {
       },
     });
 
-    // Construit une entrée par siège actif, associe le bon passager
+    // Construit une entrée par passager (source primaire, toujours disponible)
     const entries: {
       bookingId: string;
       reference: string;
@@ -351,20 +351,15 @@ export class DriverService {
     for (const booking of bookings) {
       const paymentMethod = booking.payments[0]?.provider ?? 'CASH';
 
-      for (const seat of booking.seats) {
-        // Associe le passager ayant ce seatCode ; à défaut, le premier passager
-        const matchedPassenger =
-          booking.passengers.find((p) => p.seatCode === seat.seatCode) ??
-          booking.passengers[0];
-
+      for (const pass of booking.passengers) {
         entries.push({
           bookingId: booking.id,
           reference: booking.reference,
           passenger: {
-            firstName: matchedPassenger?.firstName ?? '',
-            lastName: matchedPassenger?.lastName ?? '',
+            firstName: pass.firstName,
+            lastName: pass.lastName,
           },
-          seatCode: seat.seatCode,
+          seatCode: pass.seatCode,
           boardingStatus: booking.boardingStatus,
           paymentMethod,
         });

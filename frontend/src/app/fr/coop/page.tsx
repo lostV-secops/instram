@@ -48,14 +48,16 @@ export default function CoopDashboardPage() {
   // WS token pour abonnement temps réel
   const [wsToken, setWsToken] = useState<string | null>(null);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const todayDate = new Date().toISOString().slice(0, 10);
+  const todayFrom = `${todayDate}T00:00:00.000Z`;
+  const todayTo = `${todayDate}T23:59:59.999Z`;
 
   const loadData = useCallback(async () => {
     setError(null);
     try {
       const [dashRes, bookRes, tripRes] = await Promise.all([
         fetch(
-          `/api/proxy/v1/coop/dashboard?from=${today}&to=${today}`,
+          `/api/proxy/v1/coop/dashboard?from=${todayFrom}&to=${todayTo}`,
           { cache: 'no-store' },
         ),
         fetch(
@@ -63,7 +65,7 @@ export default function CoopDashboardPage() {
           { cache: 'no-store' },
         ),
         fetch(
-          `/api/proxy/v1/coop/trips?from=${today}&to=${today}&limit=10`,
+          `/api/proxy/v1/coop/trips?from=${todayDate}&to=${todayDate}&limit=10`,
           { cache: 'no-store' },
         ),
       ]);
@@ -88,7 +90,7 @@ export default function CoopDashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [today]);
+  }, [todayFrom, todayTo]);
 
   // Charger le WS token
   useEffect(() => {
@@ -237,8 +239,8 @@ export default function CoopDashboardPage() {
                       key={b.id}
                       bookingId={b.id}
                       reference={b.reference}
-                      passengerName="—"
-                      tripLabel={b.tripInstanceId}
+                      passengerName={b.buyer ? `${b.buyer.firstName ?? ''} ${b.buyer.lastName ?? ''}`.trim() || '—' : '—'}
+                      tripLabel={b.tripInstance?.route ? `${b.tripInstance.route.origin} → ${b.tripInstance.route.destination}` : b.tripInstanceId}
                       channel={b.channel}
                       totalAmountMga={b.totalAmountMga}
                       platformFeeMga={b.platformFeeMga}
@@ -287,7 +289,7 @@ export default function CoopDashboardPage() {
                     <TripRow
                       key={t.id}
                       tripId={t.id}
-                      routeName={t.routeId}
+                      routeName={t.route ? `${t.route.originCity?.nameFr ?? '?'} → ${t.route.destinationCity?.nameFr ?? '?'}` : t.routeId}
                       departureAt={t.departureAt}
                       status={t.status}
                     />

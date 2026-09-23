@@ -41,7 +41,7 @@ export default function CoopLayout({ children }: CoopLayoutProps) {
     const load = async () => {
       try {
         // 1. Charger les infos utilisateur (GET /me)
-        const meRes = await fetch('/api/proxy/v1/me', { cache: 'no-store' });
+        const meRes = await fetch('/api/proxy/v1/auth/me', { cache: 'no-store' });
         if (meRes.status === 401) {
           router.replace(
             `/fr/auth/login?redirect=${encodeURIComponent('/fr/coop')}`,

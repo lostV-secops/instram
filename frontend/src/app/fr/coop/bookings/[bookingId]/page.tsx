@@ -113,7 +113,10 @@ export default function BookingDetailPage() {
             <div>
               <dt className="text-gray-500">Ligne</dt>
               <dd className="font-medium">
-                {booking.trip.route?.originCity?.name ?? '—'} → {booking.trip.route?.destinationCity?.name ?? '—'}
+                {/* backend coop endpoint returns { origin, destination } strings */}
+                {(booking.trip.route as unknown as { origin?: string })?.origin ?? booking.trip.route?.originCity?.name ?? '—'}
+                {' → '}
+                {(booking.trip.route as unknown as { destination?: string })?.destination ?? booking.trip.route?.destinationCity?.name ?? '—'}
               </dd>
             </div>
             <div>

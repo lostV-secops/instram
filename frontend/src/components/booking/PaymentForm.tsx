@@ -177,7 +177,7 @@ export function PaymentForm({
             seatCode: p.seatCode,
           })),
           contactPhone: payerPhone,
-          preferredLang: lang,
+          preferredLang: lang.toUpperCase(),
         }),
       });
 

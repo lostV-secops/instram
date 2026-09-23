@@ -58,7 +58,7 @@ export default function AdminExportsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/proxy/v1/coop/exports', { cache: 'no-store' });
+      const res = await fetch('/api/proxy/v1/admin/exports', { cache: 'no-store' });
       if (!res.ok) throw new Error();
       const data: ExportJob[] = await res.json();
       setExports(data ?? []);
@@ -80,7 +80,7 @@ export default function AdminExportsPage() {
     setSubmitError(null);
 
     try {
-      const res = await fetch('/api/proxy/v1/coop/exports', {
+      const res = await fetch('/api/proxy/v1/admin/exports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

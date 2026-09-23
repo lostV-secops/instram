@@ -188,7 +188,7 @@ export function WalkInForm() {
       passengers: passengersPayload,
       paymentMethod,
       buyerPhone: buyerPhone || undefined,
-      buyerLang: 'fr',
+      buyerLang: 'FR',
     };
 
     try {
@@ -313,7 +313,7 @@ export function WalkInForm() {
               <option value="">Sélectionner un trajet...</option>
               {trips.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.routeName ?? t.routeId} — {formatDateTime(t.departureAt)}
+                  {t.route ? `${t.route.originCity?.nameFr ?? '?'} → ${t.route.destinationCity?.nameFr ?? '?'}` : (t.routeName ?? t.routeId)} — {formatDateTime(t.departureAt)}
                 </option>
               ))}
             </select>

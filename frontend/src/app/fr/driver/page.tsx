@@ -51,7 +51,9 @@ export default function DriverTripsPage() {
 
       if (!response.ok) {
         const message =
-          response.status >= 500
+          response.status === 403
+            ? 'Accès refusé — ce compte n\'a pas le rôle conducteur actif.'
+            : response.status >= 500
             ? 'Erreur serveur. Veuillez réessayer dans quelques instants.'
             : 'Impossible de charger les trajets. Vérifiez votre connexion.';
         setPageState({ status: 'error', message });

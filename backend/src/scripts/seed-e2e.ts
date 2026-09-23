@@ -29,7 +29,7 @@ const db = new PrismaClient();
 
 // IDs fixes pour idempotence (générés une fois, hardcodés)
 const COOP_ID              = 'e2e00000-0000-0000-0000-000000000001';
-const COOP_PENDING_ID      = 'e2e00000-0000-0000-coop-000000000002';
+const COOP_PENDING_ID      = 'e2e00000-0000-0000-0002-000000000002';
 const SEATMAP_ID           = 'e2e00000-0000-0000-0000-000000000002';
 const VEHICLE_ID           = 'e2e00000-0000-0000-0000-000000000003';
 const ROUTE_ID             = 'e2e00000-0000-0000-0000-000000000004';

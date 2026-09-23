@@ -220,6 +220,8 @@ export interface Booking {
   platformFeeMga: number;
   tripInstanceId: string;
   createdAt: string;
+  buyer?: { phone: string; email: string | null; firstName: string | null; lastName: string | null } | null;
+  tripInstance?: { departureAt: string; route: { origin: string; destination: string } } | null;
 }
 
 export interface BookingList {
@@ -337,12 +339,15 @@ export interface ApiErrorResponse {
 export interface DriverTripSummary {
   tripInstanceId: string;
   route: {
-    originName: string;
-    destinationName: string;
+    origin: string;
+    destination: string;
+    originName?: string;
+    destinationName?: string;
   };
   departureAt: string;
-  vehicleRegistration: string;
-  passengersCount: number;
+  vehicleRegistration?: string;
+  passengersCount?: number;
+  totalPassengers?: number;
   boardedCount: number;
   /** Extension optionnelle — peut être absent selon l'implémentation backend */
   status?: TripStatus;
@@ -350,19 +355,28 @@ export interface DriverTripSummary {
 
 export interface ManifestPassenger {
   bookingId: string;
-  bookingReference: string;
-  firstName: string;
-  lastName: string;
+  /** Référence réservation (contrat: bookingReference, backend actuel: reference) */
+  bookingReference?: string;
+  reference?: string;
+  /** Prénom direct ou imbriqué dans passenger.firstName */
+  firstName?: string;
+  lastName?: string;
+  passenger?: { firstName: string; lastName: string };
   seatCode: string;
-  phone: string | null;
+  phone?: string | null;
   boardingStatus: BoardingStatus;
-  channel: BookingChannel;
+  channel?: BookingChannel;
+  paymentMethod?: string;
 }
 
 export interface Manifest {
   tripInstanceId: string;
-  departureAt: string;
+  departureAt?: string;
   passengers: ManifestPassenger[];
+  totalPassengers?: number;
+  boarded?: number;
+  absent?: number;
+  pending?: number;
 }
 
 export interface BoardingRequest {
@@ -437,6 +451,7 @@ export interface TripInstance {
   arrivalEstimatedAt: string | null;
   status: TripStatus;
   openedForBookingAt: string | null;
+  route?: { originCity?: { nameFr: string }; destinationCity?: { nameFr: string } } | null;
 }
 
 export interface TripInstanceList {
@@ -544,7 +559,10 @@ export interface Rating {
   bookingId: string;
   cooperativeId: string;
   score: number;
-  comment: string | null;
+  /** Backend renvoie commentFr/commentMg, pas comment */
+  commentFr?: string | null;
+  commentMg?: string | null;
+  comment?: string | null;
   status: RatingStatus;
   createdAt: string;
 }

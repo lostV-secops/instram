@@ -70,8 +70,9 @@ export default function AdminUsersPage() {
     try {
       const res = await fetch(buildUrl(), { cache: 'no-store' });
       if (!res.ok) throw new Error();
-      const data: AdminUserSummary[] = await res.json();
-      setUsers(data ?? []);
+      const raw = await res.json();
+      const items: AdminUserSummary[] = Array.isArray(raw) ? raw : (raw.items ?? []);
+      setUsers(items);
     } catch {
       setError('Impossible de charger les utilisateurs. Vérifiez votre connexion.');
     } finally {

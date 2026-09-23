@@ -46,13 +46,21 @@ export default async function exportsRoutes(fastify: FastifyInstance): Promise<v
 
   // ------------------------------------------------------------------
   // GET /coop/exports
-  // Auth : COOP_ADMIN | COOP_ASSISTANT
+  // Auth : COOP_ADMIN | COOP_ASSISTANT | ADMIN_SUPER | ADMIN_OPS
   // ------------------------------------------------------------------
   fastify.get(
     '/coop/exports',
     { onRequest: [fastify.authenticate] },
     async (req: FastifyRequest, reply: FastifyReply) => {
       const userId = getUserId(req);
+
+      // Admin global : liste tous les exports
+      const adminProfile = await prisma.adminProfile.findUnique({ where: { userId } });
+      if (adminProfile && ['ADMIN_SUPER', 'ADMIN_OPS'].includes(adminProfile.role)) {
+        const jobs = await service.listAllExports({});
+        return reply.status(200).send(jobs);
+      }
+
       const cooperativeId = await resolveCooperativeId(userId);
 
       if (!cooperativeId) {
@@ -69,7 +77,7 @@ export default async function exportsRoutes(fastify: FastifyInstance): Promise<v
 
   // ------------------------------------------------------------------
   // POST /coop/exports
-  // Auth : COOP_ADMIN | COOP_ASSISTANT
+  // Auth : COOP_ADMIN | COOP_ASSISTANT | ADMIN_SUPER | ADMIN_OPS
   // Retourne 202 Accepted (job en file)
   // ------------------------------------------------------------------
   fastify.post(
@@ -79,6 +87,22 @@ export default async function exportsRoutes(fastify: FastifyInstance): Promise<v
       reply.header('Cache-Control', 'no-store');
 
       const userId = getUserId(req);
+
+      // Admin global : export sans cooperativeId (toutes coopératives)
+      const adminProfile = await prisma.adminProfile.findUnique({ where: { userId } });
+      if (adminProfile && ['ADMIN_SUPER', 'ADMIN_OPS'].includes(adminProfile.role)) {
+        const parseResult = CreateExportSchema.safeParse(req.body);
+        if (!parseResult.success) {
+          return reply.status(400).send({ code: 'VALIDATION_ERROR', message: formatZodError(parseResult.error) });
+        }
+        try {
+          const job = await service.createExportJob(userId, null as unknown as string, parseResult.data);
+          return reply.status(202).send(job);
+        } catch (err) {
+          return reply.status(500).send({ code: 'INTERNAL_ERROR', message: (err as Error).message });
+        }
+      }
+
       const cooperativeId = await resolveCooperativeId(userId);
 
       if (!cooperativeId) {
@@ -172,6 +196,40 @@ export default async function exportsRoutes(fastify: FastifyInstance): Promise<v
 
       const jobs = await service.listAllExports(parseResult.data);
       return reply.status(200).send(jobs);
+    },
+  );
+
+  // ------------------------------------------------------------------
+  // POST /admin/exports
+  // Auth : ADMIN_SUPER | ADMIN_OPS
+  // Déclenche un export global (cooperativeId = null = toutes coopératives)
+  // ------------------------------------------------------------------
+  fastify.post(
+    '/admin/exports',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const userId = getUserId(req);
+      const adminProfile = await prisma.adminProfile.findUnique({ where: { userId } });
+
+      if (!adminProfile || !['ADMIN_SUPER', 'ADMIN_OPS'].includes(adminProfile.role)) {
+        return reply.status(403).send({
+          code: 'FORBIDDEN',
+          message: 'Accès réservé aux administrateurs InsTRAM (ADMIN_SUPER ou ADMIN_OPS)',
+        });
+      }
+
+      const parse = CreateExportSchema.safeParse(req.body);
+      if (!parse.success) {
+        return reply.status(400).send({ code: 'VALIDATION_ERROR', message: formatZodError(parse.error) });
+      }
+
+      try {
+        // cooperativeId = null → export global toutes coopératives confondues
+        const job = await service.createExportJob(userId, null as unknown as string, parse.data);
+        return reply.status(202).send(job);
+      } catch (err) {
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: (err as Error).message });
+      }
     },
   );
 }

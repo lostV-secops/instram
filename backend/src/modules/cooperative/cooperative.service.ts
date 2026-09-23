@@ -809,7 +809,7 @@ export class CooperativeService {
     const from = query.from ? new Date(query.from) : new Date(now.getFullYear(), now.getMonth(), 1);
     const to = query.to ? new Date(query.to) : now;
 
-    const [bookingAgg, upcomingTrips, totalTrips] = await Promise.all([
+    const [bookingAgg, bookingsByChannel, upcomingTrips, totalTrips] = await Promise.all([
       this.db.booking.aggregate({
         where: {
           cooperativeId,
@@ -818,6 +818,15 @@ export class CooperativeService {
         },
         _count: { id: true },
         _sum: { seatSubtotalMga: true, platformFeeMga: true, totalAmountMga: true },
+      }),
+      this.db.booking.groupBy({
+        by: ['channel'],
+        where: {
+          cooperativeId,
+          status: 'CONFIRMED',
+          confirmedAt: { gte: from, lte: to },
+        },
+        _count: { id: true },
       }),
       this.db.tripInstance.count({
         where: {
@@ -841,16 +850,23 @@ export class CooperativeService {
 
     const totalCapacity = totalTrips.reduce((s, t) => s + (t.vehicle?.capacity ?? 0), 0);
     const totalConfirmedSeats = totalTrips.reduce((s, t) => s + (t._count?.bookings ?? 0), 0);
-    const avgFillRate = totalCapacity > 0
-      ? Math.round((totalConfirmedSeats / totalCapacity) * 100)
+    const occupancyRate = totalCapacity > 0
+      ? totalConfirmedSeats / totalCapacity
       : 0;
 
+    const bookingsOnline = bookingsByChannel.find((g) => g.channel === 'ONLINE')?._count.id ?? 0;
+    const bookingsWalkIn = bookingsByChannel.find((g) => g.channel === 'WALK_IN')?._count.id ?? 0;
+    const revenueGrossMga = bookingAgg._sum.seatSubtotalMga ?? 0;
+    const revenueNetMga = revenueGrossMga - (bookingAgg._sum.platformFeeMga ?? 0);
+
     return {
-      period: { from: from.toISOString(), to: to.toISOString() },
-      totalBookings: bookingAgg._count.id,
-      totalRevenueMga: bookingAgg._sum.seatSubtotalMga ?? 0,
-      totalPlatformFeesMga: bookingAgg._sum.platformFeeMga ?? 0,
-      avgFillRatePct: avgFillRate,
+      periodStart: from.toISOString(),
+      periodEnd: to.toISOString(),
+      bookingsOnline,
+      bookingsWalkIn,
+      revenueGrossMga,
+      revenueNetMga,
+      occupancyRate,
       upcomingTrips,
     };
   }

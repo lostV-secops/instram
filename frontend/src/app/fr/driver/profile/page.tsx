@@ -75,7 +75,7 @@ export default function ProfilePage() {
   useEffect(() => {
     const loadProfile = async () => {
       try {
-        const response = await fetch('/api/proxy/v1/me', { cache: 'no-store' });
+        const response = await fetch('/api/proxy/v1/auth/me', { cache: 'no-store' });
         if (response.status === 401) {
           router.replace('/fr/auth/login?redirect=/fr/driver');
           return;

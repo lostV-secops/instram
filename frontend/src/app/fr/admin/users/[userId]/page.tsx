@@ -52,26 +52,23 @@ export default function AdminUserDetailPage() {
   const [suspending, setSuspending] = useState(false);
   const [suspendError, setSuspendError] = useState<string | null>(null);
 
-  /**
-   * NOTE CONTRAT : GET /admin/users retourne un tableau filtré par `q`.
-   * Il n'existe pas de GET /admin/users/{id} direct dans le contrat.
-   * On charge l'utilisateur en cherchant par userId dans la liste.
-   */
   const loadUser = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const res = await fetch(
-        `/api/proxy/v1/admin/users?q=${encodeURIComponent(userId)}`,
+        `/api/proxy/v1/admin/users/${encodeURIComponent(userId)}`,
         { cache: 'no-store' },
       );
-      if (!res.ok) throw new Error();
-      const data: AdminUserSummary[] = await res.json();
-      const found = data.find((u) => u.id === userId) ?? data[0] ?? null;
-      if (!found) throw new Error('Utilisateur introuvable.');
+      if (!res.ok) {
+        if (res.status === 404) throw new Error('Utilisateur introuvable.');
+        throw new Error();
+      }
+      const found = await res.json() as AdminUserSummary;
       setUser(found);
-    } catch {
-      setError('Impossible de charger cet utilisateur. Vérifiez votre connexion.');
+    } catch (err) {
+      const msg = err instanceof Error && err.message !== '' ? err.message : 'Impossible de charger cet utilisateur. Vérifiez votre connexion.';
+      setError(msg);
     } finally {
       setLoading(false);
     }

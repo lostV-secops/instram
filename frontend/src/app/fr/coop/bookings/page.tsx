@@ -156,8 +156,8 @@ export default function BookingsPage() {
                     key={b.id}
                     bookingId={b.id}
                     reference={b.reference}
-                    passengerName="—"
-                    tripLabel={b.tripInstanceId}
+                    passengerName={b.buyer ? `${b.buyer.firstName ?? ''} ${b.buyer.lastName ?? ''}`.trim() || '—' : '—'}
+                    tripLabel={b.tripInstance?.route ? `${b.tripInstance.route.origin} → ${b.tripInstance.route.destination}` : b.tripInstanceId}
                     channel={b.channel}
                     totalAmountMga={b.totalAmountMga}
                     platformFeeMga={b.platformFeeMga}

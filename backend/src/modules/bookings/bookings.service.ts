@@ -476,22 +476,64 @@ export class BookingsService {
       ...this._formatBooking(booking),
       trip: {
         id: booking.tripInstance.id,
+        cooperative: {
+          id: booking.tripInstance.cooperative.id,
+          slug: booking.tripInstance.cooperative.slug,
+          legalName: booking.tripInstance.cooperative.legalName,
+          displayName: booking.tripInstance.cooperative.displayName,
+          status: booking.tripInstance.cooperative.status,
+          contactEmail: booking.tripInstance.cooperative.contactEmail ?? null,
+          contactPhone: booking.tripInstance.cooperative.contactPhone ?? null,
+          logoUrl: booking.tripInstance.cooperative.logoUrl ?? null,
+          description: booking.tripInstance.cooperative.descriptionFr ?? null,
+          ratingAverage: booking.tripInstance.cooperative.ratingAverage,
+          ratingCount: booking.tripInstance.cooperative.ratingCount,
+        },
+        route: {
+          id: booking.tripInstance.route.id,
+          originCity: {
+            id: booking.tripInstance.route.origin.id,
+            code: booking.tripInstance.route.origin.code,
+            name: booking.tripInstance.route.origin.nameFr,
+            district: booking.tripInstance.route.origin.district,
+            region: booking.tripInstance.route.origin.region,
+          },
+          destinationCity: {
+            id: booking.tripInstance.route.destination.id,
+            code: booking.tripInstance.route.destination.code,
+            name: booking.tripInstance.route.destination.nameFr,
+            district: booking.tripInstance.route.destination.district,
+            region: booking.tripInstance.route.destination.region,
+          },
+          estimatedDurationMin: booking.tripInstance.route.estimatedDurationMin ?? undefined,
+        },
+        vehicle: {
+          id: booking.tripInstance.vehicle.id,
+          model: booking.tripInstance.vehicle.model ?? null,
+          capacity: booking.tripInstance.vehicle.capacity,
+          plate: booking.tripInstance.vehicle.registration,
+        },
         departureAt: booking.tripInstance.departureAt.toISOString(),
         arrivalEstimatedAt: booking.tripInstance.arrivalEstimatedAt?.toISOString() ?? null,
         status: booking.tripInstance.status,
-        route: {
-          origin: booking.tripInstance.route.origin.nameFr,
-          destination: booking.tripInstance.route.destination.nameFr,
-        },
+        policy: null,
+        fares: booking.tripInstance.fares
+          .filter((f) => f.category !== null)
+          .map((f) => ({
+            category: f.category!,
+            priceMga: f.priceMga,
+          })),
       },
       passengers: booking.passengers.map((p) => ({
         firstName: p.firstName,
         lastName: p.lastName,
         seatCode: p.seatCode,
         phone: p.phone,
+        boardingStatus: booking.boardingStatus,
       })),
       payments: booking.payments.map((p) => ({
         id: p.id,
+        bookingId: booking.id,
         provider: p.provider,
         amountMga: p.amountMga,
         status: p.status,

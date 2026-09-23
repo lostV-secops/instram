@@ -74,7 +74,8 @@ export default function AdminsPage() {
             { cache: 'no-store' },
           );
           if (!res.ok) return [] as AdminUser[];
-          const data: AdminUserSummary[] = await res.json();
+          const result = await res.json();
+          const data: AdminUserSummary[] = result.items ?? result;
           return (data ?? []).map((u) => ({ ...u, adminRole: r })) as AdminUser[];
         }),
       );

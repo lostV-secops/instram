@@ -24,6 +24,7 @@ export interface SafeUser {
   phone: string | null;
   preferredLang: Lang;
   roles: string[];
+  cooperatives: Array<{ id: string; displayName: string; role: string }>;
   traveler: {
     firstName: string;
     lastName: string;
@@ -753,6 +754,11 @@ export class AuthService {
       phone: user.phone ?? null,
       preferredLang: user.preferredLang,
       roles,
+      cooperatives: user.memberships.map((m) => ({
+        id: m.cooperativeId,
+        displayName: m.cooperative.displayName,
+        role: m.role,
+      })),
       traveler: user.travelerProfile
         ? {
             firstName: user.travelerProfile.firstName,

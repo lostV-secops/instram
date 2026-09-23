@@ -87,7 +87,10 @@ const IconUsers = () => (
 );
 
 export function TripCardDriver({ trip }: TripCardDriverProps) {
-  const { tripInstanceId, route, departureAt, vehicleRegistration, passengersCount, boardedCount, status } = trip;
+  const { tripInstanceId, route, departureAt, vehicleRegistration, boardedCount, status } = trip;
+  const passengersCount = trip.passengersCount ?? trip.totalPassengers ?? 0;
+  const originName = route.originName ?? route.origin;
+  const destinationName = route.destinationName ?? route.destination;
 
   const boardingRatio = passengersCount > 0
     ? Math.round((boardedCount / passengersCount) * 100)
@@ -102,7 +105,7 @@ export function TripCardDriver({ trip }: TripCardDriverProps) {
         'transition-colors duration-100 min-h-[88px]',
         'focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2',
       ].join(' ')}
-      aria-label={`Trajet ${route.originName} vers ${route.destinationName} — départ ${formatTime(departureAt)}`}
+      aria-label={`Trajet ${originName} vers ${destinationName} — départ ${formatTime(departureAt)}`}
     >
       {/* Heure de départ — grande et lisible */}
       <div className="flex-shrink-0 text-center w-14">
@@ -119,16 +122,18 @@ export function TripCardDriver({ trip }: TripCardDriverProps) {
       <div className="flex-1 min-w-0">
         {/* Route */}
         <p className="text-base font-semibold text-gray-900 truncate">
-          {route.originName} → {route.destinationName}
+          {originName} → {destinationName}
         </p>
 
         {/* Métadonnées */}
         <div className="flex items-center gap-3 mt-1.5 flex-wrap">
           {/* Véhicule */}
-          <span className="flex items-center gap-1 text-xs text-gray-500">
-            <IconBus />
-            {vehicleRegistration}
-          </span>
+          {vehicleRegistration && (
+            <span className="flex items-center gap-1 text-xs text-gray-500">
+              <IconBus />
+              {vehicleRegistration}
+            </span>
+          )}
 
           {/* Passagers */}
           <span className="flex items-center gap-1 text-xs text-gray-500">

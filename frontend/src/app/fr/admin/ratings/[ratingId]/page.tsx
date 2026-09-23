@@ -79,7 +79,8 @@ export default function AdminRatingDetailPage() {
       // Charger la liste sans filtre de statut pour avoir tous les avis
       const res = await fetch(`/api/proxy/v1/admin/ratings`, { cache: 'no-store' });
       if (!res.ok) throw new Error();
-      const data: Rating[] = await res.json();
+      const result = await res.json();
+      const data: Rating[] = result.items ?? result;
       const found = data.find((r) => r.id === ratingId) ?? null;
       if (!found) {
         setError('Avis introuvable. Il a peut-être déjà été modéré.');
@@ -221,9 +222,9 @@ export default function AdminRatingDetailPage() {
         {/* Commentaire */}
         <div>
           <p className="text-xs text-gray-500 mb-1">Commentaire</p>
-          {rating.comment ? (
+          {(rating.commentFr ?? rating.comment) ? (
             <p className="text-sm text-gray-800 leading-relaxed bg-gray-50 rounded-lg px-3 py-3">
-              {rating.comment}
+              {rating.commentFr ?? rating.comment}
             </p>
           ) : (
             <p className="text-sm text-gray-400 italic">Aucun commentaire.</p>

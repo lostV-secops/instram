@@ -113,8 +113,8 @@ export const AuditLogQuerySchema = z.object({
   action: z.string().optional(),
   entityType: z.string().optional(),
   actorUserId: z.string().uuid().optional(),
-  from: z.string().datetime().optional(),
-  to: z.string().datetime().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
@@ -138,8 +138,8 @@ export const ListTripsQuerySchema = z.object({
     .enum(['DRAFT', 'OPEN_FOR_BOOKING', 'BOARDING', 'DEPARTED', 'COMPLETED', 'CANCELLED'])
     .optional(),
   cooperativeId: z.string().uuid().optional(),
-  from: z.string().datetime().optional(),
-  to: z.string().datetime().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
@@ -148,10 +148,10 @@ export const ListTripsQuerySchema = z.object({
 // GET /admin/payments — supervision des paiements
 // ------------------------------------------------------------------
 export const ListPaymentsQuerySchema = z.object({
-  status: z.enum(['PENDING', 'CONFIRMED', 'FAILED', 'EXPIRED', 'REFUNDED_AT_COUNTER']).optional(),
+  status: z.enum(['INITIATED', 'PENDING', 'CONFIRMED', 'FAILED', 'EXPIRED', 'REFUNDED_AT_COUNTER']).optional(),
   cooperativeId: z.string().uuid().optional(),
-  from: z.string().datetime().optional(),
-  to: z.string().datetime().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });

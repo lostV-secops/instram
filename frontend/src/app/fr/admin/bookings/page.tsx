@@ -18,7 +18,23 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import type { Payment, PaymentProvider, PaymentStatus } from '@/lib/types';
+import type { PaymentProvider, PaymentStatus } from '@/lib/types';
+
+// Le backend renvoie booking imbriqué, pas bookingId plat
+interface AdminPayment {
+  id: string;
+  provider: PaymentProvider;
+  amountMga: number;
+  status: PaymentStatus;
+  providerTransactionId: string | null;
+  initiatedAt: string;
+  confirmedAt: string | null;
+  booking?: {
+    id: string;
+    reference: string;
+    cooperative?: { id: string; displayName: string } | null;
+  } | null;
+}
 
 const PAYMENT_STATUS_OPTIONS: { value: PaymentStatus | ''; label: string }[] = [
   { value: '', label: 'Tous les statuts' },
@@ -63,7 +79,7 @@ export default function AdminBookingsPage() {
   const [providerFilter, setProviderFilter] = useState<PaymentProvider | ''>('');
   const [fromDate, setFromDate] = useState(monthStart);
   const [toDate, setToDate] = useState(today);
-  const [payments, setPayments] = useState<Payment[]>([]);
+  const [payments, setPayments] = useState<AdminPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,8 +98,8 @@ export default function AdminBookingsPage() {
     try {
       const res = await fetch(buildUrl(), { cache: 'no-store' });
       if (!res.ok) throw new Error();
-      const data: Payment[] = await res.json();
-      setPayments(data ?? []);
+      const result = await res.json();
+      setPayments((result.items ?? result) as AdminPayment[]);
     } catch {
       setError('Impossible de charger les données. Vérifiez votre connexion.');
     } finally {
@@ -218,7 +234,7 @@ export default function AdminBookingsPage() {
                     {payments.map((payment) => (
                       <tr key={payment.id} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className="py-3 px-4 text-xs text-gray-500 font-mono truncate max-w-[120px]">
-                          {payment.bookingId.slice(0, 8)}…
+                          {(payment.booking?.id ?? payment.id).slice(0, 8)}…
                         </td>
                         <td className="py-3 px-4 text-sm font-medium text-brand-dark">
                           {payment.amountMga.toLocaleString('fr-MG')} Ar

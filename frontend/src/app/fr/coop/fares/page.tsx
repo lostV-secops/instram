@@ -91,7 +91,7 @@ export default function FaresPage() {
               <tbody>
                 {trips.map((t) => (
                   <tr key={t.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                    <td className="py-3 px-4 text-sm font-medium text-gray-900">{t.routeId}</td>
+                    <td className="py-3 px-4 text-sm font-medium text-gray-900">{t.route ? `${t.route.originCity?.nameFr ?? '?'} → ${t.route.destinationCity?.nameFr ?? '?'}` : t.routeId}</td>
                     <td className="py-3 px-4 text-sm text-gray-600 tabular-nums">{formatDateTime(t.departureAt)}</td>
                     <td className="py-3 px-4">
                       <Link

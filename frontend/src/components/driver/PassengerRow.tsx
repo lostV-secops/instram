@@ -56,17 +56,14 @@ const IconSeat = () => (
 );
 
 export function PassengerRow({ passenger }: PassengerRowProps) {
-  const {
-    firstName,
-    lastName,
-    seatCode,
-    boardingStatus,
-    bookingReference,
-    channel,
-  } = passenger;
+  const { seatCode, boardingStatus } = passenger;
+  const firstName = passenger.firstName ?? passenger.passenger?.firstName ?? '';
+  const lastName = passenger.lastName ?? passenger.passenger?.lastName ?? '';
+  const bookingReference = passenger.bookingReference ?? passenger.reference ?? '';
+  const channel = passenger.channel;
 
   const config = boardingStatusConfig[boardingStatus];
-  const fullName = `${firstName} ${lastName}`;
+  const fullName = `${firstName} ${lastName}`.trim() || '—';
 
   return (
     <li className="flex items-center gap-3 py-3 px-1 min-h-[56px]">

@@ -57,7 +57,7 @@ function ManifestModal({
             <option value="">Sélectionner un trajet...</option>
             {trips.map((t) => (
               <option key={t.id} value={t.id}>
-                {t.routeId} — {formatDt(t.departureAt)}
+                {t.route ? `${t.route.originCity?.nameFr ?? '?'} → ${t.route.destinationCity?.nameFr ?? '?'}` : t.routeId} — {formatDt(t.departureAt)}
               </option>
             ))}
           </select>

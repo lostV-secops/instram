@@ -59,6 +59,9 @@ self.addEventListener('fetch', (event) => {
   // Ignorer les appels API — jamais mis en cache
   if (request.url.includes('/api/')) return;
 
+  // Ignorer les chunks Next.js (changent à chaque compilation en dev)
+  if (request.url.includes('/_next/')) return;
+
   // Ignorer les WebSocket
   if (request.url.startsWith('ws://') || request.url.startsWith('wss://')) return;
 

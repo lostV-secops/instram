@@ -205,7 +205,7 @@ export default function TripsPage() {
                 {trips.map((t) => (
                   <tr key={t.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                     <td className="py-3 px-4 text-sm font-medium text-gray-900 truncate max-w-[10rem]">
-                      {t.routeId}
+                      {t.route ? `${t.route.originCity?.nameFr ?? '?'} → ${t.route.destinationCity?.nameFr ?? '?'}` : t.routeId}
                     </td>
                     <td className="py-3 px-4 text-sm text-gray-700 tabular-nums whitespace-nowrap">
                       {formatDateTime(t.departureAt)}

@@ -113,8 +113,8 @@ export function RatingModerationCard({
       </div>
 
       {/* Texte de l'avis */}
-      {rating.comment ? (
-        <p className="text-sm text-gray-700 leading-relaxed">{rating.comment}</p>
+      {(rating.commentFr ?? rating.comment) ? (
+        <p className="text-sm text-gray-700 leading-relaxed">{rating.commentFr ?? rating.comment}</p>
       ) : (
         <p className="text-sm text-gray-400 italic">Aucun commentaire.</p>
       )}

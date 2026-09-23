@@ -525,6 +525,22 @@ export default async function adminRoutes(fastify: FastifyInstance): Promise<voi
   );
 
   // ------------------------------------------------------------------
+  // GET /admin/users/:userId — profil d'un utilisateur
+  // ------------------------------------------------------------------
+  fastify.get(
+    '/users/:userId',
+    { onRequest: [fastify.authenticate, requireSuperOrOps] },
+    async (req: FastifyRequest<{ Params: { userId: string } }>, reply: FastifyReply) => {
+      try {
+        const result = await service.getUser(req.params.userId);
+        return reply.send(result);
+      } catch (err) {
+        return handleError(err, req, reply, 'getUser');
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
   // POST /admin/users/:userId/suspend (contrat)
   // PATCH /admin/users/:userId/suspend (tâche — H-ADM-01)
   // ------------------------------------------------------------------

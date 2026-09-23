@@ -165,12 +165,13 @@ export default function ManifestPage() {
   // ─── Compteurs ─────────────────────────────────────────────────────────────
   const counts = useMemo(() => {
     if (pageState.status !== 'ready') return null;
-    const { passengers } = pageState.manifest;
+    const { manifest } = pageState;
+    const { passengers } = manifest;
     return {
-      total: passengers.length,
-      boarded: passengers.filter((p) => p.boardingStatus === 'BOARDED').length,
-      absent: passengers.filter((p) => p.boardingStatus === 'ABSENT').length,
-      pending: passengers.filter((p) => p.boardingStatus === 'NOT_BOARDED').length,
+      total: manifest.totalPassengers ?? passengers.length,
+      boarded: manifest.boarded ?? passengers.filter((p) => p.boardingStatus === 'BOARDED').length,
+      absent: manifest.absent ?? passengers.filter((p) => p.boardingStatus === 'ABSENT').length,
+      pending: manifest.pending ?? passengers.filter((p) => p.boardingStatus === 'NOT_BOARDED').length,
     };
   }, [pageState]);
 
@@ -247,12 +248,14 @@ export default function ManifestPage() {
       </div>
 
       {/* En-tête trajet (heure de départ) */}
-      <div className="px-4 py-2 bg-brand-dark/5 border-b border-gray-100">
-        <p className="text-xs text-gray-600">
-          Départ prévu à{' '}
-          <span className="font-semibold text-brand">{formatTime(manifest.departureAt)}</span>
-        </p>
-      </div>
+      {manifest.departureAt && (
+        <div className="px-4 py-2 bg-brand-dark/5 border-b border-gray-100">
+          <p className="text-xs text-gray-600">
+            Départ prévu à{' '}
+            <span className="font-semibold text-brand">{formatTime(manifest.departureAt)}</span>
+          </p>
+        </div>
+      )}
 
       {/* Statistiques rapides */}
       {counts && (

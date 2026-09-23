@@ -152,8 +152,11 @@ export default function TripDetailPage() {
 
   const { trip } = pageState;
   const isActuallyDeparted = departed || trip.status === 'DEPARTED';
-  const boardingPercent = trip.passengersCount > 0
-    ? Math.round((trip.boardedCount / trip.passengersCount) * 100)
+  const passengersCount = trip.passengersCount ?? trip.totalPassengers ?? 0;
+  const originName = trip.route.originName ?? trip.route.origin;
+  const destinationName = trip.route.destinationName ?? trip.route.destination;
+  const boardingPercent = passengersCount > 0
+    ? Math.round((trip.boardedCount / passengersCount) * 100)
     : 0;
 
   return (
@@ -168,7 +171,7 @@ export default function TripDetailPage() {
           <IconChevronLeft />
         </Link>
         <h1 className="text-base font-bold text-gray-900 truncate">
-          {trip.route.originName} → {trip.route.destinationName}
+          {originName} → {destinationName}
         </h1>
       </div>
 
@@ -181,7 +184,7 @@ export default function TripDetailPage() {
 
           {/* Route principale */}
           <p className="text-xl font-bold text-brand">
-            {trip.route.originName} → {trip.route.destinationName}
+            {originName} → {destinationName}
           </p>
         </div>
 
@@ -196,7 +199,7 @@ export default function TripDetailPage() {
           <div className="px-4 py-3">
             <p className="text-xs text-gray-500 mb-0.5">Véhicule</p>
             <p className="text-sm font-semibold text-gray-800 font-mono">
-              {trip.vehicleRegistration}
+              {trip.vehicleRegistration ?? '—'}
             </p>
           </div>
         </div>
@@ -207,7 +210,7 @@ export default function TripDetailPage() {
             <p className="text-xs text-gray-500">Passagers embarqués</p>
             <p className="text-sm font-bold text-gray-800">
               {trip.boardedCount}
-              <span className="text-gray-400 font-normal"> / {trip.passengersCount} réservés</span>
+              <span className="text-gray-400 font-normal"> / {passengersCount} réservés</span>
             </p>
           </div>
           <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
@@ -217,7 +220,7 @@ export default function TripDetailPage() {
               role="progressbar"
               aria-valuenow={trip.boardedCount}
               aria-valuemin={0}
-              aria-valuemax={trip.passengersCount}
+              aria-valuemax={passengersCount}
             />
           </div>
           <p className="text-xs text-gray-400 text-right mt-1">{boardingPercent}%</p>

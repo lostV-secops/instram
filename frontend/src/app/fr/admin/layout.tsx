@@ -57,7 +57,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const res = await fetch('/api/proxy/v1/me', { cache: 'no-store' });
+        const res = await fetch('/api/proxy/v1/auth/me', { cache: 'no-store' });
 
         if (res.status === 401) {
           router.replace(

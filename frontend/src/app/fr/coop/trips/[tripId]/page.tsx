@@ -136,7 +136,7 @@ export default function TripDetailPage() {
 
       <div className="flex items-start justify-between flex-wrap gap-3">
         <h1 className="text-xl font-bold text-brand-dark">
-          {route?.originCity?.name ?? '—'} → {route?.destinationCity?.name ?? '—'}
+          {(route?.originCity as Record<string,string>)?.nameFr ?? route?.originCity?.name ?? '—'} → {(route?.destinationCity as Record<string,string>)?.nameFr ?? route?.destinationCity?.name ?? '—'}
         </h1>
         <Link href={`/fr/coop/trips/${tripId}/edit`}>
           <Button variant="secondary" size="sm">Modifier</Button>
@@ -159,7 +159,7 @@ export default function TripDetailPage() {
           {vehicle && (
             <div>
               <dt className="text-gray-500">Véhicule</dt>
-              <dd className="text-gray-700">{vehicle.model ?? vehicle.id}</dd>
+              <dd className="text-gray-700">{(vehicle as Record<string,string>).displayName ?? vehicle.model ?? vehicle.id}</dd>
             </div>
           )}
         </dl>
@@ -216,7 +216,7 @@ export default function TripDetailPage() {
         </div>
       )}
 
-      {/* Tarifs */}
+      {/* Tarifs — dédupliqués par catégorie (le seed crée 1 Fare par siège) */}
       {fares && fares.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-2">
@@ -232,10 +232,16 @@ export default function TripDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {fares.map((f, i) => (
-                  <tr key={i} className="border-b border-gray-100 last:border-0">
-                    <td className="py-2 px-4">{f.category}</td>
-                    <td className="py-2 px-4 text-right tabular-nums font-medium">{formatMGA(f.priceMga)}</td>
+                {Array.from(
+                  fares.reduce((map, f) => {
+                    const key = f.category ?? 'AUTRE';
+                    if (!map.has(key)) map.set(key, f.priceMga);
+                    return map;
+                  }, new Map<string, number>()),
+                ).map(([cat, price]) => (
+                  <tr key={cat} className="border-b border-gray-100 last:border-0">
+                    <td className="py-2 px-4">{cat}</td>
+                    <td className="py-2 px-4 text-right tabular-nums font-medium">{formatMGA(price)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -273,7 +279,7 @@ export default function TripDetailPage() {
                       key={b.id}
                       bookingId={b.id}
                       reference={b.reference}
-                      passengerName="—"
+                      passengerName={b.buyer ? `${b.buyer.firstName ?? ''} ${b.buyer.lastName ?? ''}`.trim() || '—' : '—'}
                       tripLabel=""
                       channel={b.channel}
                       totalAmountMga={b.totalAmountMga}

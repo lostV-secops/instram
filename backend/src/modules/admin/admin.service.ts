@@ -92,22 +92,12 @@ export interface PaginatedResult<T> {
 }
 
 export interface AdminStats {
-  cooperatives: {
-    total: number;
-    pending: number;
-    validated: number;
-    suspended: number;
-  };
-  bookings: {
-    today: number;
-    thisMonth: number;
-  };
-  revenue: {
-    thisMonth: number;
-    currency: 'MGA';
-  };
-  activeTrips: number;
-  pendingRatings: number;
+  cooperativesActive: number;
+  cooperativesPending: number;
+  bookingsToday: number;
+  revenueToday: number;
+  platformFeeToday: number;
+  incidents: Array<{ type: string; severity: string; message: string }>;
 }
 
 export interface AdminProfile {
@@ -624,19 +614,16 @@ export class AdminService {
   // GET /admin/ratings — avis avec filtre de statut
   // ------------------------------------------------------------------
 
-  async listRatings(query: ListRatingsQuery): Promise<PaginatedResult<Rating>> {
-    const { status, cursor, limit } = query;
+  async listRatings(query: ListRatingsQuery): Promise<Rating[]> {
+    const { status } = query;
 
-    const where = {
-      ...(status
-        ? { status: status as RatingStatus }
-        : { status: RatingStatus.PENDING_REVIEW }),
-      ...(cursor ? { id: { gt: cursor } } : {}),
-    };
+    const where = status
+      ? { status: status as RatingStatus }
+      : { status: RatingStatus.PENDING_REVIEW };
 
     const items = await this.db.rating.findMany({
       where,
-      take: limit + 1,
+      take: 100,
       orderBy: { createdAt: 'asc' },
       include: {
         user: { select: { id: true, email: true, phone: true } },
@@ -644,13 +631,7 @@ export class AdminService {
       },
     });
 
-    const hasNext = items.length > limit;
-    const page = hasNext ? items.slice(0, limit) : items;
-
-    return {
-      items: page,
-      nextCursor: hasNext ? page[page.length - 1].id : null,
-    };
+    return items;
   }
 
   // ------------------------------------------------------------------
@@ -700,12 +681,15 @@ export class AdminService {
           _count: { score: true },
         });
 
+        const newRatingAverage = agg._avg.score ?? 0;
+        const newRatingCount = agg._count.score;
         await tx.cooperative.update({
           where: { id: rating.cooperativeId },
-          data: {
-            ratingAverage: agg._avg.score ?? 0,
-            ratingCount: agg._count.score,
-          },
+          data: { ratingAverage: newRatingAverage, ratingCount: newRatingCount },
+        });
+        await tx.directoryEntry.updateMany({
+          where: { cooperativeId: rating.cooperativeId },
+          data: { ratingAverage: newRatingAverage, ratingCount: newRatingCount },
         });
       }
 
@@ -737,8 +721,8 @@ export class AdminService {
   // GET /admin/users — liste paginée avec filtres
   // ------------------------------------------------------------------
 
-  async listUsers(query: ListUsersQuery): Promise<PaginatedResult<object>> {
-    const { q, status, cursor, limit } = query;
+  async listUsers(query: ListUsersQuery): Promise<object[]> {
+    const { q, status } = query;
 
     const where = {
       ...(status ? { status: status as UserStatus } : {}),
@@ -750,12 +734,11 @@ export class AdminService {
             ],
           }
         : {}),
-      ...(cursor ? { id: { gt: cursor } } : {}),
     };
 
     const items = await this.db.user.findMany({
       where,
-      take: limit + 1,
+      take: 100,
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -773,15 +756,50 @@ export class AdminService {
       },
     });
 
-    const hasNext = items.length > limit;
-    const page = hasNext ? items.slice(0, limit) : items;
+    return items.map((u) => {
+      const user = u as typeof items[0];
+      const roles: string[] = [
+        ...(user.adminProfile ? [user.adminProfile.role as string] : []),
+        ...user.memberships.map((m) => m.role as string),
+      ];
+      return {
+        id: user.id,
+        email: user.email,
+        phone: user.phone,
+        status: user.status,
+        roles,
+        createdAt: user.createdAt,
+      };
+    });
+  }
 
-    return {
-      items: page,
-      nextCursor: hasNext
-        ? (page[page.length - 1] as { id: string }).id
-        : null,
-    };
+  // ------------------------------------------------------------------
+  // GET /admin/users/:id — profil d'un utilisateur
+  // ------------------------------------------------------------------
+
+  async getUser(userId: string): Promise<object> {
+    const u = await this.db.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        phone: true,
+        status: true,
+        createdAt: true,
+        lastLoginAt: true,
+        adminProfile: { select: { role: true } },
+        memberships: {
+          where: { active: true },
+          select: { role: true, cooperative: { select: { id: true, displayName: true } } },
+        },
+      },
+    });
+    if (!u) throw new NotFoundError('Utilisateur introuvable.');
+    const roles: string[] = [
+      ...(u.adminProfile ? [u.adminProfile.role as string] : []),
+      ...u.memberships.map((m) => m.role as string),
+    ];
+    return { id: u.id, email: u.email, phone: u.phone, status: u.status, roles, createdAt: u.createdAt };
   }
 
   // ------------------------------------------------------------------
@@ -1002,15 +1020,13 @@ export class AdminService {
   // GET /admin/payments — liste paginée de tous les paiements
   // ------------------------------------------------------------------
 
-  async listPayments(query: ListPaymentsQuery): Promise<PaginatedResult<object>> {
-    const { status, cooperativeId, from, to, cursor, limit } = query;
+  async listPayments(query: ListPaymentsQuery): Promise<object[]> {
+    const { status, cooperativeId, from, to } = query;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {
       ...(status ? { status } : {}),
-      ...(cooperativeId
-        ? { booking: { cooperativeId } }
-        : {}),
+      ...(cooperativeId ? { booking: { cooperativeId } } : {}),
       ...(from || to
         ? {
             initiatedAt: {
@@ -1019,12 +1035,11 @@ export class AdminService {
             },
           }
         : {}),
-      ...(cursor ? { id: { gt: cursor } } : {}),
     };
 
     const items = await this.db.payment.findMany({
       where,
-      take: limit + 1,
+      take: 200,
       orderBy: { initiatedAt: 'desc' },
       select: {
         id: true,
@@ -1044,13 +1059,7 @@ export class AdminService {
       },
     });
 
-    const hasNext = items.length > limit;
-    const page = hasNext ? items.slice(0, limit) : items;
-
-    return {
-      items: page,
-      nextCursor: hasNext ? (page[page.length - 1] as { id: string }).id : null,
-    };
+    return items;
   }
 
   // ==================================================================
@@ -1163,29 +1172,18 @@ export class AdminService {
     const startOfToday = new Date(now);
     startOfToday.setHours(0, 0, 0, 0);
 
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
     const [
-      totalCoops,
       pendingCoops,
       validatedCoops,
-      suspendedCoops,
       bookingsToday,
-      bookingsThisMonth,
-      revenueAgg,
-      activeTrips,
-      pendingRatings,
+      revenueTodayAgg,
+      platformFeeTodayAgg,
     ] = await Promise.all([
-      // Comptes coopératives
-      this.db.cooperative.count(),
       this.db.cooperative.count({
         where: { status: CooperativeStatus.PENDING_VALIDATION },
       }),
       this.db.cooperative.count({
         where: { status: CooperativeStatus.VALIDATED },
-      }),
-      this.db.cooperative.count({
-        where: { status: CooperativeStatus.SUSPENDED },
       }),
 
       // Réservations confirmées aujourd'hui
@@ -1196,53 +1194,32 @@ export class AdminService {
         },
       }),
 
-      // Réservations confirmées ce mois
-      this.db.booking.count({
+      // Revenus bruts aujourd'hui (seatSubtotalMga)
+      this.db.booking.aggregate({
         where: {
           status: 'CONFIRMED',
-          confirmedAt: { gte: startOfMonth },
+          confirmedAt: { gte: startOfToday },
         },
+        _sum: { seatSubtotalMga: true },
       }),
 
-      // Revenus (paiements confirmés ce mois)
-      this.db.payment.aggregate({
+      // Commissions plateforme aujourd'hui
+      this.db.booking.aggregate({
         where: {
           status: 'CONFIRMED',
-          confirmedAt: { gte: startOfMonth },
+          confirmedAt: { gte: startOfToday },
         },
-        _sum: { amountMga: true },
-      }),
-
-      // Trajets actifs (OPEN_FOR_BOOKING ou DEPARTED)
-      this.db.tripInstance.count({
-        where: {
-          status: { in: ['OPEN_FOR_BOOKING', 'DEPARTED'] },
-        },
-      }),
-
-      // Avis en attente de modération
-      this.db.rating.count({
-        where: { status: RatingStatus.PENDING_REVIEW },
+        _sum: { platformFeeMga: true },
       }),
     ]);
 
     return {
-      cooperatives: {
-        total: totalCoops,
-        pending: pendingCoops,
-        validated: validatedCoops,
-        suspended: suspendedCoops,
-      },
-      bookings: {
-        today: bookingsToday,
-        thisMonth: bookingsThisMonth,
-      },
-      revenue: {
-        thisMonth: revenueAgg._sum.amountMga ?? 0,
-        currency: 'MGA',
-      },
-      activeTrips,
-      pendingRatings,
+      cooperativesActive: validatedCoops,
+      cooperativesPending: pendingCoops,
+      bookingsToday,
+      revenueToday: revenueTodayAgg._sum.seatSubtotalMga ?? 0,
+      platformFeeToday: platformFeeTodayAgg._sum.platformFeeMga ?? 0,
+      incidents: [],
     };
   }
 
@@ -1291,7 +1268,7 @@ export class AdminService {
     const templates = await this.db.notificationTemplate.findMany({
       orderBy: { code: 'asc' },
     });
-    return { templates };
+    return templates;
   }
 
   async getTemplate(code: string) {

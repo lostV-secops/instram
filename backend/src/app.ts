@@ -280,8 +280,15 @@ export async function buildApp(): Promise<FastifyInstance> {
   // ------------------------------------------------------------------
   app.setErrorHandler((error, req, reply) => {
     req.log.error(error, 'Unhandled error');
+    // @fastify/rate-limit v9 passes rate-limit errors without statusCode set
+    if ((error as { code?: string }).code === 'RATE_LIMIT_EXCEEDED') {
+      return reply.status(429).send({
+        code: 'RATE_LIMIT_EXCEEDED',
+        message: error.message,
+      });
+    }
     const statusCode = error.statusCode ?? 500;
-    reply.status(statusCode).send({
+    return reply.status(statusCode).send({
       code: error.code ?? 'INTERNAL_ERROR',
       message:
         process.env.NODE_ENV === 'production'
