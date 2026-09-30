@@ -359,7 +359,7 @@ export class DriverService {
             firstName: pass.firstName,
             lastName: pass.lastName,
           },
-          seatCode: pass.seatCode,
+          seatCode: pass.seatCode ?? '',
           boardingStatus: booking.boardingStatus,
           paymentMethod,
         });

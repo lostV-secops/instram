@@ -57,7 +57,7 @@ export default async function exportsRoutes(fastify: FastifyInstance): Promise<v
       // Admin global : liste tous les exports
       const adminProfile = await prisma.adminProfile.findUnique({ where: { userId } });
       if (adminProfile && ['ADMIN_SUPER', 'ADMIN_OPS'].includes(adminProfile.role)) {
-        const jobs = await service.listAllExports({});
+        const jobs = await service.listAllExports({ limit: 100 });
         return reply.status(200).send(jobs);
       }
 

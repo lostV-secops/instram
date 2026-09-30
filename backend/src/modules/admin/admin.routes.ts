@@ -527,10 +527,10 @@ export default async function adminRoutes(fastify: FastifyInstance): Promise<voi
   // ------------------------------------------------------------------
   // GET /admin/users/:userId — profil d'un utilisateur
   // ------------------------------------------------------------------
-  fastify.get(
+  fastify.get<{ Params: { userId: string } }>(
     '/users/:userId',
     { onRequest: [fastify.authenticate, requireSuperOrOps] },
-    async (req: FastifyRequest<{ Params: { userId: string } }>, reply: FastifyReply) => {
+    async (req, reply) => {
       try {
         const result = await service.getUser(req.params.userId);
         return reply.send(result);
