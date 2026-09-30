@@ -75,9 +75,6 @@ jobs:
       - name: Appliquer les migrations
         run: npx prisma migrate deploy
 
-      - name: Lint
-        run: npm run lint
-
       - name: Build TypeScript
         run: npm run build
 

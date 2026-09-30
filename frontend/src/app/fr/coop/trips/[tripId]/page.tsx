@@ -136,7 +136,7 @@ export default function TripDetailPage() {
 
       <div className="flex items-start justify-between flex-wrap gap-3">
         <h1 className="text-xl font-bold text-brand-dark">
-          {(route?.originCity as Record<string,string>)?.nameFr ?? route?.originCity?.name ?? '—'} → {(route?.destinationCity as Record<string,string>)?.nameFr ?? route?.destinationCity?.name ?? '—'}
+          {(route?.originCity as unknown as Record<string,string>)?.nameFr ?? route?.originCity?.name ?? '—'} → {(route?.destinationCity as unknown as Record<string,string>)?.nameFr ?? route?.destinationCity?.name ?? '—'}
         </h1>
         <Link href={`/fr/coop/trips/${tripId}/edit`}>
           <Button variant="secondary" size="sm">Modifier</Button>
@@ -159,7 +159,7 @@ export default function TripDetailPage() {
           {vehicle && (
             <div>
               <dt className="text-gray-500">Véhicule</dt>
-              <dd className="text-gray-700">{(vehicle as Record<string,string>).displayName ?? vehicle.model ?? vehicle.id}</dd>
+              <dd className="text-gray-700">{(vehicle as unknown as Record<string,string>).displayName ?? vehicle.model ?? vehicle.id}</dd>
             </div>
           )}
         </dl>

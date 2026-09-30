@@ -21,7 +21,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { useAdmin } from '@/app/fr/admin/layout';
+import { useAdmin } from '@/app/fr/admin/context';
 import type { AdminUserSummary, AdminRole, AdminUserStatus } from '@/lib/types';
 
 const ADMIN_ROLE_OPTIONS: AdminRole[] = ['ADMIN_SUPER', 'ADMIN_OPS', 'ADMIN_MODERATOR'];

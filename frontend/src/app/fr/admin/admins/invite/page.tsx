@@ -22,7 +22,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { useAdmin } from '@/app/fr/admin/layout';
+import { useAdmin } from '@/app/fr/admin/context';
 import type { AdminRole } from '@/lib/types';
 
 const ROLE_OPTIONS: { value: AdminRole; label: string; description: string }[] = [

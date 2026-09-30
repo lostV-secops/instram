@@ -26,7 +26,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
-import { useAdmin } from '@/app/fr/admin/layout';
+import { useAdmin } from '@/app/fr/admin/context';
 import type { Cooperative, CooperativeStatus } from '@/lib/types';
 
 const statusLabels: Record<CooperativeStatus, string> = {

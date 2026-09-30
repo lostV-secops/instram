@@ -15,26 +15,12 @@
  * Le rôle admin est partagé via AdminContext (contexte React léger).
  */
 
-import { useState, useEffect, createContext, useContext, type ReactNode } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { AdminSidebar } from '@/components/admin/AdminSidebar';
 import { AdminHeader } from '@/components/admin/AdminHeader';
+import { AdminContext } from './context';
 import type { AdminRole } from '@/lib/types';
-
-// ─── Contexte admin ────────────────────────────────────────────────────────────
-
-interface AdminContextValue {
-  role: AdminRole;
-  userId: string;
-}
-
-const AdminContext = createContext<AdminContextValue | null>(null);
-
-export function useAdmin(): AdminContextValue {
-  const ctx = useContext(AdminContext);
-  if (!ctx) throw new Error('useAdmin doit être utilisé dans AdminLayout');
-  return ctx;
-}
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 
