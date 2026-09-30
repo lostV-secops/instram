@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Backend : lint · build TypeScript · tests Jest (avec PostgreSQL + Redis)
+  # ─────────────────────────────────────────────────────────────────────────────
+  backend:
+    name: Backend — lint, build, tests
+    runs-on: ubuntu-22.04
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: instram
+          POSTGRES_PASSWORD: instram_test
+          POSTGRES_DB: instram_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U instram"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      DATABASE_URL: postgresql://instram:instram_test@localhost:5432/instram_test
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: ci_test_access_secret_64chars_long_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      JWT_REFRESH_SECRET: ci_test_refresh_secret_64chars_long_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 30d
+      NODE_ENV: test
+      SMS_PROVIDER: stub
+      QR_SECRET: ci_test_qr_secret_32chars_xxxxxxxx
+      CORS_ORIGIN: http://localhost:3000
+      PORT: "4000"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Générer le client Prisma
+        run: npx prisma generate
+
+      - name: Appliquer les migrations
+        run: npx prisma migrate deploy
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Tests Jest
+        run: npm run test -- --passWithNoTests
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Frontend : type-check TypeScript · lint · build Next.js · tests Jest
+  # ─────────────────────────────────────────────────────────────────────────────
+  frontend:
+    name: Frontend — type-check, lint, build, tests
+    runs-on: ubuntu-22.04
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    env:
+      BACKEND_URL: http://localhost:4000
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      NEXT_PUBLIC_WS_URL: ws://localhost:4000/ws
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Type-check TypeScript
+        run: npm run type-check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build Next.js
+        run: npm run build
+
+      - name: Tests Jest
+        run: npm run test -- --passWithNoTests

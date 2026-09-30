@@ -1,0 +1,62 @@
+name: Deploy en production
+
+# Déclenchement manuel uniquement — depuis l'onglet "Actions" sur GitHub.
+# Secrets requis dans Settings → Secrets → Actions :
+#   SSH_HOST          : IP ou hostname du serveur de production
+#   SSH_USER          : utilisateur SSH (ex. ubuntu, deploy)
+#   SSH_PRIVATE_KEY   : clé privée SSH (contenu complet, y compris header/footer)
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environnement cible"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+
+jobs:
+  deploy:
+    name: Déploiement ${{ inputs.environment }}
+    runs-on: ubuntu-22.04
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Déploiement via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            cd /opt/instram
+
+            echo "==> Pull des nouvelles images Docker"
+            docker pull ghcr.io/${{ github.repository_owner }}/instram-backend:latest
+            docker pull ghcr.io/${{ github.repository_owner }}/instram-frontend:latest
+
+            echo "==> Sauvegarde base de données"
+            docker compose -f docker-compose.prod.yml exec -T postgres \
+              pg_dump -U instram instram_prod | \
+              gzip > /backups/instram/deploy_$(date +%Y%m%d_%H%M%S).sql.gz
+
+            echo "==> Migrations Prisma"
+            docker compose -f docker-compose.prod.yml run --rm backend \
+              npx prisma migrate deploy
+
+            echo "==> Redémarrage des services"
+            docker compose -f docker-compose.prod.yml up -d --no-build backend frontend
+
+            echo "==> Nettoyage images inutilisées"
+            docker image prune -f
+
+            echo "==> Vérification santé (attente 15 s)"
+            sleep 15
+            curl -sf http://localhost:4000/healthz || \
+              (echo "ERREUR : health check backend échoué" && exit 1)
+            curl -sf http://localhost:3000/api/health || \
+              (echo "ERREUR : health check frontend échoué" && exit 1)
+
+            echo "==> Déploiement ${{ github.sha }} terminé avec succès"
