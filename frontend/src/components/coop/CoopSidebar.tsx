@@ -11,7 +11,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useCoop } from '@/app/fr/coop/CoopContext';
+import { useCoop } from '@/app/[lang]/coop/CoopContext';
 import { getTranslations } from '@/lib/i18n';
 
 interface NavItem {

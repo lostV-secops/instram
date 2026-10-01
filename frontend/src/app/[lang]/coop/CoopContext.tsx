@@ -1,16 +1,43 @@
 'use client';
 
-/**
- * Contexte coopérative bilingue — transmis depuis le layout [lang]/coop/.
- *
- * Re-exporte le CoopProvider et useCoop depuis fr/coop/CoopContext afin que
- * la même instance de contexte React soit partagée entre les layouts fr/coop/
- * et [lang]/coop/, garantissant que CoopSidebar et CoopHeader fonctionnent
- * correctement quel que soit le segment de route actif.
- *
- * Le layout [lang]/coop/layout.tsx passe lang={params.lang} au CoopProvider,
- * ce qui rend la langue dynamique disponible via useCoop().lang.
- */
+import { createContext, useContext, type ReactNode } from 'react';
+import type { Cooperative, CooperativeRole } from '@/lib/types';
 
-export { CoopProvider, useCoop } from '@/app/fr/coop/CoopContext';
-export type { } from '@/app/fr/coop/CoopContext';
+interface CoopContextValue {
+  cooperative: Cooperative;
+  role: CooperativeRole;
+  userId: string;
+  lang: string;
+}
+
+const CoopContext = createContext<CoopContextValue | null>(null);
+
+interface CoopProviderProps {
+  cooperative: Cooperative;
+  role: CooperativeRole;
+  userId: string;
+  lang?: string;
+  children: ReactNode;
+}
+
+export function CoopProvider({
+  cooperative,
+  role,
+  userId,
+  lang = 'fr',
+  children,
+}: CoopProviderProps) {
+  return (
+    <CoopContext.Provider value={{ cooperative, role, userId, lang }}>
+      {children}
+    </CoopContext.Provider>
+  );
+}
+
+export function useCoop(): CoopContextValue {
+  const ctx = useContext(CoopContext);
+  if (!ctx) {
+    throw new Error('useCoop doit être utilisé dans un CoopProvider');
+  }
+  return ctx;
+}
