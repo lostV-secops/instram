@@ -11,6 +11,7 @@ import type { MobileMoneyGateway } from '../../infra/mobileMoney/gateway';
 import { enqueueSms } from '../../infra/queue/sms.queue';
 import type { NotificationsService } from '../notifications/notifications.service';
 import type { WebhookPayload } from '../bookings/bookings.schema';
+import { bookingChannel } from '../../infra/ws/channels';
 
 // =====================================================================
 // PaymentsService
@@ -121,6 +122,7 @@ type BookingForConfirm = {
   tripInstanceId: string;
   cooperativeId: string;
   channel: string;
+  buyerUserId: string | null;
   // H-4 : totalAmountMga pour validation finale du montant webhook
   totalAmountMga: number;
   seatHolds: { seatDefinitionId: string }[];
@@ -350,7 +352,7 @@ export class PaymentsService {
           seatHolds: true,
           payments: true,
         },
-      });
+      }) as BookingForConfirm | null;
     }
 
     if (!booking) {
@@ -676,6 +678,17 @@ export class PaymentsService {
         bookingId: booking.id,
       }),
     );
+
+    // Pub/Sub PAYMENT_CONFIRMED → canal privé voyageur (booking:{userId})
+    if (booking.buyerUserId) {
+      await this.redis.publish(
+        bookingChannel(booking.buyerUserId),
+        JSON.stringify({
+          event: 'PAYMENT_CONFIRMED',
+          bookingId: booking.id,
+        }),
+      );
+    }
 
     // SMS BOOKING_CONFIRMED (transactionnel — immédiat, bypass silence nocturne VH-02)
     if (this.notifications) {
