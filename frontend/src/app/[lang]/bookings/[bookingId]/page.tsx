@@ -15,6 +15,7 @@ import { AppError } from '@/lib/api';
 import type { BookingDetail, Lang } from '@/lib/types';
 import { QrCodeCanvas } from '@/components/ui/QrCodeCanvas';
 import { RatingForm } from '@/components/booking/RatingForm';
+import { ResendSMSButton } from './ResendSMSButton';
 
 interface PageProps {
   params: { lang: string; bookingId: string };
@@ -122,11 +123,11 @@ export default async function BookingDetailPage({ params }: PageProps) {
             </dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-gray-500">{t.tripDetail.departure}</dt>
+            <dt className="text-gray-500">{t.home.from}</dt>
             <dd className="text-gray-800">{trip.route.originCity.name}</dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-gray-500">{t.search.arrival}</dt>
+            <dt className="text-gray-500">{t.home.to}</dt>
             <dd className="text-gray-800">{trip.route.destinationCity.name}</dd>
           </div>
           <div className="flex justify-between">
@@ -258,14 +259,14 @@ export default async function BookingDetailPage({ params }: PageProps) {
           </p>
 
           {/* Renvoi SMS */}
-          <form action={`/api/proxy/v1/bookings/${bookingId}/resend-ticket`} method="POST" className="mt-4">
-            <button
-              type="submit"
-              className="text-sm text-brand underline hover:no-underline"
-            >
-              {t.bookingDetail.resendSMS}
-            </button>
-          </form>
+          <ResendSMSButton
+            bookingId={bookingId}
+            labels={{
+              send: t.bookingDetail.resendSMS,
+              success: t.bookingDetail.resendSMSSuccess,
+              error: t.common.errorNetwork,
+            }}
+          />
         </section>
       )}
 

@@ -11,7 +11,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { getTranslations, isValidLang } from '@/lib/i18n';
+import { getTranslations, isValidLang, dateLocale } from '@/lib/i18n';
 import { apiGet } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 import { SeatMap } from '@/components/seats/SeatMap';
@@ -42,7 +42,7 @@ function formatMGA(amount: number): string {
 function formatDateTime(isoDate: string, lang: string): string {
   try {
     return new Date(isoDate).toLocaleString(
-      lang === 'mg' ? 'fr-MG' : 'fr-MG',
+      dateLocale(lang),
       {
         weekday: 'long',
         day: '2-digit',

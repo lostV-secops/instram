@@ -99,7 +99,7 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
           href={`/${lang}/notifications`}
           className="block w-full text-center border border-gray-200 text-gray-700 font-medium rounded-xl px-4 py-3 hover:bg-gray-50 transition-colors"
         >
-          Mes notifications
+          {t.nav.myNotifications}
         </Link>
 
         {me && <ProfileEditor me={me} lang={lang} />}

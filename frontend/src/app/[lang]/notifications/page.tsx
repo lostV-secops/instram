@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { useTranslations } from '@/components/TranslationsProvider';
 
 type NotifStatus = 'PENDING' | 'SCHEDULED' | 'SENT' | 'FAILED';
 type NotifCategory = 'TRANSACTIONAL' | 'REMINDER';
@@ -26,23 +27,11 @@ interface NotifPrefs {
   optedOutTemplates: string[];
 }
 
-const STATUS_LABELS: Record<NotifStatus, string> = {
-  PENDING: 'En attente',
-  SCHEDULED: 'Planifiée',
-  SENT: 'Envoyée',
-  FAILED: 'Échouée',
-};
-
 const STATUS_VARIANTS: Record<NotifStatus, 'success' | 'warning' | 'error' | 'neutral'> = {
   PENDING: 'warning',
   SCHEDULED: 'warning',
   SENT: 'success',
   FAILED: 'error',
-};
-
-const CATEGORY_LABELS: Record<NotifCategory, string> = {
-  TRANSACTIONAL: 'Transactionnel',
-  REMINDER: 'Rappel',
 };
 
 const TEMPLATE_LABELS: Record<string, string> = {
@@ -65,6 +54,9 @@ function fmtDate(iso: string): string {
 }
 
 export default function NotificationsPage() {
+  const t = useTranslations();
+  const tn = t.notifications;
+
   const [items, setItems] = useState<NotifItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -87,7 +79,7 @@ export default function NotificationsPage() {
       setItems((prev) => append ? [...prev, ...data.items] : data.items);
       setNextCursor(data.nextCursor);
     } catch {
-      setError('Erreur réseau. Vérifiez votre connexion et réessayez.');
+      setError(t.common.errorNetwork);
     } finally {
       if (append) setLoadingMore(false); else setLoading(false);
     }
@@ -125,7 +117,7 @@ export default function NotificationsPage() {
       if (!res.ok) throw new Error();
       setPrefs(await res.json() as NotifPrefs);
     } catch {
-      setPrefsError('Impossible de mettre à jour les préférences. Réessayez.');
+      setPrefsError(tn.prefsError);
     } finally {
       setPrefsSaving(false);
     }
@@ -133,17 +125,15 @@ export default function NotificationsPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-      <h1 className="text-xl font-bold text-brand-dark">Mes notifications</h1>
+      <h1 className="text-xl font-bold text-brand-dark">{tn.title}</h1>
 
       {/* Preferences */}
       {!prefsLoading && prefs && (
         <div className="bg-white border border-gray-200 rounded-xl px-4 py-4 flex items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-medium text-gray-800">Notifications SMS</p>
+            <p className="text-sm font-medium text-gray-800">{tn.smsTitle}</p>
             <p className="text-xs text-gray-500 mt-0.5">
-              {prefs.smsEnabled
-                ? 'Vous recevez les SMS de confirmation et rappels de départ.'
-                : 'Les SMS non-transactionnels sont désactivés.'}
+              {prefs.smsEnabled ? tn.smsEnabledDesc : tn.smsDisabledDesc}
             </p>
           </div>
           <Button
@@ -152,7 +142,7 @@ export default function NotificationsPage() {
             isLoading={prefsSaving}
             onClick={handleToggleSms}
           >
-            {prefs.smsEnabled ? 'Désactiver' : 'Activer'}
+            {prefs.smsEnabled ? tn.disable : tn.enable}
           </Button>
         </div>
       )}
@@ -163,18 +153,18 @@ export default function NotificationsPage() {
       {/* List */}
       {loading ? (
         <div className="bg-white border border-gray-200 rounded-xl p-8 animate-pulse text-center">
-          <p className="text-sm text-gray-400">Chargement...</p>
+          <p className="text-sm text-gray-400">{t.common.loading}</p>
         </div>
       ) : error ? (
         <div className="bg-red-50 border border-red-300 text-red-700 rounded-xl px-4 py-4 text-sm">
           {error}
           <button type="button" onClick={() => loadItems()} className="block underline mt-1">
-            Réessayer
+            {t.common.retry}
           </button>
         </div>
       ) : items.length === 0 ? (
         <div className="bg-white border border-gray-200 rounded-xl px-4 py-12 text-center text-sm text-gray-500">
-          Aucune notification pour le moment.
+          {tn.empty}
         </div>
       ) : (
         <div className="space-y-2">
@@ -190,23 +180,23 @@ export default function NotificationsPage() {
                 <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
                   <span>{fmtDate(n.createdAt)}</span>
                   <span className="text-gray-300">·</span>
-                  <span>{CATEGORY_LABELS[n.category]}</span>
+                  <span>{tn.categories[n.category]}</span>
                   {n.scheduledFor && n.status === 'SCHEDULED' && (
                     <>
                       <span className="text-gray-300">·</span>
-                      <span>Planifiée pour {fmtDate(n.scheduledFor)}</span>
+                      <span>{tn.scheduledFor} {fmtDate(n.scheduledFor)}</span>
                     </>
                   )}
                   {n.sentAt && (
                     <>
                       <span className="text-gray-300">·</span>
-                      <span>Envoyée à {fmtDate(n.sentAt)}</span>
+                      <span>{tn.sentAt} {fmtDate(n.sentAt)}</span>
                     </>
                   )}
                 </div>
               </div>
               <Badge variant={STATUS_VARIANTS[n.status]}>
-                {STATUS_LABELS[n.status]}
+                {tn.statuses[n.status]}
               </Badge>
             </div>
           ))}
@@ -219,7 +209,7 @@ export default function NotificationsPage() {
                 isLoading={loadingMore}
                 onClick={() => loadItems(true, nextCursor)}
               >
-                Charger plus
+                {tn.loadMore}
               </Button>
             </div>
           )}

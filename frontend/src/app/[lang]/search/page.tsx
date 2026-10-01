@@ -129,7 +129,7 @@ export default async function SearchPage({ params, searchParams }: PageProps) {
         </h1>
         <p className="text-sm text-gray-500 mt-1">
           {date} · {passengers}{' '}
-          {parseInt(passengers, 10) > 1 ? t.home.passengers : t.home.passengers}
+          {t.home.passengers}
         </p>
       </div>
 

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { useTranslations } from '@/components/TranslationsProvider';
 import type { Me, Lang } from '@/lib/types';
 
 interface Props {
@@ -12,6 +13,8 @@ interface Props {
 }
 
 export function ProfileEditor({ me, lang }: Props) {
+  const t = useTranslations();
+  const tp = t.profile;
   const router = useRouter();
 
   // Edit form state
@@ -83,7 +86,7 @@ export function ProfileEditor({ me, lang }: Props) {
     <div className="flex flex-col gap-3">
       {saveSuccess && !editing && (
         <div role="status" className="bg-green-50 border border-green-300 text-green-700 rounded-xl px-4 py-3 text-sm">
-          Profil mis à jour avec succès.
+          {tp.saveSuccess}
         </div>
       )}
 
@@ -93,17 +96,17 @@ export function ProfileEditor({ me, lang }: Props) {
           onSubmit={handleSave}
           className="bg-white border border-gray-200 rounded-xl p-5 space-y-4"
         >
-          <h2 className="font-semibold text-brand-dark">Modifier mon profil</h2>
+          <h2 className="font-semibold text-brand-dark">{tp.editTitle}</h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
-              label="Prénom"
+              label={tp.firstName}
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
               disabled={saving}
             />
             <Input
-              label="Nom"
+              label={tp.lastName}
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
               disabled={saving}
@@ -111,17 +114,17 @@ export function ProfileEditor({ me, lang }: Props) {
           </div>
 
           <Input
-            label="Téléphone Mobile Money (optionnel)"
+            label={tp.mobileMoneyPhoneOptional}
             type="tel"
             value={mobileMoneyPhone}
             onChange={(e) => setMobileMoneyPhone(e.target.value)}
             placeholder="+261 XX XX XXX XXX"
-            hint="Laisser vide pour supprimer."
+            hint={tp.mobileMoneyHint}
             disabled={saving}
           />
 
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-800">Langue préférée</label>
+            <label className="text-sm font-medium text-gray-800">{tp.lang}</label>
             <div className="flex gap-3">
               {(['FR', 'MG'] as const).map((l) => (
                 <label key={l} className="flex items-center gap-2 cursor-pointer">
@@ -134,7 +137,7 @@ export function ProfileEditor({ me, lang }: Props) {
                     disabled={saving}
                     className="accent-brand"
                   />
-                  <span className="text-sm text-gray-700">{l === 'FR' ? 'Français' : 'Malagasy'}</span>
+                  <span className="text-sm text-gray-700">{l === 'FR' ? tp.langFr : tp.langMg}</span>
                 </label>
               ))}
             </div>
@@ -148,7 +151,7 @@ export function ProfileEditor({ me, lang }: Props) {
 
           <div className="flex gap-3">
             <Button type="submit" variant="primary" isLoading={saving}>
-              Enregistrer
+              {t.common.save}
             </Button>
             <Button
               type="button"
@@ -156,7 +159,7 @@ export function ProfileEditor({ me, lang }: Props) {
               onClick={() => { setEditing(false); setSaveError(null); }}
               disabled={saving}
             >
-              Annuler
+              {t.common.cancel}
             </Button>
           </div>
         </form>
@@ -165,7 +168,7 @@ export function ProfileEditor({ me, lang }: Props) {
           onClick={() => { setEditing(true); setSaveSuccess(false); }}
           className="block w-full text-center border border-gray-200 text-gray-700 font-medium rounded-xl px-4 py-3 hover:bg-gray-50 transition-colors text-sm"
         >
-          Modifier mon profil
+          {tp.editButton}
         </button>
       )}
 
@@ -175,15 +178,12 @@ export function ProfileEditor({ me, lang }: Props) {
           onClick={() => setShowDelete(true)}
           className="block w-full text-center border border-red-200 text-red-600 font-medium rounded-xl px-4 py-3 hover:bg-red-50 transition-colors text-sm"
         >
-          Supprimer mon compte
+          {tp.deleteButton}
         </button>
       ) : (
         <div className="bg-red-50 border border-red-300 rounded-xl p-5 space-y-3">
-          <p className="text-sm font-semibold text-red-700">Supprimer définitivement mon compte ?</p>
-          <p className="text-xs text-red-600">
-            Cette action est irréversible. Vos données personnelles seront anonymisées.
-            Vos réservations et paiements restent conservés pour des raisons légales.
-          </p>
+          <p className="text-sm font-semibold text-red-700">{tp.deleteConfirmTitle}</p>
+          <p className="text-xs text-red-600">{tp.deleteWarning}</p>
           {deleteError && (
             <p className="text-xs text-red-700 font-medium">{deleteError}</p>
           )}
@@ -195,7 +195,7 @@ export function ProfileEditor({ me, lang }: Props) {
               onClick={handleDelete}
               className="bg-red-600 hover:bg-red-700 border-red-600"
             >
-              Confirmer la suppression
+              {tp.confirmDelete}
             </Button>
             <Button
               variant="secondary"
@@ -203,7 +203,7 @@ export function ProfileEditor({ me, lang }: Props) {
               onClick={() => { setShowDelete(false); setDeleteError(null); }}
               disabled={deleting}
             >
-              Annuler
+              {t.common.cancel}
             </Button>
           </div>
         </div>

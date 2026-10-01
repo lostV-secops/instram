@@ -27,7 +27,8 @@
     "login": "Se connecter",
     "register": "S'inscrire",
     "switchLang": "Malagasy",
-    "myProfile": "Mon profil"
+    "myProfile": "Mon profil",
+    "myNotifications": "Mes notifications"
   },
   "home": {
     "title": "Réservez votre trajet",
@@ -236,7 +237,18 @@
     "roleCOOP_CONTROLLER": "Contrôleur",
     "roleADMIN_SUPER": "Super Admin",
     "roleADMIN_OPS": "Admin OPS",
-    "roleADMIN_MODERATOR": "Modérateur"
+    "roleADMIN_MODERATOR": "Modérateur",
+    "editButton": "Modifier mon profil",
+    "editTitle": "Modifier mon profil",
+    "firstName": "Prénom",
+    "lastName": "Nom",
+    "mobileMoneyPhoneOptional": "Téléphone Mobile Money (optionnel)",
+    "mobileMoneyHint": "Laisser vide pour supprimer.",
+    "saveSuccess": "Profil mis à jour avec succès.",
+    "deleteButton": "Supprimer mon compte",
+    "deleteConfirmTitle": "Supprimer définitivement mon compte ?",
+    "deleteWarning": "Cette action est irréversible. Vos données personnelles seront anonymisées. Vos réservations et paiements restent conservés pour des raisons légales.",
+    "confirmDelete": "Confirmer la suppression"
   },
   "footer": {
     "copyright": "© 2024 InsTRAM — CODEL Technologies Co.",
@@ -1005,6 +1017,29 @@
       "stars4": "4 étoiles",
       "stars5": "5 étoiles",
       "distribution": "Répartition des notes"
+    }
+  },
+  "notifications": {
+    "title": "Mes notifications",
+    "smsTitle": "Notifications SMS",
+    "smsEnabledDesc": "Vous recevez les SMS de confirmation et rappels de départ.",
+    "smsDisabledDesc": "Les SMS non-transactionnels sont désactivés.",
+    "disable": "Désactiver",
+    "enable": "Activer",
+    "prefsError": "Impossible de mettre à jour les préférences. Réessayez.",
+    "empty": "Aucune notification pour le moment.",
+    "loadMore": "Charger plus",
+    "scheduledFor": "Planifiée pour",
+    "sentAt": "Envoyée à",
+    "statuses": {
+      "PENDING": "En attente",
+      "SCHEDULED": "Planifiée",
+      "SENT": "Envoyée",
+      "FAILED": "Échouée"
+    },
+    "categories": {
+      "TRANSACTIONAL": "Transactionnel",
+      "REMINDER": "Rappel"
     }
   },
   "driver": {

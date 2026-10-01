@@ -27,7 +27,8 @@
     "login": "Hiditra",
     "register": "Misoratra anarana",
     "switchLang": "Français",
-    "myProfile": "Ny mombamomba ahy"
+    "myProfile": "Ny mombamomba ahy",
+    "myNotifications": "Ny fampandrenesako"
   },
   "home": {
     "title": "Ambara ny diananao",
@@ -236,7 +237,18 @@
     "roleCOOP_CONTROLLER": "Mpanara-maso",
     "roleADMIN_SUPER": "Super Admin",
     "roleADMIN_OPS": "Admin OPS",
-    "roleADMIN_MODERATOR": "Mpitsara"
+    "roleADMIN_MODERATOR": "Mpitsara",
+    "editButton": "Hanova ny mombamomba ahy",
+    "editTitle": "Hanova ny mombamomba ahy",
+    "firstName": "Anarana voalohany",
+    "lastName": "Fananarana",
+    "mobileMoneyPhoneOptional": "Finday Mobile Money (tsy voatery)",
+    "mobileMoneyHint": "Ajanony foana mba hamafa.",
+    "saveSuccess": "Naavona ny mombamomba ahy.",
+    "deleteButton": "Hamafa ny kaontiko",
+    "deleteConfirmTitle": "Hamafa tanteraka ny kaontiko ?",
+    "deleteWarning": "Tsy azo averina izany. Ho anaonao ny angon-drakitrao manokana. Ny fandraharahana sy fandoavana dia mitahiry noho ny antony ara-dalàna.",
+    "confirmDelete": "Manamarina ny famafa"
   },
   "footer": {
     "copyright": "© 2024 InsTRAM — CODEL Technologies Co.",
@@ -1005,6 +1017,29 @@
       "loading": "Mampiditra ny fandrindrana...",
       "error": "Tsy azo atao ny mampiditra ny fandrindrana.",
       "endpointNote": "Endpoints /admin/settings/* tsy ao amin'ny API — mbola ho tanterahina."
+    }
+  },
+  "notifications": {
+    "title": "Ny fampandrenesako",
+    "smsTitle": "Fampandrenesana SMS",
+    "smsEnabledDesc": "Mahazo SMS fanamarinana sy fampahatsiahivana ianao.",
+    "smsDisabledDesc": "Voasakana ny SMS tsy ara-pivarotana.",
+    "disable": "Hanajanona",
+    "enable": "Hanaovana",
+    "prefsError": "Tsy azo nohavaozina ny safidy. Andama indray.",
+    "empty": "Tsy misy fampandrenesana amin'izao fotoana izao.",
+    "loadMore": "Ampahafantaro bebe kokoa",
+    "scheduledFor": "Voatendry ho",
+    "sentAt": "Nalefa tamin'ny",
+    "statuses": {
+      "PENDING": "Miandry",
+      "SCHEDULED": "Voatendry",
+      "SENT": "Nalefa",
+      "FAILED": "Tsy lasa"
+    },
+    "categories": {
+      "TRANSACTIONAL": "Mifandraika amin'ny fivarotana",
+      "REMINDER": "Fampahatsiahivana"
     }
   },
   "driver": {

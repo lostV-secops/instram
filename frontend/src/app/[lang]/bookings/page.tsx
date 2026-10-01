@@ -7,7 +7,7 @@
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { getTranslations, isValidLang } from '@/lib/i18n';
+import { getTranslations, isValidLang, dateLocale } from '@/lib/i18n';
 import { apiGet } from '@/lib/api';
 import { Badge, bookingStatusVariant } from '@/components/ui/Badge';
 import type { BookingList, Lang } from '@/lib/types';
@@ -31,7 +31,7 @@ function formatMGA(amount: number): string {
 
 function formatDate(isoDate: string, lang: string): string {
   try {
-    return new Date(isoDate).toLocaleDateString(lang === 'mg' ? 'fr-MG' : 'fr-MG', {
+    return new Date(isoDate).toLocaleDateString(dateLocale(lang), {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
