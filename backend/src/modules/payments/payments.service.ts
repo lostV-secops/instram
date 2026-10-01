@@ -545,6 +545,32 @@ export class PaymentsService {
   }
 
   // ------------------------------------------------------------------
+  // ------------------------------------------------------------------
+  // devSimulateSuccess — DEV/TEST UNIQUEMENT
+  // Force la confirmation d'un paiement sans passer par le provider.
+  // À n'utiliser qu'avec NODE_ENV !== 'production'.
+  // ------------------------------------------------------------------
+  async devSimulateSuccess(bookingId: string): Promise<void> {
+    const payment = await this.db.payment.findFirst({
+      where: { bookingId, status: PaymentStatus.PENDING },
+      include: {
+        booking: {
+          include: { seatHolds: true, payments: true },
+        },
+      },
+    });
+
+    if (!payment || !payment.booking) {
+      throw Object.assign(new Error('Aucun paiement PENDING pour cette réservation'), { code: 'NOT_FOUND' });
+    }
+
+    await this._confirmPayment(
+      payment.booking as BookingForConfirm,
+      `dev-stub-${Date.now()}`,
+      payment.provider,
+    );
+  }
+
   // _confirmPayment — BEGIN TRANSACTION : Payment CONFIRMED + BookingSeats + Booking CONFIRMED
   // PUIS : Pub/Sub SEAT_SOLD, SMS BOOKING_CONFIRMED (après commit)
   // ------------------------------------------------------------------

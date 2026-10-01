@@ -236,6 +236,19 @@ export function PaymentForm({
         ? paymentData.instructions.messageMg
         : paymentData.instructions.messageFr;
 
+    const isDev = process.env.NODE_ENV === 'development';
+
+    const handleDevSimulate = async () => {
+      if (!bookingId) return;
+      try {
+        await fetch('/api/proxy/v1/dev/payments/simulate-success', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bookingId }),
+        });
+      } catch { /* le WS prend le relais */ }
+    };
+
     return (
       <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-5">
         <h2 className="text-lg font-semibold text-gray-900">
@@ -289,6 +302,16 @@ export function PaymentForm({
           </svg>
           {t.booking.paymentPending}
         </div>
+
+        {isDev && (
+          <button
+            type="button"
+            onClick={handleDevSimulate}
+            className="w-full mt-2 py-2.5 rounded-lg border-2 border-dashed border-amber-400 text-amber-700 bg-amber-50 text-sm font-semibold hover:bg-amber-100 transition-colors"
+          >
+            🧪 [DEV] Simuler paiement reçu
+          </button>
+        )}
       </div>
     );
   }

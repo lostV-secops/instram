@@ -154,6 +154,36 @@ export default async function paymentsRoutes(fastify: FastifyInstance): Promise<
       });
     },
   );
+
+  // ------------------------------------------------------------------
+  // POST /dev/payments/simulate-success — DEV/TEST UNIQUEMENT
+  // Confirme instantanément un paiement PENDING sans passer par le provider.
+  // Protégé : disponible uniquement si NODE_ENV !== 'production'.
+  // ------------------------------------------------------------------
+  if (process.env.NODE_ENV !== 'production') {
+    fastify.post(
+      '/dev/payments/simulate-success',
+      { onRequest: [fastify.authenticate] },
+      async (req: FastifyRequest, reply: FastifyReply) => {
+        reply.header('Cache-Control', 'no-store');
+        const body = req.body as { bookingId?: string };
+        if (!body?.bookingId) {
+          return reply.status(400).send({ code: 'VALIDATION_ERROR', message: 'bookingId requis' });
+        }
+        try {
+          await paymentsService.devSimulateSuccess(body.bookingId);
+          return reply.status(200).send({ ok: true });
+        } catch (err) {
+          const code = (err as NodeJS.ErrnoException).code;
+          if (code === 'NOT_FOUND') {
+            return reply.status(404).send({ code: 'NOT_FOUND', message: (err as Error).message });
+          }
+          req.log.error(err, 'dev simulate-success error');
+          return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+        }
+      },
+    );
+  }
 }
 
 // =====================================================================
