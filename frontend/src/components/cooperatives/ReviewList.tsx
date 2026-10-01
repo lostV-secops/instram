@@ -67,19 +67,38 @@ export function ReviewList({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Pas d'endpoint public pour charger plus d'avis — fonctionnalité désactivée
-  // jusqu'à l'ajout d'un endpoint GET /v1/directory/cooperatives/{slug}/ratings
-  // dans le contrat API.
-  const canLoadMore = false; // cursor !== null
+  const canLoadMore = cursor !== null;
 
   async function loadMore() {
     if (!cursor || loading) return;
     setLoading(true);
     setError(null);
     try {
-      // TODO : appeler GET /v1/directory/cooperatives/{slug}/ratings?cursor={cursor}
-      // quand cet endpoint sera ajouté au contrat API.
-      throw new Error('Endpoint not available');
+      const params = new URLSearchParams({ cursor, limit: '10' });
+      const res = await fetch(
+        `/api/proxy/v1/directory/cooperatives/${encodeURIComponent(coopSlug)}/ratings?${params.toString()}`,
+        { cache: 'no-store' },
+      );
+      if (!res.ok) throw new Error('fetch failed');
+      const data = await res.json() as {
+        items: Array<{
+          id: string;
+          score: number;
+          comment: string | null;
+          createdAt: string;
+          passenger: { firstName: string; firstLetterOfLastName: string };
+        }>;
+        nextCursor: string | null;
+      };
+      const mapped: PublicReview[] = data.items.map((item) => ({
+        id: item.id,
+        score: item.score,
+        comment: item.comment,
+        createdAt: item.createdAt,
+        authorDisplayName: `${item.passenger.firstName} ${item.passenger.firstLetterOfLastName}.`,
+      }));
+      setReviews((prev) => [...prev, ...mapped]);
+      setCursor(data.nextCursor);
     } catch {
       setError(t.common.errorNetwork);
     } finally {

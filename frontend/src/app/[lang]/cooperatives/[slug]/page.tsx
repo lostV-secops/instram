@@ -9,7 +9,7 @@
  *  1. En-tête      : nom, régions desservies, téléphone si public
  *  2. Notation     : note moyenne (grand format), total avis, RatingBar distribution
  *  3. Lignes       : liste des routes avec lien "Voir les trajets"
- *  4. Avis         : ReviewCard (vide : aucun endpoint public dans contrat v1)
+ *  4. Avis         : ReviewList — GET /v1/directory/cooperatives/{slug}/ratings
  *  5. CTA          : "Rechercher un trajet" — variant primary (BLEU — navigation, pas vert)
  *
  * SEO : <title> et <meta description> localisés.
@@ -24,10 +24,10 @@ import { getTranslations, isValidLang } from '@/lib/i18n';
 import { apiGet, AppError } from '@/lib/api';
 import type { DirectoryEntryDetail } from '@/lib/types';
 import { RatingStars } from '@/components/cooperative/RatingStars';
-import { ReviewCard } from '@/components/cooperative/ReviewCard';
 // RatingBar est prêt à l'emploi dès que l'API exposera la distribution par étoile.
 // import { RatingBar } from '@/components/cooperative/RatingBar';
-import type { PublicReview } from '@/components/cooperative/ReviewCard';
+import { ReviewList } from '@/components/cooperatives/ReviewList';
+import type { PublicReview } from '@/components/cooperatives/ReviewList';
 
 // ISR 60 s — la fiche coopérative et ses avis changent peu souvent
 export const revalidate = 60;
@@ -129,9 +129,34 @@ export default async function CooperativeDetailPage({ params }: PageProps) {
   const policyTitle = lang === 'mg' ? coop.policy?.titleMg : coop.policy?.titleFr;
   const policyBody = lang === 'mg' ? coop.policy?.bodyMg : coop.policy?.bodyFr;
 
-  // Avis individuels : aucun endpoint public dans contrat-api.yaml v1.
-  // Affichage d'un message vide ; ce tableau sera alimenté si l'API évolue.
-  const reviews: PublicReview[] = [];
+  // Avis individuels — GET /v1/directory/cooperatives/{slug}/ratings (10 premiers)
+  let reviews: PublicReview[] = [];
+  let reviewsNextCursor: string | null = null;
+  try {
+    const ratingsData = await apiGet<{
+      items: Array<{
+        id: string;
+        score: number;
+        comment: string | null;
+        createdAt: string;
+        passenger: { firstName: string; firstLetterOfLastName: string };
+      }>;
+      nextCursor: string | null;
+    }>(`/directory/cooperatives/${encodeURIComponent(slug)}/ratings?limit=10`, {
+      acceptLang: lang,
+      next: { revalidate: 60 },
+    });
+    reviews = ratingsData.items.map((item) => ({
+      id: item.id,
+      score: item.score,
+      comment: item.comment,
+      createdAt: item.createdAt,
+      authorDisplayName: `${item.passenger.firstName} ${item.passenger.firstLetterOfLastName}.`,
+    }));
+    reviewsNextCursor = ratingsData.nextCursor;
+  } catch {
+    // Avis non critiques — on affiche la page sans eux si l'appel échoue
+  }
 
   return (
     <div className="space-y-6 pb-8">
@@ -350,36 +375,19 @@ export default async function CooperativeDetailPage({ params }: PageProps) {
           >
             {tc.ratingTitle}
           </h2>
-          {/* Lien "Voir tous les avis" — à activer si endpoint public ajouté */}
           {coop.ratingCount > 10 && (
-            <span
-              className="text-xs text-gray-400 italic"
-              title="Endpoint non disponible dans contrat-api.yaml v1"
-            >
-              {tc.allReviews}
+            <span className="text-xs text-gray-400">
+              {tc.ratings.total.replace('{count}', String(coop.ratingCount))}
             </span>
           )}
         </div>
 
-        {reviews.length === 0 ? (
-          <div className="bg-gray-50 rounded-xl px-4 py-8 text-center">
-            <p className="text-sm text-gray-500">{tc.noReviews}</p>
-            {coop.ratingCount > 0 && (
-              <p className="text-xs text-gray-400 mt-1">
-                {/* Les {coop.ratingCount} avis agrégés sont inclus dans la note ci-dessus. */}
-                {tc.ratings.total.replace('{count}', String(coop.ratingCount))}
-              </p>
-            )}
-          </div>
-        ) : (
-          <ul className="space-y-3" role="list">
-            {reviews.map((review) => (
-              <li key={review.id}>
-                <ReviewCard review={review} lang={lang} t={t} />
-              </li>
-            ))}
-          </ul>
-        )}
+        <ReviewList
+          initialReviews={reviews}
+          nextCursor={reviewsNextCursor}
+          coopSlug={slug}
+          t={t}
+        />
       </section>
 
       {/* ══════════════════════════════════════════════════════════════════

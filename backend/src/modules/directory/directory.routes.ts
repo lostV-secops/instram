@@ -1,6 +1,8 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { DirectoryService } from './directory.service';
+import { RatingsService } from '../ratings/ratings.service';
+import { RatingListQuerySchema } from '../ratings/ratings.schema';
 import prisma from '../../infra/db/prisma';
 
 // =====================================================================
@@ -8,8 +10,9 @@ import prisma from '../../infra/db/prisma';
 // Préfixe attendu : /v1/directory (enregistré depuis app.ts)
 // Contrat : docs/contrat-api.yaml §Directory
 //
-//   GET /cooperatives        → liste paginée des coopératives validées
-//   GET /cooperatives/:slug  → fiche détail
+//   GET /cooperatives                    → liste paginée des coopératives validées
+//   GET /cooperatives/:slug              → fiche détail
+//   GET /cooperatives/:slug/ratings      → avis publics paginés
 // =====================================================================
 
 const ListQuerySchema = z.object({
@@ -21,6 +24,7 @@ const ListQuerySchema = z.object({
 
 export default async function directoryRoutes(fastify: FastifyInstance): Promise<void> {
   const service = new DirectoryService(prisma);
+  const ratingsService = new RatingsService(prisma);
 
   // ------------------------------------------------------------------
   // GET /cooperatives
@@ -73,6 +77,49 @@ export default async function directoryRoutes(fastify: FastifyInstance): Promise
         return reply.status(200).send(entry);
       } catch (err) {
         req.log.error(err, 'directory getCooperativeBySlug error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+  // ------------------------------------------------------------------
+  // GET /cooperatives/:slug/ratings
+  // Public — avis approuvés et anonymisés, paginés
+  // Contrat : docs/contrat-api.yaml §Directory GET /directory/cooperatives/{slug}/ratings
+  // ------------------------------------------------------------------
+  fastify.get(
+    '/cooperatives/:slug/ratings',
+    async (req: FastifyRequest<{ Params: { slug: string } }>, reply: FastifyReply) => {
+      const { slug } = req.params;
+      if (!slug || slug.length > 200) {
+        return reply.status(400).send({ code: 'VALIDATION_ERROR', message: 'slug invalide' });
+      }
+
+      const parseResult = RatingListQuerySchema.safeParse(req.query);
+      if (!parseResult.success) {
+        return reply.status(400).send({
+          code: 'VALIDATION_ERROR',
+          message: parseResult.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; '),
+        });
+      }
+
+      try {
+        const entry = await prisma.directoryEntry.findUnique({
+          where: { slug },
+          select: {
+            cooperativeId: true,
+            cooperative: { select: { status: true } },
+          },
+        });
+
+        if (!entry || entry.cooperative.status !== 'VALIDATED') {
+          return reply.status(404).send({ code: 'NOT_FOUND', message: 'Coopérative introuvable' });
+        }
+
+        const result = await ratingsService.listApprovedRatings(entry.cooperativeId, parseResult.data);
+        reply.header('Cache-Control', 'public, max-age=60');
+        return reply.status(200).send(result);
+      } catch (err) {
+        req.log.error(err, 'directory ratings error');
         return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
       }
     },
