@@ -17,6 +17,8 @@ interface CoopContextValue {
   role: CooperativeRole;
   /** ID utilisateur */
   userId: string;
+  /** Langue active (fr ou mg) */
+  lang: string;
 }
 
 const CoopContext = createContext<CoopContextValue | null>(null);
@@ -25,6 +27,8 @@ interface CoopProviderProps {
   cooperative: Cooperative;
   role: CooperativeRole;
   userId: string;
+  /** Langue active, default 'fr' */
+  lang?: string;
   children: ReactNode;
 }
 
@@ -32,10 +36,11 @@ export function CoopProvider({
   cooperative,
   role,
   userId,
+  lang = 'fr',
   children,
 }: CoopProviderProps) {
   return (
-    <CoopContext.Provider value={{ cooperative, role, userId }}>
+    <CoopContext.Provider value={{ cooperative, role, userId, lang }}>
       {children}
     </CoopContext.Provider>
   );

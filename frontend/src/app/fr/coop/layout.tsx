@@ -133,7 +133,7 @@ export default function CoopLayout({ children }: CoopLayoutProps) {
   const { cooperative, role, userId } = state;
 
   return (
-    <CoopProvider cooperative={cooperative} role={role} userId={userId}>
+    <CoopProvider cooperative={cooperative} role={role} userId={userId} lang="fr">
       <div className="min-h-screen flex bg-gray-50">
         {/* Sidebar */}
         <CoopSidebar

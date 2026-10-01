@@ -11,6 +11,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useCoop } from '@/app/fr/coop/CoopContext';
+import { getTranslations } from '@/lib/i18n';
 
 interface NavItem {
   href: string;
@@ -103,19 +105,7 @@ const IconTruck = () => (
   </svg>
 );
 
-const NAV_ITEMS: NavItem[] = [
-  { href: '/fr/coop', label: 'Tableau de bord', icon: <IconGrid /> },
-  { href: '/fr/coop/trips', label: 'Trajets', icon: <IconCalendar /> },
-  { href: '/fr/coop/routes', label: 'Lignes', icon: <IconMap /> },
-  { href: '/fr/coop/vehicles', label: 'Véhicules', icon: <IconTruck /> },
-  { href: '/fr/coop/fares', label: 'Tarifs', icon: <IconTag /> },
-  { href: '/fr/coop/bookings', label: 'Réservations', icon: <IconClipboard /> },
-  { href: '/fr/coop/walk-in', label: 'Walk-in guichet', icon: <IconUserPlus /> },
-  { href: '/fr/coop/members', label: 'Équipe', icon: <IconUsers /> },
-  { href: '/fr/coop/exports', label: 'Exports', icon: <IconDownload /> },
-  { href: '/fr/coop/billing', label: 'Facturation', icon: <IconTag /> },
-  { href: '/fr/coop/settings', label: 'Paramètres', icon: <IconSettings /> },
-];
+// NAV_ITEMS est construit dynamiquement dans le composant via useCoop() + getTranslations()
 
 interface CoopSidebarProps {
   isOpen: boolean;
@@ -124,9 +114,26 @@ interface CoopSidebarProps {
 
 export function CoopSidebar({ isOpen, onClose }: CoopSidebarProps) {
   const pathname = usePathname();
+  const { lang } = useCoop();
+  const t = getTranslations(lang);
+  const base = `/${lang}/coop`;
+
+  const NAV_ITEMS: NavItem[] = [
+    { href: base, label: t.coop.nav.dashboard, icon: <IconGrid /> },
+    { href: `${base}/trips`, label: t.coop.nav.trips, icon: <IconCalendar /> },
+    { href: `${base}/routes`, label: t.coop.nav.routes, icon: <IconMap /> },
+    { href: `${base}/vehicles`, label: t.coop.nav.vehicles, icon: <IconTruck /> },
+    { href: `${base}/fares`, label: t.coop.nav.fares, icon: <IconTag /> },
+    { href: `${base}/bookings`, label: t.coop.nav.bookings, icon: <IconClipboard /> },
+    { href: `${base}/walk-in`, label: t.coop.nav.walkIn, icon: <IconUserPlus /> },
+    { href: `${base}/members`, label: t.coop.nav.members, icon: <IconUsers /> },
+    { href: `${base}/exports`, label: t.coop.nav.exports, icon: <IconDownload /> },
+    { href: `${base}/billing`, label: t.coop.nav.billing, icon: <IconTag /> },
+    { href: `${base}/settings`, label: t.coop.nav.settings, icon: <IconSettings /> },
+  ];
 
   const isActive = (href: string) => {
-    if (href === '/fr/coop') return pathname === '/fr/coop';
+    if (href === base) return pathname === base;
     return pathname.startsWith(href);
   };
 
