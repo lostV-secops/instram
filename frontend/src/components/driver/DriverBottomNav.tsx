@@ -12,6 +12,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useTranslations, useLang } from '@/components/TranslationsProvider';
 
 const IconList = ({ active }: { active: boolean }) => (
   <svg
@@ -68,9 +69,11 @@ interface DriverBottomNavProps {
 
 export function DriverBottomNav({ tripId }: DriverBottomNavProps) {
   const pathname = usePathname();
+  const lang = useLang();
+  const t = useTranslations();
 
   const isScanActive = pathname.includes('/scan');
-  const isProfileActive = pathname.startsWith('/fr/driver/profile');
+  const isProfileActive = pathname.includes('/driver/profile');
   const isTripsActive = !isScanActive && !isProfileActive;
 
   interface Tab {
@@ -82,24 +85,24 @@ export function DriverBottomNav({ tripId }: DriverBottomNavProps) {
 
   const tabs: Tab[] = [
     {
-      href: '/fr/driver',
-      label: 'Trajets',
+      href: `/${lang}/driver`,
+      label: t.driver.nav.trips,
       isActive: isTripsActive,
       icon: <IconList active={isTripsActive} />,
     },
     ...(tripId
       ? [
           {
-            href: `/fr/driver/trips/${tripId}/scan`,
-            label: 'Scanner',
+            href: `/${lang}/driver/trips/${tripId}/scan`,
+            label: t.driver.nav.scan,
             isActive: isScanActive,
             icon: <IconQR active={isScanActive} />,
           },
         ]
       : []),
     {
-      href: '/fr/driver/profile',
-      label: 'Profil',
+      href: `/${lang}/driver/profile`,
+      label: t.driver.nav.profile,
       isActive: isProfileActive,
       icon: <IconUser active={isProfileActive} />,
     },

@@ -10,6 +10,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useTranslations, useLang } from '@/components/TranslationsProvider';
 
 interface DriverHeaderProps {
   driverName: string;
@@ -32,6 +33,8 @@ const IconLogout = () => (
 
 export function DriverHeader({ driverName }: DriverHeaderProps) {
   const router = useRouter();
+  const lang = useLang();
+  const t = useTranslations();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleLogout = async () => {
@@ -42,7 +45,7 @@ export function DriverHeader({ driverName }: DriverHeaderProps) {
     } catch {
       // Ignorer les erreurs réseau — on redirige quand même
     }
-    router.replace('/fr/auth/login');
+    router.replace(`/${lang}/auth/login`);
   };
 
   return (
@@ -65,7 +68,7 @@ export function DriverHeader({ driverName }: DriverHeaderProps) {
         type="button"
         onClick={handleLogout}
         disabled={isLoggingOut}
-        aria-label="Déconnexion"
+        aria-label={t.driver.header.logout}
         className={[
           'flex items-center justify-center w-12 h-12 -mr-2',
           'rounded-lg text-white/80 hover:text-white hover:bg-white/10',
