@@ -41,3 +41,18 @@ export function isValidLang(lang: string): lang is Lang {
 
 export const SUPPORTED_LANGS: Lang[] = ['fr', 'mg'];
 export const DEFAULT_LANG: Lang = 'fr';
+
+/** Retourne le nom d'une ville dans la langue active. */
+export function cityName(
+  city: { nameFr?: string; nameMg?: string; name?: string } | null | undefined,
+  lang: string,
+): string {
+  if (!city) return '?';
+  if (lang === 'mg') return city.nameMg ?? city.nameFr ?? city.name ?? '?';
+  return city.nameFr ?? city.name ?? '?';
+}
+
+/** Retourne la locale BCP-47 pour toLocaleDateString selon la langue active. */
+export function dateLocale(lang: string): string {
+  return lang === 'mg' ? 'mg-MG' : 'fr-FR';
+}

@@ -14,7 +14,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useCoop } from './CoopContext';
-import { getTranslations } from '@/lib/i18n';
+import { getTranslations, cityName, dateLocale } from '@/lib/i18n';
 import { StatsCard } from '@/components/coop/StatsCard';
 import { BookingRow } from '@/components/coop/BookingRow';
 import { TripRow } from '@/components/coop/TripRow';
@@ -147,7 +147,7 @@ export default function CoopDashboardPage() {
         <div>
           <h1 className="text-xl font-bold text-brand-dark">{t.coop.dashboard.title}</h1>
           <p className="text-sm text-gray-500">
-            {t.coop.dashboard.subtitle} {new Date().toLocaleDateString('fr-MG', { day: '2-digit', month: 'long', year: 'numeric' })}
+            {t.coop.dashboard.subtitle} {new Date().toLocaleDateString(dateLocale(lang), { day: '2-digit', month: 'long', year: 'numeric' })}
           </p>
         </div>
       </div>
@@ -168,7 +168,7 @@ export default function CoopDashboardPage() {
           <StatsCard
             label={t.coop.dashboard.revenueToday}
             value={formatMGA(dashboard.revenueNetMga)}
-            sub={`Brute : ${formatMGA(dashboard.revenueGrossMga)}`}
+            sub={`${t.coop.dashboard.revenueGross} : ${formatMGA(dashboard.revenueGrossMga)}`}
             icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>}
           />
           <StatsCard
@@ -257,7 +257,7 @@ export default function CoopDashboardPage() {
                     <TripRow
                       key={tr.id}
                       tripId={tr.id}
-                      routeName={tr.route ? `${tr.route.originCity?.nameFr ?? '?'} → ${tr.route.destinationCity?.nameFr ?? '?'}` : tr.routeId}
+                      routeName={tr.route ? `${cityName(tr.route.originCity, lang)} → ${cityName(tr.route.destinationCity, lang)}` : tr.routeId}
                       departureAt={tr.departureAt}
                       status={tr.status}
                     />

@@ -12,7 +12,7 @@
 
 import { useState, useEffect } from 'react';
 import { useCoop } from '../CoopContext';
-import { getTranslations } from '@/lib/i18n';
+import { getTranslations, dateLocale } from '@/lib/i18n';
 import { Badge } from '@/components/ui/Badge';
 
 interface PricingPlan {
@@ -41,8 +41,8 @@ function statusVariant(status: string) {
   }
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('fr-MG', { day: '2-digit', month: 'long', year: 'numeric' });
+function formatDate(iso: string, lang: string) {
+  return new Date(iso).toLocaleDateString(dateLocale(lang), { day: '2-digit', month: 'long', year: 'numeric' });
 }
 
 function formatMga(amount: number) {
@@ -139,8 +139,8 @@ export default function BillingPage() {
               </p>
             )}
             <p className="text-sm text-gray-500">
-              {t.coop.billing.effectiveFrom} {formatDate(plan.effectiveFrom)}
-              {plan.effectiveUntil && ` ${t.coop.billing.effectiveUntil} ${formatDate(plan.effectiveUntil)}`}
+              {t.coop.billing.effectiveFrom} {formatDate(plan.effectiveFrom, lang)}
+              {plan.effectiveUntil && ` ${t.coop.billing.effectiveUntil} ${formatDate(plan.effectiveUntil, lang)}`}
             </p>
             <p className="text-xs text-gray-400 mt-1">{t.coop.billing.contactNote}</p>
           </div>
@@ -169,7 +169,7 @@ export default function BillingPage() {
                 {subs.map((s) => (
                   <tr key={s.id} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="px-4 py-2.5 text-gray-700">
-                      {formatDate(s.periodStart)} — {formatDate(s.periodEnd)}
+                      {formatDate(s.periodStart, lang)} — {formatDate(s.periodEnd, lang)}
                     </td>
                     <td className="px-4 py-2.5 font-medium text-gray-900">{formatMga(s.amountMga)}</td>
                     <td className="px-4 py-2.5">
@@ -177,7 +177,7 @@ export default function BillingPage() {
                         {STATUS_LABELS[s.status] ?? s.status}
                       </Badge>
                     </td>
-                    <td className="px-4 py-2.5 text-gray-500">{s.paidAt ? formatDate(s.paidAt) : '—'}</td>
+                    <td className="px-4 py-2.5 text-gray-500">{s.paidAt ? formatDate(s.paidAt, lang) : '—'}</td>
                   </tr>
                 ))}
               </tbody>

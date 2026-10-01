@@ -282,7 +282,8 @@
       "noTrips": "Aucun trajet aujourd'hui",
       "online": "En ligne",
       "walkIn": "Guichet",
-      "liveUpdates": "Mises à jour en temps réel"
+      "liveUpdates": "Mises à jour en temps réel",
+      "revenueGross": "Brute"
     },
     "trips": {
       "title": "Trajets",

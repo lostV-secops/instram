@@ -6,13 +6,14 @@
 
 import { useState, useEffect } from 'react';
 import { useCoop } from '../CoopContext';
-import { getTranslations } from '@/lib/i18n';
+import { getTranslations, cityName, dateLocale } from '@/lib/i18n';
 import { Button } from '@/components/ui/Button';
 import { ExportCard } from '@/components/coop/ExportCard';
 import type { ExportJob, TripInstance, TripInstanceList } from '@/lib/types';
 
 function ManifestModal({
   trips,
+  lang,
   onClose,
   onSubmit,
   submitting,
@@ -20,6 +21,7 @@ function ManifestModal({
   t,
 }: {
   trips: TripInstance[];
+  lang: string;
   onClose: () => void;
   onSubmit: (tripId: string, format: string) => Promise<void>;
   submitting: boolean;
@@ -30,7 +32,7 @@ function ManifestModal({
   const [format, setFormat] = useState('PDF');
 
   function formatDt(iso: string) {
-    try { return new Date(iso).toLocaleString('fr-MG', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); }
+    try { return new Date(iso).toLocaleString(dateLocale(lang), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); }
     catch { return iso; }
   }
 
@@ -53,7 +55,7 @@ function ManifestModal({
             <option value="">{t.coop.exports.manifest.selectTrip}...</option>
             {trips.map((trip) => (
               <option key={trip.id} value={trip.id}>
-                {trip.route ? `${trip.route.originCity?.nameFr ?? '?'} → ${trip.route.destinationCity?.nameFr ?? '?'}` : trip.routeId} — {formatDt(trip.departureAt)}
+                {trip.route ? `${cityName(trip.route.originCity, lang)} → ${cityName(trip.route.destinationCity, lang)}` : trip.routeId} — {formatDt(trip.departureAt)}
               </option>
             ))}
           </select>
@@ -297,6 +299,7 @@ export default function ExportsPage() {
       {showManifest && (
         <ManifestModal
           trips={trips}
+          lang={lang}
           onClose={() => setShowManifest(false)}
           onSubmit={submitManifest}
           submitting={modalSubmitting}

@@ -451,7 +451,7 @@ export interface TripInstance {
   arrivalEstimatedAt: string | null;
   status: TripStatus;
   openedForBookingAt: string | null;
-  route?: { originCity?: { nameFr: string }; destinationCity?: { nameFr: string } } | null;
+  route?: { originCity?: { nameFr: string; nameMg?: string }; destinationCity?: { nameFr: string; nameMg?: string } } | null;
 }
 
 export interface TripInstanceList {

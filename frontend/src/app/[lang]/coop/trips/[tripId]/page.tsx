@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useCoop } from '../../CoopContext';
-import { getTranslations } from '@/lib/i18n';
+import { getTranslations, cityName, dateLocale } from '@/lib/i18n';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { BookingRow } from '@/components/coop/BookingRow';
@@ -25,9 +25,9 @@ function statusVariant(status: TripStatus) {
   }
 }
 
-function formatDateTime(iso: string): string {
+function formatDateTime(iso: string, lang: string): string {
   try {
-    return new Date(iso).toLocaleString('fr-MG', {
+    return new Date(iso).toLocaleString(dateLocale(lang), {
       weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     });
@@ -136,7 +136,7 @@ export default function TripDetailPage() {
 
       <div className="flex items-start justify-between flex-wrap gap-3">
         <h1 className="text-xl font-bold text-brand-dark">
-          {(route?.originCity as unknown as Record<string,string>)?.nameFr ?? route?.originCity?.name ?? '—'} → {(route?.destinationCity as unknown as Record<string,string>)?.nameFr ?? route?.destinationCity?.name ?? '—'}
+          {cityName(route?.originCity as unknown as { nameFr?: string; nameMg?: string; name?: string }, lang)} → {cityName(route?.destinationCity as unknown as { nameFr?: string; nameMg?: string; name?: string }, lang)}
         </h1>
         <Link href={`/${lang}/coop/trips/${tripId}/edit`}>
           <Button variant="secondary" size="sm">{t.coop.trips.detail.editTrip}</Button>
@@ -147,12 +147,12 @@ export default function TripDetailPage() {
         <dl className="grid grid-cols-2 gap-3 text-sm">
           <div>
             <dt className="text-gray-500">{t.coop.trips.departure}</dt>
-            <dd className="font-medium text-gray-900">{formatDateTime(departureAt)}</dd>
+            <dd className="font-medium text-gray-900">{formatDateTime(departureAt, lang)}</dd>
           </div>
           {arrivalEstimatedAt && (
             <div>
               <dt className="text-gray-500">{t.tripDetail.arrival}</dt>
-              <dd className="text-gray-700">{formatDateTime(arrivalEstimatedAt)}</dd>
+              <dd className="text-gray-700">{formatDateTime(arrivalEstimatedAt, lang)}</dd>
             </div>
           )}
           {vehicle && (

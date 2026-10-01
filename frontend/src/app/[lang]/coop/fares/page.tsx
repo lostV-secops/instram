@@ -7,12 +7,12 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useCoop } from '../CoopContext';
-import { getTranslations } from '@/lib/i18n';
+import { getTranslations, cityName, dateLocale } from '@/lib/i18n';
 import type { TripInstance, TripInstanceList } from '@/lib/types';
 
-function formatDateTime(iso: string): string {
+function formatDateTime(iso: string, lang: string): string {
   try {
-    return new Date(iso).toLocaleString('fr-MG', {
+    return new Date(iso).toLocaleString(dateLocale(lang), {
       day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
     });
   } catch { return iso; }
@@ -90,9 +90,9 @@ export default function FaresPage() {
                 {trips.map((trip) => (
                   <tr key={trip.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                     <td className="py-3 px-4 text-sm font-medium text-gray-900">
-                      {trip.route ? `${trip.route.originCity?.nameFr ?? '?'} → ${trip.route.destinationCity?.nameFr ?? '?'}` : trip.routeId}
+                      {trip.route ? `${cityName(trip.route.originCity, lang)} → ${cityName(trip.route.destinationCity, lang)}` : trip.routeId}
                     </td>
-                    <td className="py-3 px-4 text-sm text-gray-600 tabular-nums">{formatDateTime(trip.departureAt)}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600 tabular-nums">{formatDateTime(trip.departureAt, lang)}</td>
                     <td className="py-3 px-4">
                       <Link
                         href={`/${lang}/coop/fares/${trip.id}/edit`}

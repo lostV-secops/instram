@@ -11,7 +11,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useCoop } from '../../CoopContext';
-import { getTranslations } from '@/lib/i18n';
+import { getTranslations, dateLocale } from '@/lib/i18n';
 import { Badge, bookingStatusVariant } from '@/components/ui/Badge';
 import type { BookingDetail, BookingStatus } from '@/lib/types';
 
@@ -19,9 +19,9 @@ function formatMGA(amount: number): string {
   return `${amount.toLocaleString('fr-MG')} Ar`;
 }
 
-function formatDateTime(iso: string): string {
+function formatDateTime(iso: string, lang: string): string {
   try {
-    return new Date(iso).toLocaleString('fr-MG', {
+    return new Date(iso).toLocaleString(dateLocale(lang), {
       day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     });
@@ -100,7 +100,7 @@ export default function BookingDetailPage() {
           <h1 className="text-xl font-bold text-brand-dark font-mono">{booking.reference}</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {isWalkIn ? t.coop.bookings.channels.WALK_IN : t.coop.bookings.channels.ONLINE} —{' '}
-            {formatDateTime(booking.createdAt)}
+            {formatDateTime(booking.createdAt, lang)}
           </p>
         </div>
       </div>
@@ -119,7 +119,7 @@ export default function BookingDetailPage() {
             </div>
             <div>
               <dt className="text-gray-500">{t.coop.trips.departure}</dt>
-              <dd className="font-medium">{formatDateTime(booking.trip.departureAt)}</dd>
+              <dd className="font-medium">{formatDateTime(booking.trip.departureAt, lang)}</dd>
             </div>
           </dl>
         </section>
