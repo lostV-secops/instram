@@ -107,7 +107,9 @@ export function RatingModerationCard({
         <div className="text-right shrink-0">
           <time className="text-xs text-gray-400">{formattedDate}</time>
           <div className="mt-0.5">
-            <Badge variant="warning">En attente</Badge>
+            {rating.status === 'PENDING_REVIEW' && <Badge variant="warning">En attente</Badge>}
+            {rating.status === 'PUBLISHED' && <Badge variant="success">Publié</Badge>}
+            {rating.status === 'REJECTED' && <Badge variant="error">Rejeté</Badge>}
           </div>
         </div>
       </div>

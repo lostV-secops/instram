@@ -220,7 +220,7 @@ export default function AdminSettingsPage() {
                 </p>
               )}
 
-              <Button variant="action" type="submit" isLoading={feeState.loading}>
+              <Button variant="primary" type="submit" isLoading={feeState.loading}>
                 Enregistrer la politique
               </Button>
             </form>
@@ -269,7 +269,7 @@ export default function AdminSettingsPage() {
                 </p>
               )}
 
-              <Button variant="action" type="submit" isLoading={smsState.loading}>
+              <Button variant="primary" type="submit" isLoading={smsState.loading}>
                 Enregistrer
               </Button>
             </form>

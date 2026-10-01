@@ -215,7 +215,7 @@ export default function AdminNotificationsPage() {
           {saveSuccess && <p className="text-sm text-green-600">Sauvegardé avec succès.</p>}
 
           <div className="flex gap-2">
-            <Button onClick={() => void save()} disabled={saving} className="bg-[#9CC43D] hover:bg-[#88b033] text-white text-sm px-4 py-2">
+            <Button variant="primary" onClick={() => void save()} isLoading={saving} disabled={saving}>
               {saving ? 'Enregistrement…' : 'Enregistrer'}
             </Button>
             <Button onClick={cancel} variant="ghost" className="text-sm px-4 py-2">

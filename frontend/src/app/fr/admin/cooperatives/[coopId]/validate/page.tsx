@@ -111,7 +111,7 @@ export default function ValidateCoopPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             type: 'COMMISSION',
-            commissionRate: rate / 100,
+            commissionRate: rate,
             effectiveFrom: new Date().toISOString(),
           }),
         },
