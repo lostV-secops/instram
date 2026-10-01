@@ -214,7 +214,9 @@
     "resetPasswordButton": "Réinitialiser",
     "resettingPassword": "Réinitialisation…",
     "resetPasswordSuccess": "Mot de passe réinitialisé. Vous pouvez vous connecter.",
-    "accountNotVerified": "Ce compte n'a pas encore été vérifié. Vérifiez votre téléphone ou e-mail."
+    "accountNotVerified": "Ce compte n'a pas encore été vérifié. Vérifiez votre téléphone ou e-mail.",
+    "passwordMinLength": "{count}/10 caractères minimum",
+    "passwordValid": "Mot de passe valide"
   },
   "profile": {
     "title": "Mon profil",

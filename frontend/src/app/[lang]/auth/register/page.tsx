@@ -195,12 +195,12 @@ export default function RegisterPage() {
           {/* Indicateur de longueur */}
           {password.length > 0 && password.length < 10 && !errors.password && (
             <p className="mt-1 text-xs text-amber-600">
-              {password.length}/10 caractères minimum
+              {t.auth.passwordMinLength.replace('{count}', String(password.length))}
             </p>
           )}
           {password.length >= 10 && (
             <p className="mt-1 text-xs text-green-600 flex items-center gap-1">
-              <span>✓</span> Mot de passe valide
+              <span>✓</span> {t.auth.passwordValid}
             </p>
           )}
         </div>
