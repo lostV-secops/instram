@@ -649,7 +649,7 @@ model SeatHold {
   heldByUserId      String?        @db.Uuid // Voyageur si ONLINE
   heldByStaffId     String?        @db.Uuid // Agent coop si walk-in
   channel           BookingChannel
-  bookingId         String?        @db.Uuid @unique // Rattaché à un booking pendant paiement
+  bookingId         String?        @db.Uuid // Rattaché à un booking pendant paiement (plusieurs holds par booking)
   expiresAt         DateTime
   releasedAt        DateTime?
   createdAt         DateTime       @default(now())
