@@ -385,10 +385,10 @@ export interface BoardingRequest {
 }
 
 export interface BoardingEvent {
-  id: string;
   bookingId: string;
-  tripInstanceId: string;
-  method: 'SCAN' | 'MANUAL_REF';
+  reference: string;
+  passenger: { firstName: string; lastName: string };
+  seatCode: string;
   boardedAt: string;
 }
 

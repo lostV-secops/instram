@@ -13,7 +13,7 @@
  * Si WS indisponible : le bouton "Actualiser" reste fonctionnel.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { PassengerRow } from '@/components/driver/PassengerRow';
@@ -83,6 +83,8 @@ export default function ManifestPage() {
   const [filter, setFilter] = useState<FilterMode>('ALL');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [wsTicket, setWsTicket] = useState<string | null>(null);
+  const [markingAbsentIds, setMarkingAbsentIds] = useState<Set<string>>(new Set());
+  const [absentErrors, setAbsentErrors] = useState<Record<string, string>>({});
 
   // Obtenir le ticket WebSocket depuis l'API (une seule fois)
   useEffect(() => {
@@ -146,6 +148,37 @@ export default function ManifestPage() {
   useEffect(() => {
     loadManifest();
   }, [loadManifest]);
+
+  const markAbsent = useCallback(async (bookingId: string) => {
+    setMarkingAbsentIds((prev) => new Set(prev).add(bookingId));
+    setAbsentErrors((prev) => { const n = { ...prev }; delete n[bookingId]; return n; });
+    try {
+      const res = await fetch(`/api/proxy/v1/driver/trips/${tripId}/no-show`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId }),
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        loadManifest(true);
+      } else {
+        let msg = 'Impossible de marquer absent.';
+        try {
+          const body = await res.json() as { code?: string; message?: string };
+          if (body.code === 'NO_SHOW_BEFORE_DEPARTURE') {
+            msg = 'Signalez le départ du véhicule avant de marquer des absents.';
+          } else if (body.message) {
+            msg = body.message;
+          }
+        } catch { /* ignorer */ }
+        setAbsentErrors((prev) => ({ ...prev, [bookingId]: msg }));
+      }
+    } catch {
+      setAbsentErrors((prev) => ({ ...prev, [bookingId]: 'Erreur réseau. Réessayez.' }));
+    } finally {
+      setMarkingAbsentIds((prev) => { const n = new Set(prev); n.delete(bookingId); return n; });
+    }
+  }, [tripId, loadManifest]);
 
   // Recharger le manifeste quand un événement WS d'embarquement arrive
   useEffect(() => {
@@ -339,10 +372,18 @@ export default function ManifestPage() {
           aria-label={`Liste des passagers — filtre : ${filter}`}
         >
           {filteredPassengers.map((passenger) => (
-            <PassengerRow
-              key={passenger.bookingId}
-              passenger={passenger}
-            />
+            <Fragment key={passenger.bookingId}>
+              <PassengerRow
+                passenger={passenger}
+                onMarkAbsent={() => markAbsent(passenger.bookingId)}
+                markingAbsent={markingAbsentIds.has(passenger.bookingId)}
+              />
+              {absentErrors[passenger.bookingId] && (
+                <li className="px-1 pb-2 text-xs text-red-600" role="alert">
+                  {absentErrors[passenger.bookingId]}
+                </li>
+              )}
+            </Fragment>
           ))}
         </ul>
       )}

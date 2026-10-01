@@ -18,6 +18,8 @@ import type { ManifestPassenger, BoardingStatus } from '@/lib/types';
 
 interface PassengerRowProps {
   passenger: ManifestPassenger;
+  onMarkAbsent?: () => void;
+  markingAbsent?: boolean;
 }
 
 const boardingStatusConfig: Record<
@@ -55,7 +57,7 @@ const IconSeat = () => (
   </svg>
 );
 
-export function PassengerRow({ passenger }: PassengerRowProps) {
+export function PassengerRow({ passenger, onMarkAbsent, markingAbsent }: PassengerRowProps) {
   const { seatCode, boardingStatus } = passenger;
   const firstName = passenger.firstName ?? passenger.passenger?.firstName ?? '';
   const lastName = passenger.lastName ?? passenger.passenger?.lastName ?? '';
@@ -93,17 +95,36 @@ export function PassengerRow({ passenger }: PassengerRowProps) {
         </div>
       </div>
 
-      {/* Badge statut embarquement */}
-      <span
-        className={[
-          'flex-shrink-0 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
-          config.badgeClass,
-        ].join(' ')}
-        role="status"
-        aria-label={`Statut : ${config.label}`}
-      >
-        {config.label}
-      </span>
+      {/* Badge statut OU bouton absent */}
+      {boardingStatus === 'NOT_BOARDED' && onMarkAbsent ? (
+        <button
+          type="button"
+          onClick={onMarkAbsent}
+          disabled={markingAbsent}
+          aria-label={`Marquer ${fullName} absent`}
+          className={[
+            'flex-shrink-0 text-xs font-medium px-2.5 py-1 rounded-full border',
+            'text-red-700 border-red-200 bg-red-50',
+            'hover:bg-red-100 active:bg-red-200',
+            'focus:outline-none focus:ring-2 focus:ring-red-400',
+            'transition-colors duration-150 min-h-[32px]',
+            markingAbsent ? 'opacity-50 cursor-not-allowed' : '',
+          ].filter(Boolean).join(' ')}
+        >
+          {markingAbsent ? '…' : 'Absent'}
+        </button>
+      ) : (
+        <span
+          className={[
+            'flex-shrink-0 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
+            config.badgeClass,
+          ].join(' ')}
+          role="status"
+          aria-label={`Statut : ${config.label}`}
+        >
+          {config.label}
+        </span>
+      )}
     </li>
   );
 }

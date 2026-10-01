@@ -109,6 +109,8 @@ export default function ScanPage() {
           setScanState({
             status: 'success',
             event,
+            passengerName: `${event.passenger.firstName} ${event.passenger.lastName}`.trim(),
+            seatCode: event.seatCode,
           });
           return;
         }
@@ -217,6 +219,9 @@ export default function ScanPage() {
               </div>
               <div className="text-center">
                 <p className="text-lg font-bold text-gray-900">Embarquement validé</p>
+                {scanState.passengerName && (
+                  <p className="text-base font-semibold text-gray-800 mt-0.5">{scanState.passengerName}</p>
+                )}
                 {scanState.seatCode && (
                   <p className="text-sm text-gray-600 mt-0.5">
                     Siège <span className="font-semibold font-mono">{scanState.seatCode}</span>
