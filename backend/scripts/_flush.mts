@@ -1,0 +1,10 @@
+﻿import Redis from "ioredis";
+const redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379");
+const origin = "770b9808-5087-431b-8342-243848dcb4fe";
+const dest   = "d90e8189-f95c-4ea7-9238-396c127f870c";
+const key = `search:trips:${origin}:${dest}:2026-10-07:fr`;
+const val = await redis.get(key);
+console.log("Cache actuel:", val ? `${val.slice(0,80)}...` : "VIDE (pas de cache)");
+const deleted = await redis.del(key);
+console.log("Clé supprimée:", deleted, key);
+await redis.quit();
