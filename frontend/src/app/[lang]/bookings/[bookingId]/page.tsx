@@ -247,6 +247,8 @@ export default async function BookingDetailPage({ params }: PageProps) {
                 payload={booking.ticket.qrPayload}
                 size={200}
                 alt={`QR code billet ${booking.reference}`}
+                downloadFilename={`qr-${booking.reference}`}
+                downloadLabel={t.bookingDetail.downloadPng}
               />
             </div>
           )}
@@ -257,6 +259,15 @@ export default async function BookingDetailPage({ params }: PageProps) {
           <p className="text-xs text-gray-500 mt-1">
             {t.bookingDetail.showQR}
           </p>
+
+          {/* Télécharger le billet PDF */}
+          <a
+            href={`/api/proxy/v1/bookings/${bookingId}/ticket.pdf`}
+            download={`billet-${booking.reference}.pdf`}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:opacity-90 transition-opacity"
+          >
+            ↓ {t.bookingDetail.downloadPdf}
+          </a>
 
           {/* Renvoi SMS */}
           <ResendSMSButton

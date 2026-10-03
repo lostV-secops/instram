@@ -141,7 +141,9 @@
       "NO_SHOW": "Absent"
     },
     "ticket": "Mon billet",
-    "showQR": "Afficher le QR code",
+    "showQR": "Présentez ce code à l'embarquement",
+    "downloadPng": "Télécharger le QR code (PNG)",
+    "downloadPdf": "Télécharger le billet (PDF)",
     "resendSMS": "Renvoyer par SMS",
     "resendSMSSuccess": "Billet renvoyé par SMS",
     "boardingStatus": {

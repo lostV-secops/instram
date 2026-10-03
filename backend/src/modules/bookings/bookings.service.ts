@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import PDFDocument from 'pdfkit';
+import QRCode from 'qrcode';
 import type { PrismaClient } from '@prisma/client';
 import {
   BookingChannel,
@@ -629,6 +631,133 @@ export class BookingsService {
         isTransactional: true,
       });
     }
+  }
+
+  // ------------------------------------------------------------------
+  // GET /bookings/:bookingId/ticket.pdf — billet PDF (VH-09)
+  // Génère un PDF A4 avec QR code intégré.
+  // Accessible uniquement si réservation CONFIRMED.
+  // ------------------------------------------------------------------
+
+  async generateTicketPdf(bookingId: string, userId: string): Promise<Buffer> {
+    const booking = await this.db.booking.findFirst({
+      where: { id: bookingId, buyerUserId: userId },
+      select: {
+        reference: true,
+        status: true,
+        qrPayload: true,
+        confirmedAt: true,
+        createdAt: true,
+        passengers: { select: { firstName: true, lastName: true, seatCode: true } },
+        tripInstance: {
+          select: {
+            departureAt: true,
+            cooperative: { select: { displayName: true } },
+            route: {
+              select: {
+                origin: { select: { nameFr: true } },
+                destination: { select: { nameFr: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!booking) throw new NotFoundError('Réservation introuvable');
+    if (booking.status !== BookingStatus.CONFIRMED) {
+      const err = new Error('Billet disponible uniquement pour les réservations confirmées') as NodeJS.ErrnoException;
+      err.code = 'FORBIDDEN';
+      throw err;
+    }
+
+    const qrBuffer = await QRCode.toBuffer(booking.qrPayload ?? booking.reference, {
+      width: 200,
+      margin: 2,
+      color: { dark: '#162E49', light: '#ffffff' },
+    });
+
+    const depDate = booking.tripInstance.departureAt.toLocaleString('fr-FR', {
+      weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', timeZone: 'Indian/Antananarivo',
+    });
+    const origin = booking.tripInstance.route.origin.nameFr;
+    const dest = booking.tripInstance.route.destination.nameFr;
+    const coop = booking.tripInstance.cooperative.displayName;
+
+    const chunks: Buffer[] = [];
+
+    await new Promise<void>((resolve, reject) => {
+      const doc = new PDFDocument({ size: 'A4', margin: 50 });
+      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+      doc.on('end', resolve);
+      doc.on('error', reject);
+
+      // ── En-tête bleu ──────────────────────────────────────────────
+      doc.rect(0, 0, doc.page.width, 68).fill('#205E98');
+      doc.fillColor('#ffffff').fontSize(24).font('Helvetica-Bold')
+         .text('InsTRAM', 50, 16, { lineBreak: false });
+      doc.fillColor('#9CC43D').fontSize(10).font('Helvetica')
+         .text('  ●  Billet de transport', 50, 46, { lineBreak: false });
+
+      doc.y = 88;
+
+      // ── Coopérative ───────────────────────────────────────────────
+      doc.fillColor('#4596D7').fontSize(11).font('Helvetica')
+         .text(coop, { align: 'center' });
+
+      // ── Trajet ───────────────────────────────────────────────────
+      doc.moveDown(0.4);
+      doc.fillColor('#162E49').fontSize(22).font('Helvetica-Bold')
+         .text(`${origin}  →  ${dest}`, { align: 'center' });
+
+      // ── Date de départ ───────────────────────────────────────────
+      doc.moveDown(0.4);
+      doc.fillColor('#374151').fontSize(12).font('Helvetica')
+         .text(`Départ : ${depDate}`, { align: 'center' });
+
+      // ── Séparateur ───────────────────────────────────────────────
+      doc.moveDown(1.2);
+      doc.strokeColor('#E5E7EB').moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+      doc.moveDown(1.2);
+
+      // ── Passagers ────────────────────────────────────────────────
+      doc.fillColor('#162E49').fontSize(11).font('Helvetica-Bold')
+         .text('Passagers', { align: 'left' });
+      doc.moveDown(0.5);
+      for (const p of booking.passengers) {
+        doc.fontSize(11).font('Helvetica').fillColor('#374151')
+           .text(`${p.firstName} ${p.lastName}`, { continued: true, width: 300 });
+        doc.fillColor('#205E98')
+           .text(`  Siège ${p.seatCode}`);
+      }
+
+      // ── QR code centré ───────────────────────────────────────────
+      doc.moveDown(1.5);
+      const qrSize = 160;
+      const qrX = (doc.page.width - qrSize) / 2;
+      const qrY = doc.y;
+      doc.image(qrBuffer, qrX, qrY, { width: qrSize });
+      doc.y = qrY + qrSize + 12;
+
+      // ── Référence ─────────────────────────────────────────────────
+      doc.fillColor('#162E49').fontSize(18).font('Helvetica-Bold')
+         .text(booking.reference, { align: 'center', characterSpacing: 4 });
+
+      // ── Pied de page ─────────────────────────────────────────────
+      doc.moveDown(2);
+      doc.strokeColor('#E5E7EB').moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+      doc.moveDown(0.8);
+      doc.fillColor('#9CA3AF').fontSize(8).font('Helvetica')
+         .text(
+           'Présentez ce QR code lors de votre embarquement. Ce billet est nominatif et non remboursable.',
+           { align: 'center' },
+         );
+
+      doc.end();
+    });
+
+    return Buffer.concat(chunks);
   }
 
   // ------------------------------------------------------------------

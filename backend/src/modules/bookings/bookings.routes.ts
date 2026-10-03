@@ -145,6 +145,33 @@ export default async function bookingsRoutes(fastify: FastifyInstance): Promise<
   );
 
   // ------------------------------------------------------------------
+  // GET /bookings/:bookingId/ticket.pdf — télécharger le billet PDF (VH-09)
+  // Auth obligatoire. Réservation CONFIRMED uniquement.
+  // ------------------------------------------------------------------
+  fastify.get<{ Params: { bookingId: string } }>(
+    '/bookings/:bookingId/ticket.pdf',
+    { onRequest: [fastify.authenticate] },
+    async (
+      req: FastifyRequest<{ Params: { bookingId: string } }>,
+      reply: FastifyReply,
+    ) => {
+      try {
+        const pdf = await bookingsService.generateTicketPdf(req.params.bookingId, getUserId(req));
+        reply.header('Content-Type', 'application/pdf');
+        reply.header('Content-Disposition', `attachment; filename="billet-${req.params.bookingId}.pdf"`);
+        reply.header('Cache-Control', 'no-store');
+        return reply.status(200).send(pdf);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'NOT_FOUND') return reply.status(404).send({ code: 'NOT_FOUND', message: (err as Error).message });
+        if (code === 'FORBIDDEN') return reply.status(403).send({ code: 'FORBIDDEN', message: (err as Error).message });
+        req.log.error(err, 'generateTicketPdf error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
   // GET /bookings/:bookingId/ticket — billet QR (contrat §/bookings/{id}/ticket)
   // ------------------------------------------------------------------
   fastify.get<{ Params: { bookingId: string } }>(

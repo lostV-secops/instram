@@ -80,16 +80,20 @@ async function proxyRequest(
   }
 
   // Transmettre la réponse du backend telle quelle (statut + corps)
-  const responseBody = await backendResponse.text();
+  // On utilise arrayBuffer() pour gérer à la fois le texte (JSON) et le binaire (PDF, CSV…).
+  const responseBuffer = await backendResponse.arrayBuffer();
   const contentType = backendResponse.headers.get('content-type') ?? 'application/json';
 
-  return new NextResponse(responseBody, {
+  const responseHeaders: Record<string, string> = {
+    'Content-Type': contentType,
+    'Cache-Control': 'no-store',
+  };
+  const disposition = backendResponse.headers.get('content-disposition');
+  if (disposition) responseHeaders['Content-Disposition'] = disposition;
+
+  return new NextResponse(responseBuffer, {
     status: backendResponse.status,
-    headers: {
-      'Content-Type': contentType,
-      // Pas de cache sur les réponses proxy (données utilisateur)
-      'Cache-Control': 'no-store',
-    },
+    headers: responseHeaders,
   });
 }
 

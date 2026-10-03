@@ -141,7 +141,9 @@
       "NO_SHOW": "Tsy tonga"
     },
     "ticket": "Ny tikety",
-    "showQR": "Haneho ny QR code",
+    "showQR": "Asehoy ity kaody ity rehefa miakatra",
+    "downloadPng": "Hisintona ny QR code (PNG)",
+    "downloadPdf": "Hisintona ny tikety (PDF)",
     "resendSMS": "Alefaso indray amin'ny SMS",
     "resendSMSSuccess": "Alefa soa aman-tsara ny SMS",
     "boardingStatus": {
