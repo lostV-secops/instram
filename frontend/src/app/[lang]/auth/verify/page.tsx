@@ -27,6 +27,10 @@ export default function VerifyPage() {
   const [isResending, setIsResending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resendSuccess, setResendSuccess] = useState(false);
+  const [devCode, setDevCode] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try { return sessionStorage.getItem('_instram_dev_otp'); } catch { return null; }
+  });
 
   const codeId = useId();
 
@@ -54,6 +58,7 @@ export default function VerifyPage() {
         return;
       }
 
+      try { sessionStorage.removeItem('_instram_dev_otp'); } catch { /* ignore */ }
       router.push(`/${lang}`);
       router.refresh();
     } catch {
@@ -81,7 +86,14 @@ export default function VerifyPage() {
         return;
       }
 
-      if (res.ok) setResendSuccess(true);
+      if (res.ok) {
+        setResendSuccess(true);
+        const data = await res.json().catch(() => null);
+        if (data?._devCode) {
+          setDevCode(data._devCode);
+          try { sessionStorage.setItem('_instram_dev_otp', data._devCode); } catch { /* ignore */ }
+        }
+      }
     } catch {
       setError(t.common.errorNetwork);
     } finally {
@@ -98,6 +110,20 @@ export default function VerifyPage() {
         {t.auth.otpSentTo}{' '}
         <span className="font-medium text-gray-900">{target}</span>
       </p>
+
+      {/* Bannière DEV — visible uniquement hors production */}
+      {devCode && (
+        <div
+          role="status"
+          className="rounded-xl border-2 border-yellow-400 bg-yellow-50 px-4 py-3 text-sm text-yellow-900 mb-4"
+        >
+          <p className="font-bold mb-1">⚙️ Mode DEV — code OTP</p>
+          <p className="font-mono text-2xl font-bold tracking-widest text-center py-1">{devCode}</p>
+          <p className="text-xs text-yellow-700 mt-1">
+            Cette bannière n&apos;apparaît jamais en production.
+          </p>
+        </div>
+      )}
 
       <form
         onSubmit={handleSubmit}

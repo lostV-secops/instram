@@ -92,6 +92,9 @@ export default function RegisterPage() {
 
       const data = await response.json().catch(() => null);
       if (data?.requiresVerification && data?.target) {
+        if (data._devCode) {
+          try { sessionStorage.setItem('_instram_dev_otp', data._devCode); } catch { /* ignore */ }
+        }
         router.push(`/${lang}/auth/verify?target=${encodeURIComponent(data.target)}`);
       } else {
         router.push(`/${lang}`);

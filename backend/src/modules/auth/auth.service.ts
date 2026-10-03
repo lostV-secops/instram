@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { PrismaClient, User, Lang, OtpPurpose, InvitationStatus } from '@prisma/client';
 import { RegisterInput, LoginInput, UpdateMeInput } from './auth.schema';
 import { createSmsProvider } from '../../infra/sms/provider';
+import { createEmailProvider } from '../../infra/email/provider';
 
 // =====================================================================
 // Types de retour
@@ -47,6 +48,8 @@ export interface RegisterPendingResult {
   requiresVerification: true;
   userId: string;
   target: string;
+  /** Présent uniquement hors production — code OTP en clair pour faciliter les tests DEV */
+  _devCode?: string;
 }
 
 export interface SessionInfo {
@@ -168,9 +171,9 @@ export class AuthService {
       return created;
     });
 
-    // Cible = phone en priorité, sinon email
-    const target = input.phone ?? input.email!;
-    await this._generateAndSendOtp(
+    // Cible = email en priorité, sinon phone (l'email est plus fiable comme canal de vérification)
+    const target = input.email ?? input.phone!;
+    const { devCode } = await this._generateAndSendOtp(
       user.id,
       target,
       OtpPurpose.REGISTRATION_VERIFY,
@@ -178,7 +181,12 @@ export class AuthService {
       meta.deviceId,
     );
 
-    return { requiresVerification: true, userId: user.id, target };
+    return {
+      requiresVerification: true,
+      userId: user.id,
+      target,
+      ...(devCode ? { _devCode: devCode } : {}),
+    };
   }
 
   // ------------------------------------------------------------------
@@ -430,7 +438,7 @@ export class AuthService {
     purpose: OtpPurpose,
     deviceId?: string,
     lang?: Lang,
-  ): Promise<void> {
+  ): Promise<{ _devCode?: string }> {
     const effectiveLang = lang ?? Lang.FR;
     const dId = deviceId ?? 'unknown';
 
@@ -452,7 +460,8 @@ export class AuthService {
       userId = user?.id;
     }
 
-    await this._generateAndSendOtp(userId ?? null, target, purpose, effectiveLang, dId);
+    const { devCode } = await this._generateAndSendOtp(userId ?? null, target, purpose, effectiveLang, dId);
+    return devCode ? { _devCode: devCode } : {};
   }
 
   // ------------------------------------------------------------------
@@ -468,6 +477,7 @@ export class AuthService {
     if (!user || user.status !== 'ACTIVE') return;
 
     await this._generateAndSendOtp(user.id, target, OtpPurpose.PASSWORD_RESET, user.preferredLang, deviceId);
+    // Note : on ne retourne pas _devCode ici — le reset password est hors flux d'inscription
   }
 
   // ------------------------------------------------------------------
@@ -575,7 +585,7 @@ export class AuthService {
     purpose: OtpPurpose,
     lang: Lang,
     deviceId?: string,
-  ): Promise<void> {
+  ): Promise<{ devCode?: string }> {
     const dId = deviceId ?? 'unknown';
 
     // Vérifier rate limit envoi (max 5 par heure par target)
@@ -616,8 +626,7 @@ export class AuthService {
       data: { userId: userId ?? null, target, codeHash, purpose, expiresAt },
     });
 
-    // Templates SMS (max 160 chars)
-    const templates: Record<OtpPurpose, Record<Lang, string>> = {
+    const smsText: Record<OtpPurpose, Record<Lang, string>> = {
       [OtpPurpose.REGISTRATION_VERIFY]: {
         [Lang.FR]: `InsTRAM: Votre code de vérification est ${code}. Expire dans 10 min.`,
         [Lang.MG]: `InsTRAM: Ny kaody fanamafisanao: ${code}. Lany amin'ny 10 min.`,
@@ -628,10 +637,32 @@ export class AuthService {
       },
     };
 
+    const emailSubject: Record<OtpPurpose, Record<Lang, string>> = {
+      [OtpPurpose.REGISTRATION_VERIFY]: {
+        [Lang.FR]: 'InsTRAM — Vérification de votre compte',
+        [Lang.MG]: 'InsTRAM — Fanamafisana ny kaontinao',
+      },
+      [OtpPurpose.PASSWORD_RESET]: {
+        [Lang.FR]: 'InsTRAM — Réinitialisation du mot de passe',
+        [Lang.MG]: 'InsTRAM — Fanavaozana ny tenimiafina',
+      },
+    };
+
     const isPhone = target.startsWith('+');
+
     if (isPhone) {
       const sms = createSmsProvider();
-      await sms.send({ to: target, text: templates[purpose][lang], lang: lang as 'FR' | 'MG' });
+      await sms.send({ to: target, text: smsText[purpose][lang], lang: lang as 'FR' | 'MG' });
+    } else {
+      const text = smsText[purpose][lang];
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+<h2 style="color:#205E98;margin-bottom:4px">InsTRAM</h2>
+<p style="color:#374151">${lang === Lang.FR ? 'Votre code de vérification :' : 'Ny kaody fanamafisanao :'}</p>
+<p style="font-size:36px;font-weight:bold;color:#162E49;letter-spacing:10px;text-align:center;padding:20px;background:#F3F4F6;border-radius:8px;margin:16px 0">${code}</p>
+<p style="color:#6B7280;font-size:13px">${lang === Lang.FR ? 'Ce code expire dans 10 minutes.' : 'Lany amin\'ny 10 minitra ity kaody ity.'}</p>
+</body></html>`;
+      const email = createEmailProvider();
+      await email.send({ to: target, subject: emailSubject[purpose][lang], text, html });
     }
 
     await this.db.auditLog.create({
@@ -642,6 +673,10 @@ export class AuthService {
         entityId: null,
       },
     });
+
+    // En DEV : retourner le code en clair pour la bannière de test
+    const devCode = process.env.NODE_ENV !== 'production' ? code : undefined;
+    return { devCode };
   }
 
   private async _checkAndIncrementVerifyLimit(target: string, deviceId: string): Promise<void> {

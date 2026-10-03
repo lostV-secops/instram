@@ -130,12 +130,12 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     }
 
     try {
-      await authService.resendOtp(
+      const result = await authService.resendOtp(
         parse.data.target,
         parse.data.purpose === 'REGISTRATION_VERIFY' ? OtpPurpose.REGISTRATION_VERIFY : OtpPurpose.PASSWORD_RESET,
         req.headers['x-device-id'] as string | undefined,
       );
-      return reply.status(200).send({ message: 'Code renvoyé' });
+      return reply.status(200).send({ message: 'Code renvoyé', ...result });
     } catch (err) {
       const errCode = (err as NodeJS.ErrnoException).code;
       if (errCode === 'OTP_RATE_LIMITED') return reply.status(429).send({ code: errCode, message: (err as Error).message });
