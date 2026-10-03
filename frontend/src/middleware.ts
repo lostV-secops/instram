@@ -120,6 +120,31 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return handleAuthCheck(request, baseResponse, pathname, currentLocale);
   }
 
+  // Rafraîchissement opportuniste — pour toutes les pages publiques qui peuvent
+  // avoir besoin du token (ex: /trips/[tripId] pour le ticket WS).
+  // On rafraîchit silencieusement mais on ne redirige PAS vers login si ça échoue.
+  const hasAccess = request.cookies.has(COOKIE_ACCESS);
+  const rawRefresh = request.cookies.get(COOKIE_REFRESH)?.value;
+  if (!hasAccess && rawRefresh) {
+    const tokens = await tryRefreshToken(rawRefresh);
+    if (tokens) {
+      const reqHeaders = new Headers(request.headers);
+      const existingCookies = request.headers.get('cookie') ?? '';
+      const sep = existingCookies ? '; ' : '';
+      reqHeaders.set('cookie', `${existingCookies}${sep}${COOKIE_ACCESS}=${tokens.accessToken}`);
+      const response = NextResponse.next({ request: { headers: reqHeaders } });
+      response.cookies.set(COOKIE_ACCESS, tokens.accessToken, {
+        ...sessionCookieOptions,
+        maxAge: ACCESS_TOKEN_MAX_AGE,
+      });
+      response.cookies.set(COOKIE_REFRESH, tokens.refreshToken, {
+        ...sessionCookieOptions,
+        maxAge: REFRESH_TOKEN_MAX_AGE,
+      });
+      return response;
+    }
+  }
+
   return NextResponse.next();
 }
 

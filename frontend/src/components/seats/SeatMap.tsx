@@ -302,7 +302,7 @@ export function SeatMap({ tripId, initialSeats, wsToken }: SeatMapProps) {
         <div className="bg-gray-50 border border-gray-300 text-gray-600 rounded-lg px-4 py-3 mb-4 text-sm">
           {t.seats.seatViewOnly} —{' '}
           <a
-            href={`/${lang}/auth/login`}
+            href={`/${lang}/auth/login?redirect=/${lang}/trips/${tripId}`}
             className="text-brand underline font-medium"
           >
             {t.auth.loginButton}
