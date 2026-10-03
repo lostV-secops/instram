@@ -123,7 +123,15 @@ export class WsHub {
     const set = this.channels.get(channel);
     if (!set || set.size === 0) return 0;
 
-    const frame = JSON.stringify(event);
+    // Transformation vers le format attendu par le frontend :
+    // { event, channel, payload: { ...champs }, at }
+    const { type, at, payload: existingPayload, ...directFields } = event;
+    const frame = JSON.stringify({
+      event: type,
+      channel,
+      payload: { ...existingPayload, ...directFields },
+      at,
+    });
     let sent = 0;
 
     for (const client of [...set]) {

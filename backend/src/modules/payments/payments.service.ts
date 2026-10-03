@@ -12,6 +12,7 @@ import { enqueueSms } from '../../infra/queue/sms.queue';
 import type { NotificationsService } from '../notifications/notifications.service';
 import type { WebhookPayload } from '../bookings/bookings.schema';
 import { bookingChannel } from '../../infra/ws/channels';
+import { publishToChannel } from '../../infra/ws/pubsub';
 
 // =====================================================================
 // PaymentsService
@@ -681,13 +682,11 @@ export class PaymentsService {
 
     // Pub/Sub PAYMENT_CONFIRMED → canal privé voyageur (booking:{userId})
     if (booking.buyerUserId) {
-      await this.redis.publish(
-        bookingChannel(booking.buyerUserId),
-        JSON.stringify({
-          event: 'PAYMENT_CONFIRMED',
-          bookingId: booking.id,
-        }),
-      );
+      await publishToChannel(bookingChannel(booking.buyerUserId), {
+        type: 'PAYMENT_CONFIRMED',
+        bookingId: booking.id,
+        at: new Date().toISOString(),
+      });
     }
 
     // SMS BOOKING_CONFIRMED (transactionnel — immédiat, bypass silence nocturne VH-02)

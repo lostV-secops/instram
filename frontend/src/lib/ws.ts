@@ -79,7 +79,7 @@ export function useWebSocket(
         // Envoyer le message de souscription au canal
         ws.send(
           JSON.stringify({
-            type: 'subscribe',
+            action: 'subscribe',
             channel: channelRef.current,
           }),
         );
