@@ -13,6 +13,7 @@ import {
   TripListQuerySchema,
 } from './trips.schema';
 import prisma from '../../infra/db/prisma';
+import redis from '../../infra/cache/redis';
 
 // =====================================================================
 // Plugin Fastify — module trips
@@ -48,7 +49,7 @@ function getLang(req: FastifyRequest): 'fr' | 'mg' {
 // =====================================================================
 
 export async function tripsCoopRoutes(fastify: FastifyInstance): Promise<void> {
-  const tripsService = new TripsService(prisma);
+  const tripsService = new TripsService(prisma, redis);
   const coopService = new CooperativeService(prisma);
 
   /** Helper : charge le membership actif, lève ForbiddenError si absent. */
@@ -340,8 +341,8 @@ export async function tripsCoopRoutes(fastify: FastifyInstance): Promise<void> {
     async (req: FastifyRequest<{ Params: { tripInstanceId: string } }>, reply: FastifyReply) => {
       try {
         const cooperativeId = await getCoopId(getUserId(req), ['COOP_ADMIN', 'COOP_ASSISTANT']);
-        await tripsService.cancelTrip(cooperativeId, req.params.tripInstanceId);
-        return reply.status(204).send();
+        const result = await tripsService.cancelTrip(cooperativeId, req.params.tripInstanceId);
+        return reply.status(200).send(result);
       } catch (err) {
         return handleError(err, req, reply, 'cancelTrip');
       }

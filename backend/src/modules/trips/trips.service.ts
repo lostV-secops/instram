@@ -1,5 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
-import { TripStatus, SeatCategory, AuditAction } from '@prisma/client';
+import { TripStatus, SeatCategory, AuditAction, BookingStatus } from '@prisma/client';
+import type { Redis } from 'ioredis';
+import { enqueueSms } from '../../infra/queue/sms.queue';
 import type {
   CreateRouteInput,
   UpdateRouteInput,
@@ -55,7 +57,10 @@ export class ConflictError extends Error {
 // ------------------------------------------------------------------
 
 export class TripsService {
-  constructor(private readonly db: PrismaClient) {}
+  constructor(
+    private readonly db: PrismaClient,
+    private readonly redis?: Redis,
+  ) {}
 
   // ================================================================
   // ROUTES
@@ -1101,28 +1106,102 @@ export class TripsService {
   async cancelTrip(
     cooperativeId: string,
     tripInstanceId: string,
-  ): Promise<void> {
+  ): Promise<{ cancelledBookings: number }> {
     const trip = await this.db.tripInstance.findFirst({
       where: { id: tripInstanceId, cooperativeId },
     });
     if (!trip) throw new NotFoundError('Trajet introuvable');
 
-    if (trip.status === 'CANCELLED') return;
+    if (trip.status === 'CANCELLED') return { cancelledBookings: 0 };
 
-    const confirmedBookings = await this.db.booking.count({
-      where: { tripInstanceId, status: { in: ['CONFIRMED', 'PENDING_PAYMENT'] } },
+    // Charger toutes les réservations actives avec les infos passager pour notif
+    const activeBookings = await this.db.booking.findMany({
+      where: {
+        tripInstanceId,
+        status: { in: [BookingStatus.CONFIRMED, BookingStatus.PENDING_PAYMENT] },
+      },
+      include: {
+        buyer: { select: { phone: true, preferredLang: true } },
+        passengers: { take: 1, select: { phone: true } },
+        seats: { where: { isActive: true }, select: { seatDefinitionId: true } },
+      },
     });
 
-    if (confirmedBookings > 0) {
-      const err = new Error(`Impossible d'annuler : ${confirmedBookings} réservation(s) active(s)`) as NodeJS.ErrnoException;
-      err.code = 'CONFLICT';
-      throw err;
+    // Transaction : annuler réservations + désactiver sièges + marquer trajet
+    await this.db.$transaction(async (tx) => {
+      if (activeBookings.length > 0) {
+        const bookingIds = activeBookings.map((b) => b.id);
+
+        await tx.booking.updateMany({
+          where: { id: { in: bookingIds } },
+          data: {
+            status: BookingStatus.CANCELLED_AT_COUNTER,
+            cancelledAt: new Date(),
+            cancelledReason: 'Trajet annulé par la coopérative',
+          },
+        });
+
+        await tx.bookingSeat.updateMany({
+          where: { bookingId: { in: bookingIds }, isActive: true },
+          data: { isActive: false },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            action: AuditAction.BOOKING_CANCELLED_AT_COUNTER,
+            entityType: 'TripInstance',
+            entityId: tripInstanceId,
+            before: { status: trip.status },
+            after: {
+              status: 'CANCELLED',
+              cancelledBookings: activeBookings.length,
+            },
+          },
+        });
+      }
+
+      await tx.tripInstance.update({
+        where: { id: tripInstanceId },
+        data: { status: 'CANCELLED' },
+      });
+    });
+
+    // Pub/Sub SEAT_RELEASED pour les clients WebSocket (hors transaction)
+    if (this.redis) {
+      for (const booking of activeBookings) {
+        const seatIds = booking.seats.map((s) => s.seatDefinitionId);
+        if (seatIds.length > 0) {
+          await this.redis.publish(
+            `trip:${tripInstanceId}`,
+            JSON.stringify({
+              event: 'SEAT_RELEASED',
+              tripInstanceId,
+              seatDefinitionIds: seatIds,
+              bookingId: booking.id,
+            }),
+          );
+        }
+      }
     }
 
-    await this.db.tripInstance.update({
-      where: { id: tripInstanceId },
-      data: { status: 'CANCELLED' },
-    });
+    // Notifications SMS BOOKING_CANCELLED (async — ne bloque pas la réponse)
+    for (const booking of activeBookings) {
+      const phone = booking.buyer?.phone ?? booking.passengers[0]?.phone;
+      if (!phone) continue;
+      const lang = (booking.buyer?.preferredLang ?? 'FR') as 'FR' | 'MG';
+      enqueueSms({
+        phone,
+        lang,
+        templateCode: 'BOOKING_CANCELLED',
+        params: { reference: booking.reference },
+        bookingId: booking.id,
+        isTransactional: true,
+      }).catch((e: unknown) =>
+        console.error('[TripsService] cancelTrip SMS error', e),
+      );
+    }
+
+    return { cancelledBookings: activeBookings.length };
   }
 
   // ----------------------------------------------------------------
