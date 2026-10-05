@@ -165,6 +165,15 @@ export default function LoginPage() {
           autoComplete="current-password"
         />
 
+        <div className="text-right">
+          <Link
+            href={`/${lang}/auth/forgot-password`}
+            className="text-sm text-brand hover:underline"
+          >
+            {t.auth.forgotPassword}
+          </Link>
+        </div>
+
         {/* Bouton connexion — bleu brand (pas vert) */}
         <Button
           type="submit"
