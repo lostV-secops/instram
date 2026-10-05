@@ -12,6 +12,7 @@ import { useState, useEffect } from 'react';
 import { useCoop } from '../CoopContext';
 import { getTranslations } from '@/lib/i18n';
 import { Input } from '@/components/ui/Input';
+import { PhoneInput } from '@/components/ui/PhoneInput';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import type { Cooperative, CooperativeStatus, CoopPolicy } from '@/lib/types';
@@ -234,12 +235,10 @@ export default function SettingsPage() {
           disabled={isSubmitting}
         />
 
-        <Input
+        <PhoneInput
           label={t.coop.settings.contactPhone}
-          type="tel"
           value={contactPhone}
-          onChange={(e) => setContactPhone(e.target.value)}
-          placeholder="+261 XX XX XXX XXX"
+          onChange={setContactPhone}
           disabled={isSubmitting}
         />
 

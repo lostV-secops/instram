@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { useCoop } from '../../CoopContext';
 import { getTranslations } from '@/lib/i18n';
 import { Input } from '@/components/ui/Input';
+import { PhoneInput } from '@/components/ui/PhoneInput';
 import { Button } from '@/components/ui/Button';
 import type { CooperativeRole } from '@/lib/types';
 
@@ -114,13 +115,11 @@ export default function InviteMemberPage() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4 bg-white border border-gray-200 rounded-xl p-5" noValidate>
-        <Input
+        <PhoneInput
           label={t.coop.members.invite.phone}
-          type="tel"
           value={phone}
-          onChange={(e) => { setPhone(e.target.value); setErrors((p) => ({ ...p, phone: undefined })); }}
+          onChange={(value) => { setPhone(value); setErrors((p) => ({ ...p, phone: undefined })); }}
           error={errors.phone}
-          placeholder="+261 34 XX XX XXX"
           hint={t.coop.members.invite.smsNote}
           disabled={isSubmitting}
         />

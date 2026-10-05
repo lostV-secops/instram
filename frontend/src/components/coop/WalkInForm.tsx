@@ -16,6 +16,7 @@
 
 import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/Input';
+import { PhoneInput } from '@/components/ui/PhoneInput';
 import { Button } from '@/components/ui/Button';
 import type { TripInstance, Seat, SeatCategory } from '@/lib/types';
 
@@ -424,12 +425,10 @@ export function WalkInForm() {
                   disabled={isSubmitting}
                 />
               </div>
-              <Input
+              <PhoneInput
                 label="Téléphone (optionnel, pour SMS billet)"
-                type="tel"
                 value={passengers[i]?.phone ?? ''}
-                onChange={(e) => updatePassenger(i, 'phone', e.target.value)}
-                placeholder="+261 34 XX XX XXX"
+                onChange={(value) => updatePassenger(i, 'phone', value)}
                 disabled={isSubmitting}
               />
             </div>
@@ -467,12 +466,10 @@ export function WalkInForm() {
           </div>
 
           {(paymentMethod === 'MVOLA' || paymentMethod === 'ORANGE_MONEY') && (
-            <Input
+            <PhoneInput
               label="Téléphone de l'acheteur (pour SMS de confirmation)"
-              type="tel"
               value={buyerPhone}
-              onChange={(e) => setBuyerPhone(e.target.value)}
-              placeholder="+261 34 XX XX XXX"
+              onChange={setBuyerPhone}
               disabled={isSubmitting}
             />
           )}

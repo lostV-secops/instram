@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { PhoneInput } from '@/components/ui/PhoneInput';
 import { useTranslations } from '@/components/TranslationsProvider';
 import type { Me, Lang } from '@/lib/types';
 
@@ -113,12 +114,10 @@ export function ProfileEditor({ me, lang }: Props) {
             />
           </div>
 
-          <Input
+          <PhoneInput
             label={tp.mobileMoneyPhoneOptional}
-            type="tel"
             value={mobileMoneyPhone}
-            onChange={(e) => setMobileMoneyPhone(e.target.value)}
-            placeholder="+261 XX XX XXX XXX"
+            onChange={setMobileMoneyPhone}
             hint={tp.mobileMoneyHint}
             disabled={saving}
           />

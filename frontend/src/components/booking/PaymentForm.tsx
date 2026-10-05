@@ -26,6 +26,7 @@ import { useTranslations } from '@/components/TranslationsProvider';
 import { useWebSocket } from '@/lib/ws';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import PhoneInput from '@/components/ui/PhoneInput';
 import type {
   Booking,
   PaymentInitiation,
@@ -414,13 +415,12 @@ export function PaymentForm({
             />
           </div>
 
-          <Input
+          <PhoneInput
             label={t.booking.phone}
-            type="tel"
             value={passenger.phone}
-            onChange={(e) => {
+            onChange={(value) => {
               const next = [...passengers];
-              next[index] = { ...next[index], phone: e.target.value };
+              next[index] = { ...next[index], phone: value };
               setPassengers(next);
             }}
             autoComplete="tel"
@@ -479,17 +479,14 @@ export function PaymentForm({
         </fieldset>
 
         {/* Numéro payeur */}
-        <Input
+        <PhoneInput
           id={payerPhoneFieldId}
           label={t.booking.payerPhone}
-          type="tel"
           value={payerPhone}
-          placeholder={t.booking.payerPhonePlaceholder}
-          onChange={(e) => setPayerPhone(e.target.value)}
+          onChange={setPayerPhone}
           error={errors.payerPhone}
           required
           autoComplete="tel"
-          inputMode="tel"
         />
       </section>
 

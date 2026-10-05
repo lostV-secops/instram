@@ -13,6 +13,7 @@ import Link from 'next/link';
 import { useTranslations, useLang } from '@/components/TranslationsProvider';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import PhoneInput from '@/components/ui/PhoneInput';
 import type { Lang } from '@/lib/types';
 
 export default function RegisterPage() {
@@ -171,15 +172,12 @@ export default function RegisterPage() {
         />
 
         {/* ── Téléphone ── */}
-        <Input
+        <PhoneInput
           id={phoneId}
           label={t.auth.phone}
-          type="tel"
           value={phone}
-          onChange={(e) => setPhone(e.target.value)}
+          onChange={setPhone}
           autoComplete="tel"
-          inputMode="tel"
-          placeholder="+261 34 XX XX XXX"
         />
 
         {/* ── Mot de passe ── */}
