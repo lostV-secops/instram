@@ -25,6 +25,7 @@ import { AppError } from '@/lib/api';
 
 interface PageProps {
   params: { lang: string; tripId: string };
+  searchParams: { passengers?: string };
 }
 
 export async function generateMetadata({
@@ -59,8 +60,9 @@ function formatDateTime(isoDate: string, lang: string): string {
 
 const categoryOrder: SeatCategory[] = ['VIP', 'PREMIUM', 'CLASSIC', 'STANDARD'];
 
-export default async function TripDetailPage({ params }: PageProps) {
+export default async function TripDetailPage({ params, searchParams }: PageProps) {
   const { lang, tripId } = params;
+  const requestedPassengers = Math.min(6, Math.max(1, Number(searchParams.passengers ?? 1)));
 
   if (!isValidLang(lang)) return null;
 
@@ -244,6 +246,7 @@ export default async function TripDetailPage({ params }: PageProps) {
             tripId={tripId}
             initialSeats={seatMapData.seats}
             wsToken={wsToken}
+            maxSeats={requestedPassengers}
           />
         ) : (
           <div className="bg-red-50 border border-red-300 text-red-700 rounded-lg p-4 text-sm">

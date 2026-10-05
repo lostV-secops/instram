@@ -12,6 +12,7 @@ interface TripCardProps {
   trip: TripSearchResult;
   lang: Lang;
   t: Translations;
+  passengers: number;
 }
 
 function formatDuration(minutes: number, t: Translations): string {
@@ -36,7 +37,7 @@ function formatMGA(amount: number): string {
   return amount.toLocaleString('fr-MG');
 }
 
-export function TripCard({ trip, lang, t }: TripCardProps) {
+export function TripCard({ trip, lang, t, passengers }: TripCardProps) {
   const {
     tripInstanceId,
     cooperative,
@@ -68,9 +69,9 @@ export function TripCard({ trip, lang, t }: TripCardProps) {
         <span
           className={[
             'text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0',
-            seatsAvailable > 5
+            seatsAvailable >= passengers * 2
               ? 'bg-green-50 text-green-700'
-              : seatsAvailable > 0
+              : seatsAvailable >= passengers
               ? 'bg-yellow-50 text-yellow-700'
               : 'bg-red-50 text-red-700',
           ].join(' ')}
@@ -121,7 +122,7 @@ export function TripCard({ trip, lang, t }: TripCardProps) {
 
         {/* Lien vers le détail — bleu, pas vert */}
         <Link
-          href={`/${lang}/trips/${tripInstanceId}`}
+          href={`/${lang}/trips/${tripInstanceId}?passengers=${passengers}`}
           className="inline-flex items-center gap-1 bg-brand text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-brand-dark transition-colors"
           aria-label={`${t.search.seeDetails} — ${cooperative.displayName}`}
         >

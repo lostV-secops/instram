@@ -65,7 +65,7 @@ const passengerSchema = z.object({
 
 const paymentSchema = z.object({
   provider: z.enum(['MVOLA', 'ORANGE_MONEY']),
-  payerPhone: z.string().min(10),
+  payerPhone: z.string().min(1),
 });
 
 type PaymentStep = 'form' | 'instructions' | 'confirmed' | 'failed';
@@ -168,14 +168,17 @@ export function PaymentForm({
       }
     });
 
+    // Avec PhoneInput, payerPhone = "+261XXXXXXXXX" ou "". La partie locale doit
+    // avoir au moins 9 chiffres (format malgache : 034-XXXXXXX).
+    const localDigits = payerPhone.startsWith('+261')
+      ? payerPhone.slice(4).replace(/\D/g, '')
+      : payerPhone.replace(/\D/g, '');
     const paymentResult = paymentSchema.safeParse({ provider, payerPhone });
-    if (!paymentResult.success) {
-      if (!payerPhone || payerPhone.length < 10) {
-        errs.payerPhone =
-          lang === 'fr'
-            ? 'Numéro de téléphone requis (min. 10 chiffres)'
-            : 'Laharana finday ilaina (10 tarehimandry farafahakeliny)';
-      }
+    if (!paymentResult.success || localDigits.length < 9) {
+      errs.payerPhone =
+        lang === 'fr'
+          ? 'Numéro invalide (ex. 34 00 000 00)'
+          : 'Laharana diso (ohatra : 34 00 000 00)';
     }
 
     setErrors(errs);

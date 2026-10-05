@@ -193,9 +193,9 @@ export function SearchForm({ cities, defaults }: SearchFormProps) {
             id={passengersId}
             value={passengers}
             min={1}
-            max={20}
+            max={6}
             onChange={(e) =>
-              setPassengers(Math.max(1, Math.min(20, Number(e.target.value))))
+              setPassengers(Math.max(1, Math.min(6, Number(e.target.value))))
             }
             className="block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand"
           />

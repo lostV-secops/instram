@@ -168,7 +168,7 @@ export default async function SearchPage({ params, searchParams }: PageProps) {
           <ul className="space-y-3" role="list">
             {trips.map((trip) => (
               <li key={trip.tripInstanceId}>
-                <TripCard trip={trip} lang={lang as Lang} t={t} />
+                <TripCard trip={trip} lang={lang as Lang} t={t} passengers={Number(passengers)} />
               </li>
             ))}
           </ul>

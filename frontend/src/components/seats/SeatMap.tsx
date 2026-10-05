@@ -32,7 +32,6 @@ import { SeatLegend } from './SeatLegend';
 import type { Seat, SeatHoldResponse, SeatConflictResponse, WsEvent } from '@/lib/types';
 import type { Translations } from '@/lib/i18n';
 
-const MAX_SEATS = 6;
 const HOLD_DURATION_SECONDS = 2 * 60; // 2 minutes
 
 interface SeatMapProps {
@@ -40,6 +39,8 @@ interface SeatMapProps {
   initialSeats: Seat[];
   /** Ticket JWT court (60s) obtenu côté serveur — null si non authentifié */
   wsToken: string | null;
+  /** Nombre de sièges demandés lors de la recherche (défaut 6) */
+  maxSeats?: number;
 }
 
 // ─── Styles par statut ────────────────────────────────────────────────────────
@@ -73,7 +74,7 @@ function getSeatClasses(
   ].join(' ');
 }
 
-export function SeatMap({ tripId, initialSeats, wsToken }: SeatMapProps) {
+export function SeatMap({ tripId, initialSeats, wsToken, maxSeats = 6 }: SeatMapProps) {
   const t = useTranslations();
   const lang = useLang();
   const router = useRouter();
@@ -195,7 +196,7 @@ export function SeatMap({ tripId, initialSeats, wsToken }: SeatMapProps) {
         const next = new Set(prev);
         if (next.has(seat.seatDefinitionId)) {
           next.delete(seat.seatDefinitionId);
-        } else if (next.size < MAX_SEATS) {
+        } else if (next.size < maxSeats) {
           next.add(seat.seatDefinitionId);
         }
         return next;
@@ -352,7 +353,7 @@ export function SeatMap({ tripId, initialSeats, wsToken }: SeatMapProps) {
       <p className="text-sm text-gray-600 mb-3">
         {t.seats.selected.replace('{count}', String(selectedIds.size))}
         {' — '}
-        {t.seats.maxSeats}
+        {t.seats.maxSeats.replace('{max}', String(maxSeats))}
       </p>
 
       {/* Grille de sièges */}
@@ -432,6 +433,7 @@ export function SeatMap({ tripId, initialSeats, wsToken }: SeatMapProps) {
           isLoading={isHolding}
           disabled={
             selectedIds.size === 0 ||
+            selectedIds.size > maxSeats ||
             isHolding ||
             isReconnecting ||
             (!isConnected && !!wsToken) ||

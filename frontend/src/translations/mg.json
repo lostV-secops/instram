@@ -83,7 +83,7 @@
       "heldByMe": "Safidiko",
       "sold": "Amidy"
     },
-    "maxSeats": "6 seza fara-fahabetsany amin'ny fandraharahana iray",
+    "maxSeats": "{max} seza fara-fahabetsany amin'ny fandraharahana iray",
     "selected": "{count} seza voafidy",
     "continueToBooking": "Mitohy amin'ny fandraharahana",
     "holdExpiry": "Seza voatokana — mifarana ao anatin'ny",

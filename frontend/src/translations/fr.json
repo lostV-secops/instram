@@ -83,7 +83,7 @@
       "heldByMe": "Ma sélection",
       "sold": "Vendu"
     },
-    "maxSeats": "Maximum 6 sièges par réservation",
+    "maxSeats": "Maximum {max} siège(s) par réservation",
     "selected": "{count} siège(s) sélectionné(s)",
     "continueToBooking": "Continuer vers la réservation",
     "holdExpiry": "Sièges retenus — expire dans",
