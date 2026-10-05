@@ -92,6 +92,14 @@ export default function LoginPage() {
         return;
       }
 
+      if (response.status === 429) {
+        const body = await response.json().catch(() => null);
+        setGlobalError(body?.message ?? (lang === 'fr'
+          ? 'Trop de tentatives. Réessayez dans quelques minutes.'
+          : 'Fanandramana betsaka loatra. Andramo indray amin\'ny minitra vitsivitsy.'));
+        return;
+      }
+
       if (!response.ok) {
         if (!navigator.onLine) {
           setGlobalError(t.common.errorNetwork);
