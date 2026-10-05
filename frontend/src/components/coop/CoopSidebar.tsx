@@ -140,7 +140,7 @@ export function CoopSidebar({ isOpen, onClose }: CoopSidebarProps) {
   const navContent = (
     <nav aria-label="Navigation back-office">
       <div className="px-4 py-5 border-b border-brand-dark/20">
-        <p className="text-xs font-semibold text-brand-dark/60 uppercase tracking-wider">
+        <p className="text-xs font-semibold text-white/50 uppercase tracking-wider">
           Back-office
         </p>
         <p className="text-sm font-bold text-white mt-0.5">Coopérative</p>
@@ -158,7 +158,7 @@ export function CoopSidebar({ isOpen, onClose }: CoopSidebarProps) {
                 'transition-colors duration-150',
                 isActive(item.href)
                   ? 'bg-brand text-white'
-                  : 'text-brand-dark/80 hover:bg-white/10 hover:text-white',
+                  : 'text-white/70 hover:bg-white/10 hover:text-white',
               ].join(' ')}
             >
               {item.icon}
