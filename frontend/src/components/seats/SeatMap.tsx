@@ -79,9 +79,22 @@ export function SeatMap({ tripId, initialSeats, wsToken }: SeatMapProps) {
   const router = useRouter();
 
   // ─── État des sièges ────────────────────────────────────────────────────────
-  const [seats, setSeats] = useState<Seat[]>(initialSeats);
+  // Les sièges HELD_BY_ME (retour d'un tunnel abandonné) sont traités comme
+  // AVAILABLE et pré-sélectionnés : le hold en cours sera libéré par PaymentForm.
+  const [seats, setSeats] = useState<Seat[]>(() =>
+    initialSeats.map((s) =>
+      s.status === 'HELD_BY_ME' ? { ...s, status: 'AVAILABLE' as const } : s,
+    ),
+  );
   /** IDs de sièges sélectionnés par l'utilisateur (avant hold) */
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    () =>
+      new Set(
+        initialSeats
+          .filter((s) => s.status === 'HELD_BY_ME')
+          .map((s) => s.seatDefinitionId),
+      ),
+  );
   /** IDs de sièges que l'utilisateur a réussi à hold */
   const [heldByMeIds, setHeldByMeIds] = useState<Set<string>>(new Set());
 

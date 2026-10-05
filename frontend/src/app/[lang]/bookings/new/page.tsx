@@ -142,6 +142,7 @@ export default async function BookingNewPage({
       {/* Formulaire de paiement (Client Component) */}
       <PaymentForm
         holdId={holdId}
+        tripId={tripId}
         holdSeats={holdProxy.seats}
         lang={lang}
         wsToken={wsToken}

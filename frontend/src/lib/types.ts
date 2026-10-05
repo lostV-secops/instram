@@ -170,7 +170,7 @@ export interface Seat {
   category: SeatCategory;
   row: number | null;
   column: number | null;
-  status: SeatStatus;
+  status: SeatDisplayStatus;
   priceMga: number;
 }
 

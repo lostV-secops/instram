@@ -19,7 +19,7 @@
  * LE BOUTON "Confirmer le paiement" EST VERT (#9CC43D) — variante 'action'.
  */
 
-import { useState, useEffect, useId, type FormEvent } from 'react';
+import { useState, useEffect, useRef, useId, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
 import { useTranslations } from '@/components/TranslationsProvider';
@@ -44,6 +44,7 @@ interface PassengerFormData {
 
 interface PaymentFormProps {
   holdId: string;
+  tripId: string;
   holdSeats: SeatHoldResponse['seats'];
   lang: string;
   /** Ticket JWT court pour la souscription WS (null si non utilisé ici) */
@@ -70,6 +71,7 @@ type PaymentStep = 'form' | 'instructions' | 'confirmed' | 'failed';
 
 export function PaymentForm({
   holdId,
+  tripId,
   holdSeats,
   lang,
   wsToken,
@@ -98,6 +100,31 @@ export function PaymentForm({
   const [networkError, setNetworkError] = useState<string | null>(null);
   const [paymentData, setPaymentData] = useState<PaymentInitiation | null>(null);
   const [bookingId, setBookingId] = useState<string | null>(null);
+
+  // ─── Libération automatique du hold à l'abandon ────────────────────────────
+  // Garde les valeurs dans des refs pour éviter les stale closures du cleanup.
+  const stepRef = useRef<PaymentStep>('form');
+  const holdReleaseRef = useRef({ tripId, holdId });
+
+  useEffect(() => { stepRef.current = step; }, [step]);
+
+  useEffect(() => {
+    holdReleaseRef.current = { tripId, holdId };
+  }, [tripId, holdId]);
+
+  useEffect(() => {
+    return () => {
+      // Ne pas libérer si le paiement est déjà en attente ou confirmé
+      const s = stepRef.current;
+      if (s === 'instructions' || s === 'confirmed') return;
+
+      const { tripId: t, holdId: h } = holdReleaseRef.current;
+      fetch(`/api/proxy/v1/trips/${t}/seats/hold/${h}`, {
+        method: 'DELETE',
+        keepalive: true,
+      }).catch(() => {});
+    };
+  }, []); // Exécuté uniquement au démontage
 
   // ─── WebSocket — écouter confirmation paiement ──────────────────────────────
   const wsChannel = userId ? `booking:${userId}` : '';
