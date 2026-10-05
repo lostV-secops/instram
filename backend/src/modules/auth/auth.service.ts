@@ -650,10 +650,16 @@ export class AuthService {
 
     const isPhone = target.startsWith('+');
 
-    if (isPhone) {
-      const sms = createSmsProvider();
-      await sms.send({ to: target, text: smsText[purpose][lang], lang: lang as 'FR' | 'MG' });
-    } else {
+    // Préférer l'email comme canal de livraison quand disponible
+    let emailDelivery: string | null = null;
+    if (!isPhone) {
+      emailDelivery = target;
+    } else if (userId) {
+      const userRecord = await this.db.user.findUnique({ where: { id: userId }, select: { email: true } });
+      emailDelivery = userRecord?.email ?? null;
+    }
+
+    if (emailDelivery) {
       const text = smsText[purpose][lang];
       const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
 <h2 style="color:#205E98;margin-bottom:4px">InsTRAM</h2>
@@ -662,7 +668,11 @@ export class AuthService {
 <p style="color:#6B7280;font-size:13px">${lang === Lang.FR ? 'Ce code expire dans 10 minutes.' : 'Lany amin\'ny 10 minitra ity kaody ity.'}</p>
 </body></html>`;
       const email = createEmailProvider();
-      await email.send({ to: target, subject: emailSubject[purpose][lang], text, html });
+      await email.send({ to: emailDelivery, subject: emailSubject[purpose][lang], text, html });
+    } else {
+      // Fallback SMS — utilisateur sans email (téléphone uniquement)
+      const sms = createSmsProvider();
+      await sms.send({ to: target, text: smsText[purpose][lang], lang: lang as 'FR' | 'MG' });
     }
 
     await this.db.auditLog.create({
