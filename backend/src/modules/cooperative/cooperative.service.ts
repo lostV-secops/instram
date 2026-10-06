@@ -399,7 +399,7 @@ export class CooperativeService {
 
   async getVehicles(cooperativeId: string): Promise<unknown[]> {
     const vehicles = await this.db.vehicle.findMany({
-      where: { cooperativeId, isActive: true },
+      where: { cooperativeId },
       include: {
         seatMap: {
           include: { seats: { orderBy: [{ row: 'asc' }, { column: 'asc' }] } },
