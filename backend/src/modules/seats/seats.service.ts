@@ -10,7 +10,7 @@ import { emitSeatHeld, emitSeatReleased } from '../ws/ws.publisher';
 // Implémente les 4 niveaux de protection zéro double réservation (architecture §5)
 // =====================================================================
 
-const HOLD_TTL_MS = 15 * 60 * 1000; // 15 minutes (VH-01 : sélection + paiement — hold unique, pas de split)
+const HOLD_TTL_MS = 20 * 60 * 1000; // 20 minutes (VH-01 : sélection + paiement — hold unique, pas de split)
 const REDIS_LOCK_TTL_PX = 3000; // 3 s — verrou Redis anti-concurrence rapide
 
 // =====================================================================
