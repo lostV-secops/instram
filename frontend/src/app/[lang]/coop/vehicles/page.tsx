@@ -39,11 +39,21 @@ export default function VehiclesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [filter, setFilter] = useState<'active' | 'inactive'>('active');
+
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<VehicleForm>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedId, setSavedId] = useState<string | null>(null);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -73,6 +83,46 @@ export default function VehiclesPage() {
       await load();
     } catch {
       setError(t.coop.vehicles.errorToggle);
+    }
+  };
+
+  const handleEditSave = async (vehicleId: string) => {
+    if (!editName.trim()) return;
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      const res = await fetch(`/api/proxy/v1/coop/vehicles/${vehicleId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName: editName.trim() }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { message?: string }).message ?? `Erreur ${res.status}`);
+      }
+      setEditingId(null);
+      await load();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'Erreur lors de la modification');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const handleDelete = async (vehicleId: string) => {
+    setDeletingId(vehicleId);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/api/proxy/v1/coop/vehicles/${vehicleId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { message?: string }).message ?? `Erreur ${res.status}`);
+      }
+      await load();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Suppression impossible');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -124,6 +174,8 @@ export default function VehiclesPage() {
     }
   };
 
+  const displayed = vehicles.filter((v) => filter === 'active' ? v.isActive : !v.isActive);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -131,6 +183,21 @@ export default function VehiclesPage() {
         <Button variant="primary" size="sm" onClick={() => { setShowForm((p) => !p); setFormError(null); }}>
           {showForm ? t.coop.vehicles.cancel : t.coop.vehicles.newVehicle}
         </Button>
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          onClick={() => setFilter('active')}
+          className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${filter === 'active' ? 'bg-brand-blue text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+        >
+          Actifs ({vehicles.filter((v) => v.isActive).length})
+        </button>
+        <button
+          onClick={() => setFilter('inactive')}
+          className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${filter === 'inactive' ? 'bg-brand-dark text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+        >
+          Inactifs ({vehicles.filter((v) => !v.isActive).length})
+        </button>
       </div>
 
       {savedId && (
@@ -215,42 +282,87 @@ export default function VehiclesPage() {
         </form>
       )}
 
+      {deleteError && (
+        <div role="alert" className="bg-red-50 border border-red-300 text-red-700 rounded-xl px-4 py-3 text-sm">
+          {deleteError}
+        </div>
+      )}
+
       {loading ? (
         <div className="bg-white border border-gray-200 rounded-xl p-8 text-center animate-pulse">
           <p className="text-sm text-gray-400">{t.coop.vehicles.loading}</p>
         </div>
-      ) : vehicles.length === 0 ? (
+      ) : displayed.length === 0 ? (
         <div className="bg-white border border-gray-200 rounded-xl p-8 text-center">
-          <p className="text-sm text-gray-500">{t.coop.vehicles.empty}</p>
+          <p className="text-sm text-gray-500">
+            {filter === 'active' ? 'Aucun véhicule actif.' : 'Aucun véhicule inactif.'}
+          </p>
         </div>
       ) : (
         <div className="space-y-2">
-          {vehicles.map((v) => (
-            <div
-              key={v.id}
-              className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between gap-4"
-            >
-              <div className="min-w-0">
-                <p className="font-medium text-brand-dark truncate">{v.displayName}</p>
-                <p className="text-sm text-gray-500 font-mono">{v.registration}</p>
-                {v.model && <p className="text-xs text-gray-400">{v.model}</p>}
-                <p className="text-xs text-gray-400 mt-0.5">{v.capacity} {t.coop.vehicles.places}</p>
+          {displayed.map((v) => (
+            <div key={v.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 space-y-2">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  {editingId === v.id ? (
+                    <input
+                      autoFocus
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="border border-brand-blue rounded-lg px-2 py-1 text-sm font-medium w-full max-w-xs focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                    />
+                  ) : (
+                    <p className="font-medium text-brand-dark truncate">{v.displayName}</p>
+                  )}
+                  <p className="text-sm text-gray-500 font-mono">{v.registration}</p>
+                  {v.model && <p className="text-xs text-gray-400">{v.model}</p>}
+                  <p className="text-xs text-gray-400 mt-0.5">{v.capacity} {t.coop.vehicles.places}</p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
+                  {editingId === v.id ? (
+                    <>
+                      <Button variant="action" size="sm" isLoading={editSaving} onClick={() => handleEditSave(v.id)}>
+                        Enregistrer
+                      </Button>
+                      <Button variant="secondary" size="sm" onClick={() => setEditingId(null)}>
+                        Annuler
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Link href={`/${lang}/coop/vehicles/${v.id}`}>
+                        <Button variant="secondary" size="sm">{t.coop.vehicles.see}</Button>
+                      </Link>
+                      {filter === 'inactive' && (
+                        <>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => { setEditingId(v.id); setEditName(v.displayName ?? ''); setEditError(null); }}
+                          >
+                            Modifier
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            isLoading={deletingId === v.id}
+                            onClick={() => handleDelete(v.id)}
+                            className="text-red-600 border-red-200 hover:bg-red-50"
+                          >
+                            Supprimer
+                          </Button>
+                        </>
+                      )}
+                      <Button variant="secondary" size="sm" onClick={() => handleToggleActive(v)}>
+                        {v.isActive ? t.coop.vehicles.deactivate : t.coop.vehicles.reactivate}
+                      </Button>
+                    </>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <Badge variant={v.isActive ? 'success' : 'neutral'}>
-                  {v.isActive ? t.coop.vehicles.active : t.coop.vehicles.inactive}
-                </Badge>
-                <Link href={`/${lang}/coop/vehicles/${v.id}`}>
-                  <Button variant="secondary" size="sm">{t.coop.vehicles.see}</Button>
-                </Link>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => handleToggleActive(v)}
-                >
-                  {v.isActive ? t.coop.vehicles.deactivate : t.coop.vehicles.reactivate}
-                </Button>
-              </div>
+              {editingId === v.id && editError && (
+                <p className="text-red-600 text-xs">{editError}</p>
+              )}
             </div>
           ))}
         </div>
