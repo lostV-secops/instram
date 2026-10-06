@@ -22,7 +22,7 @@ export default function PublicLayout({ children, params }: PublicLayoutProps) {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar isAuthenticated={isAuthenticated} />
+      <Navbar isAuthenticated={isAuthenticated} userRoles={userInfo?.roles ?? []} />
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-6" id="main-content">
         {children}
       </main>

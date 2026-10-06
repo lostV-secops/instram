@@ -8,13 +8,17 @@ import { useTranslations, useLang } from '@/components/TranslationsProvider';
 interface NavbarProps {
   isAuthenticated?: boolean;
   userFirstName?: string;
+  userRoles?: string[];
 }
 
-export function Navbar({ isAuthenticated = false, userFirstName }: NavbarProps) {
+export function Navbar({ isAuthenticated = false, userFirstName, userRoles = [] }: NavbarProps) {
   const t = useTranslations();
   const lang = useLang();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+
+  const coopRoles = ['COOP_ADMIN', 'COOP_ASSISTANT', 'COOP_DRIVER', 'COOP_CONTROLLER'];
+  const hasCoopAccess = isAuthenticated && userRoles.some((r) => coopRoles.includes(r));
 
   const otherLang = lang === 'fr' ? 'mg' : 'fr';
   const switchLangPath = pathname.replace(`/${lang}`, `/${otherLang}`);
@@ -64,6 +68,16 @@ export function Navbar({ isAuthenticated = false, userFirstName }: NavbarProps) 
                   {t.nav.myProfile}
                 </Link>
               </li>
+              {hasCoopAccess && (
+                <li>
+                  <Link
+                    href={`/${lang}/coop`}
+                    className="text-white text-sm font-medium bg-white/20 hover:bg-white/30 px-3 py-1 rounded-md transition-colors"
+                  >
+                    {lang === 'fr' ? 'Back-office' : 'Foiben-draharaha'}
+                  </Link>
+                </li>
+              )}
             </>
           )}
         </ul>
@@ -163,6 +177,16 @@ export function Navbar({ isAuthenticated = false, userFirstName }: NavbarProps) 
               >
                 {t.nav.myProfile}
               </Link>
+              {hasCoopAccess && (
+                <Link
+                  href={`/${lang}/coop`}
+                  className="block py-2.5 text-white font-medium text-sm border-b border-white/10"
+                  role="menuitem"
+                  onClick={closeMenu}
+                >
+                  {lang === 'fr' ? 'Back-office coopérative' : 'Foiben-draharaha'}
+                </Link>
+              )}
               {userFirstName && (
                 <p className="pt-2 text-white/60 text-xs">{userFirstName}</p>
               )}

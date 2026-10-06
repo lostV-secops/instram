@@ -109,7 +109,19 @@ export default function LoginPage() {
         return;
       }
 
-      router.push(redirectTo);
+      // Si pas de redirect explicite, orienter les membres coop vers leur back-office
+      let destination = redirectTo;
+      if (!searchParams.get('redirect')) {
+        try {
+          const data = await response.json() as { roles?: string[] };
+          const coopRoles = ['COOP_ADMIN', 'COOP_ASSISTANT', 'COOP_DRIVER', 'COOP_CONTROLLER'];
+          if (data.roles?.some((r) => coopRoles.includes(r))) {
+            destination = `/${lang}/coop`;
+          }
+        } catch { /* ignore */ }
+      }
+
+      router.push(destination);
       router.refresh();
     } catch {
       setGlobalError(t.common.errorNetwork);

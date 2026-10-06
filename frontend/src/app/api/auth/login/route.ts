@@ -60,7 +60,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const authData = (await backendResponse.json()) as AuthTokens;
 
-  const response = NextResponse.json({ success: true }, { status: 200 });
+  const response = NextResponse.json(
+    { success: true, roles: authData.user?.roles ?? [] },
+    { status: 200 },
+  );
 
   // Cookie httpOnly — accès_token (15 min)
   response.cookies.set(COOKIE_ACCESS, authData.accessToken, {
