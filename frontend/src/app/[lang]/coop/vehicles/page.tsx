@@ -58,6 +58,7 @@ export default function VehiclesPage() {
   const [editError, setEditError] = useState<string | null>(null);
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -134,6 +135,7 @@ export default function VehiclesPage() {
   };
 
   const handleDelete = async (vehicleId: string) => {
+    setDeleteConfirmId(null);
     setDeletingId(vehicleId);
     setDeleteError(null);
     try {
@@ -349,15 +351,32 @@ export default function VehiclesPage() {
                     {editingId === v.id ? 'Fermer' : 'Modifier'}
                   </Button>
                   {filter === 'inactive' && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      isLoading={deletingId === v.id}
-                      onClick={() => handleDelete(v.id)}
-                      className="text-red-600 border-red-200 hover:bg-red-50"
-                    >
-                      Supprimer
-                    </Button>
+                    deleteConfirmId === v.id ? (
+                      <>
+                        <span className="text-xs text-red-600 font-medium">Confirmer ?</span>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          isLoading={deletingId === v.id}
+                          onClick={() => handleDelete(v.id)}
+                          className="text-red-600 border-red-200 hover:bg-red-50"
+                        >
+                          Oui, supprimer
+                        </Button>
+                        <Button variant="secondary" size="sm" onClick={() => setDeleteConfirmId(null)}>
+                          Annuler
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setDeleteConfirmId(v.id)}
+                        className="text-red-600 border-red-200 hover:bg-red-50"
+                      >
+                        Supprimer
+                      </Button>
+                    )
                   )}
                   <Button variant="secondary" size="sm" onClick={() => handleToggleActive(v)}>
                     {v.isActive ? t.coop.vehicles.deactivate : t.coop.vehicles.reactivate}

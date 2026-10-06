@@ -668,23 +668,17 @@ export class CooperativeService {
     });
     if (!vehicle) throw new NotFoundError('Véhicule introuvable');
 
-    const activeTrips = await this.db.tripInstance.count({
-      where: {
-        vehicleId,
-        status: { notIn: ['CANCELLED', 'COMPLETED'] },
-      },
-    });
+    const tripCount = await this.db.tripInstance.count({ where: { vehicleId } });
 
-    if (activeTrips > 0) {
-      const err = new Error(`Impossible de supprimer : ${activeTrips} trajet(s) actif(s) utilise(nt) ce véhicule`) as NodeJS.ErrnoException;
+    if (tripCount > 0) {
+      const err = new Error(
+        `Impossible de supprimer : ce véhicule est lié à ${tripCount} trajet(s). Désactivez-le à la place.`,
+      ) as NodeJS.ErrnoException;
       err.code = 'CONFLICT';
       throw err;
     }
 
-    await this.db.vehicle.update({
-      where: { id: vehicleId },
-      data: { isActive: false },
-    });
+    await this.db.vehicle.delete({ where: { id: vehicleId } });
   }
 
   // ================================================================
