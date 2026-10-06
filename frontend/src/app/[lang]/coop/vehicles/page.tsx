@@ -18,9 +18,10 @@ interface VehicleForm {
   displayName: string;
   model: string;
   capacity: string;
+  columns: string;
 }
 
-const EMPTY_FORM: VehicleForm = { registration: '', displayName: '', model: '', capacity: '' };
+const EMPTY_FORM: VehicleForm = { registration: '', displayName: '', model: '', capacity: '', columns: '2' };
 
 export default function VehiclesPage() {
   const { lang } = useCoop();
@@ -75,9 +76,7 @@ export default function VehiclesPage() {
     if (!form.displayName.trim()) { setFormError(t.coop.vehicles.validation.displayName); return; }
     if (!cap || cap < 1) { setFormError(t.coop.vehicles.validation.capacity); return; }
 
-    // Générer un plan de sièges par défaut : 2 colonnes, catégorie STANDARD
-    // La coop peut affiner sur la page détail du véhicule.
-    const cols = 2;
+    const cols = parseInt(form.columns, 10) || 2;
     const rows = Math.ceil(cap / cols);
     const colLetters = ['A', 'B'];
     const defaultSeats: { code: string; row: number; col: number; category: 'STANDARD' }[] = [];
@@ -175,6 +174,18 @@ export default function VehiclesPage() {
               placeholder="15"
               required
             />
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-gray-700">Disposition des sièges</label>
+              <select
+                value={form.columns}
+                onChange={(e) => setForm((p) => ({ ...p, columns: e.target.value }))}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-blue"
+              >
+                <option value="2">2 colonnes — Minibus (Hiace, Crafter…)</option>
+                <option value="4">4 colonnes — Grand bus (2+2)</option>
+              </select>
+              <p className="text-xs text-gray-400">Les catégories de sièges (VIP, Premium…) se configurent sur la page du véhicule.</p>
+            </div>
           </div>
 
           {formError && (
