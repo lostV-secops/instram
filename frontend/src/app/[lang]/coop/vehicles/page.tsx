@@ -13,15 +13,23 @@ import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import type { CoopVehicle } from '@/lib/types';
 
+type VehicleType = 'STANDARD' | 'PREMIUM' | 'VIP';
+
+const VEHICLE_PRESETS: Record<VehicleType, { cols: number; rows: number; category: string; label: string; desc: string }> = {
+  STANDARD: { cols: 4, rows: 4, category: 'STANDARD', label: 'Standard',  desc: '4 × 4 — 16 places, bus classique' },
+  PREMIUM:  { cols: 3, rows: 4, category: 'PREMIUM',  label: 'Premium',   desc: '3 × 4 — 12 places, confort amélioré' },
+  VIP:      { cols: 3, rows: 3, category: 'VIP',      label: 'VIP',       desc: '3 × 3 — 9 places, grande aisance' },
+};
+
 interface VehicleForm {
   registration: string;
   displayName: string;
   model: string;
   capacity: string;
-  columns: string;
+  vehicleType: VehicleType;
 }
 
-const EMPTY_FORM: VehicleForm = { registration: '', displayName: '', model: '', capacity: '', columns: '2' };
+const EMPTY_FORM: VehicleForm = { registration: '', displayName: '', model: '', capacity: '16', vehicleType: 'STANDARD' };
 
 export default function VehiclesPage() {
   const { lang } = useCoop();
@@ -76,13 +84,14 @@ export default function VehiclesPage() {
     if (!form.displayName.trim()) { setFormError(t.coop.vehicles.validation.displayName); return; }
     if (!cap || cap < 1) { setFormError(t.coop.vehicles.validation.capacity); return; }
 
-    const cols = parseInt(form.columns, 10) || 2;
+    const preset = VEHICLE_PRESETS[form.vehicleType];
+    const cols = preset.cols;
     const rows = Math.ceil(cap / cols);
-    const colLetters = ['A', 'B'];
-    const defaultSeats: { code: string; row: number; col: number; category: 'STANDARD' }[] = [];
+    const colLetters = ['A', 'B', 'C', 'D'];
+    const defaultSeats: { code: string; row: number; col: number; category: string }[] = [];
     for (let r = 0; r < rows && defaultSeats.length < cap; r++) {
       for (let c = 0; c < cols && defaultSeats.length < cap; c++) {
-        defaultSeats.push({ code: `${r + 1}${colLetters[c]}`, row: r, col: c, category: 'STANDARD' });
+        defaultSeats.push({ code: `${r + 1}${colLetters[c]}`, row: r, col: c, category: preset.category });
       }
     }
 
@@ -164,28 +173,36 @@ export default function VehiclesPage() {
               onChange={(e) => setForm((p) => ({ ...p, model: e.target.value }))}
               placeholder="Toyota Hiace"
             />
+            <div className="flex flex-col gap-1 sm:col-span-2">
+              <label className="text-sm font-medium text-gray-700">Type de véhicule</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {(Object.entries(VEHICLE_PRESETS) as [VehicleType, typeof VEHICLE_PRESETS[VehicleType]][]).map(([key, p]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setForm((prev) => ({ ...prev, vehicleType: key, capacity: String(p.cols * p.rows) }))}
+                    className={`text-left border rounded-xl px-4 py-3 transition-all ${
+                      form.vehicleType === key
+                        ? 'border-brand-blue bg-blue-50 ring-2 ring-brand-blue'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <p className="font-semibold text-brand-dark text-sm">{p.label}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{p.desc}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
             <Input
-              label={t.coop.vehicles.form.capacity}
+              label="Capacité (places)"
               type="number"
               min={1}
               max={100}
               value={form.capacity}
               onChange={(e) => setForm((p) => ({ ...p, capacity: e.target.value }))}
-              placeholder="15"
+              placeholder="16"
               required
             />
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-gray-700">Disposition des sièges</label>
-              <select
-                value={form.columns}
-                onChange={(e) => setForm((p) => ({ ...p, columns: e.target.value }))}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-blue"
-              >
-                <option value="2">2 colonnes — Minibus (Hiace, Crafter…)</option>
-                <option value="4">4 colonnes — Grand bus (2+2)</option>
-              </select>
-              <p className="text-xs text-gray-400">Les catégories de sièges (VIP, Premium…) se configurent sur la page du véhicule.</p>
-            </div>
           </div>
 
           {formError && (
