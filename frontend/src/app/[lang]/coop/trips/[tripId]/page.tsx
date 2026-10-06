@@ -90,6 +90,7 @@ export default function TripDetailPage() {
       const res = await fetch(`/api/proxy/v1/coop/trips/${tripId}/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: '{}',
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { message?: string };
