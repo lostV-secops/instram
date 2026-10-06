@@ -14,11 +14,11 @@
  * En cas d'erreur réseau (fréquent en 3G) : message explicite + retry possible.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Input } from '@/components/ui/Input';
 import { PhoneInput } from '@/components/ui/PhoneInput';
 import { Button } from '@/components/ui/Button';
-import type { TripInstance, Seat, SeatCategory } from '@/lib/types';
+import type { TripInstance, Seat, SeatCategory, City } from '@/lib/types';
 
 // ─── Types locaux ─────────────────────────────────────────────────────────────
 
@@ -58,10 +58,16 @@ const CATEGORY_LABELS: Record<SeatCategory, string> = {
 // ─── Composant ────────────────────────────────────────────────────────────────
 
 export function WalkInForm() {
+  // ─── Villes ───────────────────────────────────────────────────────────────────
+  const [cities, setCities] = useState<City[]>([]);
+  const [originCityId, setOriginCityId] = useState('');
+  const [destinationCityId, setDestinationCityId] = useState('');
+
   // Étape 1 : trajet
   const [trips, setTrips] = useState<Array<TripInstance & { routeName?: string }>>([]);
-  const [tripsLoading, setTripsLoading] = useState(true);
+  const [tripsLoading, setTripsLoading] = useState(false);
   const [tripsError, setTripsError] = useState<string | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
   const [selectedTripId, setSelectedTripId] = useState('');
 
   // Étape 2 : sièges
@@ -80,31 +86,44 @@ export function WalkInForm() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [successRef, setSuccessRef] = useState<string | null>(null);
 
-  // ─── Charger les trajets du jour ─────────────────────────────────────────────
+  // ─── Charger les villes une seule fois ───────────────────────────────────────
   useEffect(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    const in7Days = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
-    const loadTrips = async () => {
-      setTripsLoading(true);
-      setTripsError(null);
-      try {
-        const res = await fetch(
-          `/api/proxy/v1/coop/trips?from=${today}&to=${in7Days}&status=OPEN_FOR_BOOKING&limit=50`,
-          { cache: 'no-store' },
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        setTrips(data.items ?? []);
-      } catch {
-        setTripsError(
-          'Erreur de chargement des trajets. Vérifiez votre connexion.',
-        );
-      } finally {
-        setTripsLoading(false);
-      }
-    };
-    loadTrips();
+    fetch('/api/proxy/v1/catalog/cities?limit=200', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => setCities(d.items ?? []))
+      .catch(() => {});
   }, []);
+
+  // ─── Chercher les trajets (déclenché manuellement) ───────────────────────────
+  const loadTrips = useCallback(async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const in30Days = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+    setTripsLoading(true);
+    setTripsError(null);
+    setHasSearched(true);
+    setSelectedTripId('');
+    setSeats([]);
+    setSelectedSeats([]);
+    setPassengers([]);
+    try {
+      const params = new URLSearchParams({
+        from: today,
+        to: in30Days,
+        status: 'OPEN_FOR_BOOKING',
+        limit: '50',
+      });
+      if (originCityId) params.set('originCityId', originCityId);
+      if (destinationCityId) params.set('destinationCityId', destinationCityId);
+      const res = await fetch(`/api/proxy/v1/coop/trips?${params.toString()}`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setTrips(data.items ?? []);
+    } catch {
+      setTripsError('Erreur de chargement des trajets. Vérifiez votre connexion.');
+    } finally {
+      setTripsLoading(false);
+    }
+  }, [originCityId, destinationCityId]);
 
   // ─── Charger les sièges quand un trajet est sélectionné ──────────────────────
   const loadSeats = async () => {
@@ -230,6 +249,10 @@ export function WalkInForm() {
   // ─── Réinitialiser après succès ───────────────────────────────────────────────
   const handleNewBooking = () => {
     setSuccessRef(null);
+    setOriginCityId('');
+    setDestinationCityId('');
+    setTrips([]);
+    setHasSearched(false);
     setSelectedTripId('');
     setSeats([]);
     setSelectedSeats([]);
@@ -275,12 +298,55 @@ export function WalkInForm() {
       {/* ─── Étape 1 : Trajet ──────────────────────────────────────────────────── */}
       <fieldset className="border border-gray-200 rounded-xl p-4 space-y-3">
         <legend className="px-2 text-sm font-semibold text-brand-dark">
-          1. Sélectionner le trajet
+          1. Rechercher un trajet
         </legend>
 
-        {tripsLoading && (
-          <p className="text-sm text-gray-500 animate-pulse">Chargement des trajets...</p>
-        )}
+        {/* Filtres origine / destination */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="origin-city" className="text-xs font-medium text-gray-600">
+              Ville de départ
+            </label>
+            <select
+              id="origin-city"
+              value={originCityId}
+              onChange={(e) => setOriginCityId(e.target.value)}
+              className="block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-900 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand"
+            >
+              <option value="">Toutes les villes</option>
+              {[...cities].sort((a, b) => a.name.localeCompare(b.name, 'fr')).map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="dest-city" className="text-xs font-medium text-gray-600">
+              Ville d'arrivée
+            </label>
+            <select
+              id="dest-city"
+              value={destinationCityId}
+              onChange={(e) => setDestinationCityId(e.target.value)}
+              className="block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-900 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand"
+            >
+              <option value="">Toutes les villes</option>
+              {[...cities].sort((a, b) => a.name.localeCompare(b.name, 'fr')).map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={loadTrips}
+          isLoading={tripsLoading}
+          disabled={tripsLoading}
+        >
+          {tripsLoading ? 'Recherche en cours...' : 'Rechercher les trajets'}
+        </Button>
 
         {tripsError && (
           <div role="alert" className="text-sm text-red-600 bg-red-50 rounded-lg p-3">
@@ -288,16 +354,13 @@ export function WalkInForm() {
           </div>
         )}
 
-        {!tripsLoading && !tripsError && trips.length === 0 && (
-          <p className="text-sm text-gray-500">Aucun trajet ouvert dans les 7 prochains jours.</p>
+        {hasSearched && !tripsLoading && !tripsError && trips.length === 0 && (
+          <p className="text-sm text-gray-500">Aucun trajet ouvert pour ces critères.</p>
         )}
 
         {!tripsLoading && trips.length > 0 && (
           <div className="space-y-2">
-            <label
-              htmlFor="trip-select"
-              className="text-sm font-medium text-gray-800"
-            >
+            <label htmlFor="trip-select" className="text-sm font-medium text-gray-800">
               Trajet <span className="text-red-500">*</span>
             </label>
             <select
@@ -312,10 +375,13 @@ export function WalkInForm() {
               className="block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base text-gray-900 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand"
               required
             >
-              <option value="">Sélectionner un trajet...</option>
+              <option value="">Sélectionner un départ...</option>
               {trips.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.route ? `${t.route.originCity?.nameFr ?? '?'} → ${t.route.destinationCity?.nameFr ?? '?'}` : (t.routeName ?? t.routeId)} — {formatDateTime(t.departureAt)}
+                  {t.route
+                    ? `${t.route.originCity?.nameFr ?? '?'} → ${t.route.destinationCity?.nameFr ?? '?'}`
+                    : (t.routeName ?? t.routeId)}{' '}
+                  — {formatDateTime(t.departureAt)}
                 </option>
               ))}
             </select>
