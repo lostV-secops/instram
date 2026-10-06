@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useCoop } from '../../CoopContext';
 import { getTranslations, cityName, dateLocale } from '@/lib/i18n';
@@ -40,6 +40,7 @@ function formatMGA(amount: number): string {
 
 export default function TripDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const tripId = params.tripId as string;
   const { lang } = useCoop();
   const t = getTranslations(lang);
@@ -59,6 +60,7 @@ export default function TripDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -82,6 +84,24 @@ export default function TripDetailPage() {
   }, [tripId, t.common.errorNetwork]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleDelete = async () => {
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/proxy/v1/coop/trips/${tripId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { message?: string };
+        throw new Error(body.message ?? `Erreur ${res.status}`);
+      }
+      router.push(`/${lang}/coop/trips`);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : t.common.errorNetwork);
+      setShowDeleteConfirm(false);
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const handleAction = async (action: 'open' | 'close') => {
     setActionLoading(true);
@@ -204,6 +224,49 @@ export default function TripDetailPage() {
           >
             {t.coop.trips.detail.closeForBooking}
           </Button>
+        </div>
+      )}
+      {status === 'CANCELLED' && !showDeleteConfirm && (
+        <div className="flex flex-wrap gap-3">
+          <Button
+            variant="secondary"
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={actionLoading}
+            className="border-red-300 text-red-600 hover:bg-red-50"
+          >
+            {lang === 'fr' ? 'Supprimer ce trajet' : 'Fafao ity dia ity'}
+          </Button>
+        </div>
+      )}
+      {status === 'CANCELLED' && showDeleteConfirm && (
+        <div className="bg-red-50 border border-red-300 rounded-xl p-4 space-y-3">
+          <p className="text-sm font-semibold text-red-700">
+            {lang === 'fr' ? 'Confirmer la suppression ?' : 'Hamarino ny famafana ?'}
+          </p>
+          <p className="text-xs text-red-600">
+            {lang === 'fr'
+              ? 'Cette action est irréversible. Le trajet sera définitivement supprimé.'
+              : 'Tsy azo averina io. Hofafaina tanteraka ity dia ity.'}
+          </p>
+          <div className="flex gap-3">
+            <Button
+              variant="primary"
+              size="sm"
+              isLoading={actionLoading}
+              onClick={handleDelete}
+              className="bg-red-600 hover:bg-red-700 border-red-600"
+            >
+              {lang === 'fr' ? 'Supprimer définitivement' : 'Fafao tanteraka'}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowDeleteConfirm(false)}
+              disabled={actionLoading}
+            >
+              {t.common.cancel}
+            </Button>
+          </div>
         </div>
       )}
 

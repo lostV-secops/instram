@@ -1112,7 +1112,11 @@ export class TripsService {
     });
     if (!trip) throw new NotFoundError('Trajet introuvable');
 
-    if (trip.status === 'CANCELLED') return { cancelledBookings: 0 };
+    if (trip.status === 'CANCELLED') {
+      // Déjà annulé : suppression physique de la base
+      await this.db.tripInstance.delete({ where: { id: tripInstanceId } });
+      return { cancelledBookings: 0 };
+    }
 
     // Charger toutes les réservations actives avec les infos passager pour notif
     const activeBookings = await this.db.booking.findMany({
