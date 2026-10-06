@@ -1228,23 +1228,17 @@ export class TripsService {
     });
     if (!route) throw new NotFoundError('Route introuvable');
 
-    const activeTrips = await this.db.tripInstance.count({
-      where: {
-        routeId,
-        status: { notIn: ['CANCELLED', 'COMPLETED'] },
-      },
-    });
+    const tripCount = await this.db.tripInstance.count({ where: { routeId } });
 
-    if (activeTrips > 0) {
-      const err = new Error(`Impossible de supprimer : ${activeTrips} trajet(s) actif(s) sur cette route`) as NodeJS.ErrnoException;
+    if (tripCount > 0) {
+      const err = new Error(
+        `Impossible de supprimer : cette ligne est liée à ${tripCount} trajet(s). Désactivez-la à la place.`,
+      ) as NodeJS.ErrnoException;
       err.code = 'CONFLICT';
       throw err;
     }
 
-    await this.db.route.update({
-      where: { id: routeId },
-      data: { isActive: false },
-    });
+    await this.db.route.delete({ where: { id: routeId } });
   }
 
   // ----------------------------------------------------------------

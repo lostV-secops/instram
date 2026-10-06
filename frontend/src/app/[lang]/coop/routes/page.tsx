@@ -4,7 +4,7 @@
  * Gestion des lignes — /[lang]/coop/routes
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useCoop } from '../CoopContext';
 import { getTranslations } from '@/lib/i18n';
@@ -34,6 +34,7 @@ export default function RoutesPage() {
   const [editError, setEditError] = useState<string | null>(null);
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -95,6 +96,7 @@ export default function RoutesPage() {
   };
 
   const handleDelete = async (routeId: string) => {
+    setDeleteConfirmId(null);
     setDeletingId(routeId);
     setDeleteError(null);
     try {
@@ -179,8 +181,8 @@ export default function RoutesPage() {
               </thead>
               <tbody>
                 {displayed.map((r) => (
-                  <>
-                    <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                  <React.Fragment key={r.id}>
+                    <tr className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                       <td className="py-3 px-4 text-sm font-medium text-gray-900">{r.displayName}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{r.originCity?.name ?? '—'}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{r.destinationCity?.name ?? '—'}</td>
@@ -202,33 +204,53 @@ export default function RoutesPage() {
                               {t.coop.trips.title}
                             </Link>
                           )}
+                          {/* Modifier disponible sur actives ET inactives */}
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => {
+                              if (editingId === r.id) {
+                                setEditingId(null);
+                              } else {
+                                setEditingId(r.id);
+                                setEditForm({
+                                  displayName: r.displayName ?? '',
+                                  distanceKm: r.distanceKm ? String(r.distanceKm) : '',
+                                  estimatedDurationMin: r.estimatedDurationMin ? String(r.estimatedDurationMin) : '',
+                                });
+                                setEditError(null);
+                              }
+                            }}
+                          >
+                            {editingId === r.id ? 'Fermer' : 'Modifier'}
+                          </Button>
                           {filter === 'inactive' && (
-                            <>
+                            deleteConfirmId === r.id ? (
+                              <>
+                                <span className="text-xs text-red-600 font-medium">Confirmer ?</span>
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  isLoading={deletingId === r.id}
+                                  onClick={() => handleDelete(r.id)}
+                                  className="text-red-600 border-red-200 hover:bg-red-50"
+                                >
+                                  Oui, supprimer
+                                </Button>
+                                <Button variant="secondary" size="sm" onClick={() => setDeleteConfirmId(null)}>
+                                  Annuler
+                                </Button>
+                              </>
+                            ) : (
                               <Button
                                 variant="secondary"
                                 size="sm"
-                                onClick={() => {
-                                  setEditingId(editingId === r.id ? null : r.id);
-                                  setEditForm({
-                                    displayName: r.displayName ?? '',
-                                    distanceKm: r.distanceKm ? String(r.distanceKm) : '',
-                                    estimatedDurationMin: r.estimatedDurationMin ? String(r.estimatedDurationMin) : '',
-                                  });
-                                  setEditError(null);
-                                }}
-                              >
-                                {editingId === r.id ? 'Annuler' : 'Modifier'}
-                              </Button>
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                isLoading={deletingId === r.id}
-                                onClick={() => handleDelete(r.id)}
+                                onClick={() => setDeleteConfirmId(r.id)}
                                 className="text-red-600 border-red-200 hover:bg-red-50"
                               >
                                 Supprimer
                               </Button>
-                            </>
+                            )
                           )}
                           <Button variant="secondary" size="sm" onClick={() => handleToggle(r)}>
                             {r.isActive ? t.coop.vehicles.deactivate : t.coop.vehicles.reactivate}
@@ -237,7 +259,7 @@ export default function RoutesPage() {
                       </td>
                     </tr>
                     {editingId === r.id && (
-                      <tr key={`${r.id}-edit`} className="bg-blue-50 border-b border-blue-100">
+                      <tr className="bg-blue-50 border-b border-blue-100">
                         <td colSpan={6} className="px-4 py-3">
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <Input
@@ -273,7 +295,7 @@ export default function RoutesPage() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
