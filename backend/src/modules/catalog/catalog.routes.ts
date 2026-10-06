@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { CatalogService } from './catalog.service';
-import { ListCitiesQuerySchema, CityIdParamSchema } from './catalog.schema';
+import { ListCitiesQuerySchema, CityIdParamSchema, CreateCitySchema } from './catalog.schema';
 import prisma from '../../infra/db/prisma';
 
 // =====================================================================
@@ -39,6 +39,42 @@ export default async function catalogRoutes(fastify: FastifyInstance): Promise<v
       return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
     }
   });
+
+  // ------------------------------------------------------------------
+  // POST /cities — ajouter une ville manquante (auth requise, rôle coop ou admin)
+  // ------------------------------------------------------------------
+  fastify.post(
+    '/cities',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const user = req.user as { sub: string; roles?: string[] };
+      const allowedRoles = ['COOP_ADMIN', 'COOP_ASSISTANT', 'PLATFORM_ADMIN', 'PLATFORM_SUPERADMIN'];
+      if (!user.roles?.some((r) => allowedRoles.includes(r))) {
+        return reply.status(403).send({ code: 'FORBIDDEN', message: 'Rôle coop ou admin requis' });
+      }
+
+      const parse = CreateCitySchema.safeParse(req.body);
+      if (!parse.success) {
+        return reply.status(400).send({
+          code: 'VALIDATION_ERROR',
+          message: parse.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; '),
+        });
+      }
+
+      const lang = resolveLanguage(req.headers['accept-language']);
+      try {
+        const city = await service.createCity(parse.data, lang);
+        return reply.status(201).send(city);
+      } catch (err: unknown) {
+        const pg = err as { code?: string };
+        if (pg.code === 'P2002') {
+          return reply.status(409).send({ code: 'DUPLICATE_CODE', message: 'Ce code de ville existe déjà' });
+        }
+        req.log.error(err, 'catalog createCity error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
 
   // ------------------------------------------------------------------
   // GET /cities/:id

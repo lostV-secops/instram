@@ -1,5 +1,5 @@
 import { PrismaClient, City } from '@prisma/client';
-import { ListCitiesQuery } from './catalog.schema';
+import { ListCitiesQuery, CreateCity } from './catalog.schema';
 
 // =====================================================================
 // Types de réponse
@@ -86,6 +86,27 @@ export class CatalogService {
   async getCityById(id: string, lang: string): Promise<CityDto | null> {
     const city = await this.db.city.findUnique({ where: { id } });
     if (!city || !city.isActive) return null;
+    return toDto(city, lang);
+  }
+
+  /**
+   * Crée une nouvelle ville (soumise par une coopérative pour les communes manquantes).
+   * Le code est auto-généré si non fourni.
+   */
+  async createCity(input: CreateCity, lang: string): Promise<CityDto> {
+    const code = input.code ?? `USR-${Date.now()}`;
+    const city = await this.db.city.create({
+      data: {
+        code,
+        nameFr: input.nameFr,
+        nameMg: input.nameMg,
+        district: input.district,
+        region: input.region,
+        lat: input.lat ?? null,
+        lng: input.lng ?? null,
+        isActive: true,
+      },
+    });
     return toDto(city, lang);
   }
 }

@@ -20,3 +20,15 @@ export const CityIdParamSchema = z.object({
 });
 
 export type CityIdParam = z.infer<typeof CityIdParamSchema>;
+
+export const CreateCitySchema = z.object({
+  nameFr: z.string().min(2).max(100),
+  nameMg: z.string().min(2).max(100),
+  district: z.string().min(2).max(100),
+  region: z.string().min(2).max(100),
+  code: z.string().min(2).max(20).optional(),
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
+});
+
+export type CreateCity = z.infer<typeof CreateCitySchema>;
