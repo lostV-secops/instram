@@ -117,9 +117,9 @@ export function ExportCard({ initialJob }: ExportCardProps) {
         <StatusBadge status={job.status} />
       </div>
 
-      {job.status === 'READY' && job.resultUrl && (
+      {job.status === 'READY' && (job.downloadUrl ?? job.resultUrl) && (
         <a
-          href={job.resultUrl}
+          href={(job.downloadUrl ?? job.resultUrl)!}
           download
           className="flex-shrink-0 inline-flex items-center gap-1.5 bg-brand text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-brand-dark transition-colors focus:outline-none focus:ring-2 focus:ring-brand"
           aria-label={`Télécharger ${TYPE_LABELS[job.type]}`}

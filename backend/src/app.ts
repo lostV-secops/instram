@@ -4,6 +4,8 @@ import fastifyCors from '@fastify/cors';
 import fastifyCompress from '@fastify/compress';
 import fastifyHelmet from '@fastify/helmet';
 import fastifyRateLimit from '@fastify/rate-limit';
+import fs from 'node:fs';
+import path from 'node:path';
 import prisma from './infra/db/prisma';
 import redis from './infra/cache/redis';
 import { createSmsProvider } from './infra/sms/provider';
@@ -193,6 +195,39 @@ export async function buildApp(): Promise<FastifyInstance> {
       });
     }
   });
+
+  // ------------------------------------------------------------------
+  // Fichiers d'export locaux — GET /exports/* (dev uniquement)
+  // En prod, les fichiers sont sur S3 (signed URLs) — ce handler est ignoré.
+  // Sécurité : chemin normalisé doit rester sous exportDir (anti path-traversal).
+  // ------------------------------------------------------------------
+  app.get(
+    '/exports/*',
+    { config: { rateLimit: { skip: () => true } } },
+    async (req, reply) => {
+      const rawPath = (req.params as Record<string, string>)['*'] ?? '';
+      const exportDir = path.resolve(process.cwd(), 'exports');
+      const filePath = path.resolve(exportDir, rawPath);
+      // Rejet path traversal — le chemin doit rester sous exportDir
+      if (!filePath.startsWith(exportDir + path.sep) && filePath !== exportDir) {
+        return reply.status(400).send({ code: 'INVALID_PATH' });
+      }
+      if (!fs.existsSync(filePath)) {
+        return reply.status(404).send({ code: 'NOT_FOUND' });
+      }
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeTypes: Record<string, string> = {
+        '.pdf':  'application/pdf',
+        '.csv':  'text/csv',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      };
+      const contentType = mimeTypes[ext] ?? 'application/octet-stream';
+      const basename = path.basename(filePath);
+      reply.header('Content-Type', contentType);
+      reply.header('Content-Disposition', `attachment; filename="${basename}"`);
+      return reply.send(fs.createReadStream(filePath));
+    },
+  );
 
   // ------------------------------------------------------------------
   // WebSocket temps réel — GET /ws?token=<jwt> (architecture §2.3)

@@ -14,21 +14,35 @@ import { z } from 'zod';
 
 // ------------------------------------------------------------------
 // POST /coop/exports — ExportRequest
+//
+// Accepte deux structures équivalentes :
+//   1. Plate (legacy) : { type, tripInstanceId?, dateFrom?, dateTo? }
+//   2. Avec filters   : { type, format?, filters: { tripInstanceId?, from?, to? } }
 // ------------------------------------------------------------------
+const FiltersSchema = z.object({
+  tripInstanceId: z.string().uuid({ message: 'tripInstanceId doit être un UUID valide' }).optional(),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'from : format YYYY-MM-DD requis' }).optional(),
+  to:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'to : format YYYY-MM-DD requis' }).optional(),
+}).optional();
+
 export const CreateExportSchema = z.object({
   type: z.enum(['MANIFEST', 'FINANCIAL_REPORT'], {
     errorMap: () => ({ message: 'type doit être MANIFEST ou FINANCIAL_REPORT' }),
   }),
+  format: z.string().optional(),
+  // Structure plate (legacy)
   tripInstanceId: z.string().uuid({ message: 'tripInstanceId doit être un UUID valide' }).optional(),
-  dateFrom: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'dateFrom : format YYYY-MM-DD requis' })
-    .optional(),
-  dateTo: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'dateTo : format YYYY-MM-DD requis' })
-    .optional(),
-}).refine(
+  dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'dateFrom : format YYYY-MM-DD requis' }).optional(),
+  dateTo:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'dateTo : format YYYY-MM-DD requis' }).optional(),
+  // Structure imbriquée (frontend)
+  filters: FiltersSchema,
+}).transform((d) => ({
+  ...d,
+  // Normaliser : les champs filters.* prennent le dessus sur les champs plats
+  tripInstanceId: d.filters?.tripInstanceId ?? d.tripInstanceId,
+  dateFrom: d.filters?.from ?? d.dateFrom,
+  dateTo:   d.filters?.to   ?? d.dateTo,
+})).refine(
   (d) => {
     if (d.type === 'MANIFEST' && !d.tripInstanceId) return false;
     return true;

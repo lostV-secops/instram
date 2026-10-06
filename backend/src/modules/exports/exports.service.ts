@@ -66,7 +66,8 @@ export class ExportsService {
     cooperativeId: string,
     input: CreateExportInput,
   ): Promise<ExportJobDto> {
-    const format = input.type === 'FINANCIAL_REPORT' ? 'XLSX' : 'PDF';
+    const defaultFormat = input.type === 'FINANCIAL_REPORT' ? 'XLSX' : 'PDF';
+    const format = input.format?.toUpperCase() ?? defaultFormat;
 
     const job = await this.prisma.exportJob.create({
       data: {
@@ -158,7 +159,7 @@ export class ExportsService {
       take: 50,
     });
 
-    return jobs.map((j) => this.toDto(j));
+    return Promise.all(jobs.map((j) => this.toDtoWithUrl(j)));
   }
 
   // ------------------------------------------------------------------
@@ -184,12 +185,18 @@ export class ExportsService {
   }
 
   // ------------------------------------------------------------------
-  // Mapper ExportJob → ExportJobDto
+  // Mapper ExportJob → ExportJobDto (sans URL signée)
   // ------------------------------------------------------------------
   private toDto(job: ExportJob): ExportJobDto {
-    return {
-      ...job,
-      downloadUrl: undefined,
-    };
+    return { ...job, downloadUrl: undefined };
+  }
+
+  // Mapper avec URL signée pour les jobs READY
+  private async toDtoWithUrl(job: ExportJob): Promise<ExportJobDto> {
+    const dto = this.toDto(job);
+    if (job.status === ExportStatus.READY && job.resultUrl) {
+      dto.downloadUrl = await this.storage.getSignedUrl(job.resultUrl, SIGNED_URL_EXPIRES_IN);
+    }
+    return dto;
   }
 }

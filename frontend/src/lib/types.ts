@@ -489,6 +489,7 @@ export interface ExportJob {
   format: string;
   status: ExportJobStatus;
   resultUrl: string | null;
+  downloadUrl?: string | null;
   expiresAt: string | null;
   createdAt: string;
   completedAt: string | null;
