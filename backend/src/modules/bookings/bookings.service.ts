@@ -1218,12 +1218,13 @@ export class BookingsService {
     cooperativeId: string,
     query: BookingListQueryInput,
   ): Promise<Record<string, unknown>> {
-    const { status, cursor, limit } = query;
+    const { status, channel, cursor, limit } = query;
 
     const where: Record<string, unknown> = {
       tripInstance: { cooperativeId },
     };
     if (status) where.status = status;
+    if (channel) where.channel = channel;
     if (cursor) where.id = { lt: cursor };
 
     const items = await this.db.booking.findMany({

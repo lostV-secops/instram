@@ -90,6 +90,7 @@ export const BookingListQuerySchema = z.object({
       'NO_SHOW',
     ])
     .optional(),
+  channel: z.enum(['ONLINE', 'WALK_IN']).optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().min(1).max(50).default(20),
 });

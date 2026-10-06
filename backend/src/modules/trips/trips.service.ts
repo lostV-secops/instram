@@ -285,7 +285,7 @@ export class TripsService {
     cooperativeId: string,
     query: TripListQuery,
   ): Promise<Record<string, unknown>> {
-    const { from, to, status, cursor, limit } = query;
+    const { from, to, status, originCityId, destinationCityId, cursor, limit } = query;
 
     const where: Record<string, unknown> = { cooperativeId };
     if (status) where.status = status;
@@ -294,6 +294,12 @@ export class TripsService {
       if (from) departureAt.gte = new Date(`${from}T00:00:00.000Z`);
       if (to) departureAt.lte = new Date(`${to}T23:59:59.999Z`);
       where.departureAt = departureAt;
+    }
+    if (originCityId || destinationCityId) {
+      const routeFilter: Record<string, unknown> = {};
+      if (originCityId) routeFilter.originCityId = originCityId;
+      if (destinationCityId) routeFilter.destinationCityId = destinationCityId;
+      where.route = routeFilter;
     }
     if (cursor) where.id = { lt: cursor };
 

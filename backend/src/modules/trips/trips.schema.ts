@@ -124,6 +124,8 @@ export const TripListQuerySchema = z.object({
   status: z
     .enum(['DRAFT', 'OPEN_FOR_BOOKING', 'CLOSED_FOR_BOOKING', 'DEPARTED', 'COMPLETED', 'CANCELLED'])
     .optional(),
+  originCityId: z.string().uuid().optional(),
+  destinationCityId: z.string().uuid().optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
