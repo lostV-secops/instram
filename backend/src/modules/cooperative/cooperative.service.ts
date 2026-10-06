@@ -518,11 +518,20 @@ export class CooperativeService {
     });
     if (!existing) throw new NotFoundError('Véhicule introuvable');
 
+    if (input.registration) {
+      const conflict = await this.db.vehicle.findFirst({
+        where: { cooperativeId, registration: input.registration, id: { not: vehicleId } },
+      });
+      if (conflict) throw new ConflictError(`Immatriculation ${input.registration} déjà utilisée`);
+    }
+
     const updated = await this.db.vehicle.update({
       where: { id: vehicleId },
       data: {
         ...(input.isActive !== undefined && { isActive: input.isActive }),
         ...(input.displayName !== undefined && { displayName: input.displayName }),
+        ...(input.registration !== undefined && { registration: input.registration }),
+        ...(input.model !== undefined && { model: input.model }),
       },
       include: {
         seatMap: {

@@ -29,6 +29,12 @@ interface VehicleForm {
   vehicleType: VehicleType;
 }
 
+interface EditForm {
+  displayName: string;
+  registration: string;
+  model: string;
+}
+
 const EMPTY_FORM: VehicleForm = { registration: '', displayName: '', model: '', capacity: '16', vehicleType: 'STANDARD' };
 
 export default function VehiclesPage() {
@@ -38,7 +44,6 @@ export default function VehiclesPage() {
   const [vehicles, setVehicles] = useState<CoopVehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [filter, setFilter] = useState<'active' | 'inactive'>('active');
 
   const [showForm, setShowForm] = useState(false);
@@ -48,7 +53,7 @@ export default function VehiclesPage() {
   const [savedId, setSavedId] = useState<string | null>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
+  const [editForm, setEditForm] = useState<EditForm>({ displayName: '', registration: '', model: '' });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -86,19 +91,38 @@ export default function VehiclesPage() {
     }
   };
 
+  const openEdit = (v: CoopVehicle) => {
+    setEditingId(v.id);
+    setEditForm({
+      displayName: v.displayName ?? '',
+      registration: v.registration ?? '',
+      model: v.model ?? '',
+    });
+    setEditError(null);
+  };
+
   const handleEditSave = async (vehicleId: string) => {
-    if (!editName.trim()) return;
+    if (!editForm.displayName.trim() || !editForm.registration.trim()) {
+      setEditError('Le nom et l\'immatriculation sont obligatoires');
+      return;
+    }
     setEditSaving(true);
     setEditError(null);
     try {
+      const body: Record<string, unknown> = {
+        displayName: editForm.displayName.trim(),
+        registration: editForm.registration.trim(),
+      };
+      if (editForm.model.trim()) body.model = editForm.model.trim();
+
       const res = await fetch(`/api/proxy/v1/coop/vehicles/${vehicleId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ displayName: editName.trim() }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as { message?: string }).message ?? `Erreur ${res.status}`);
+        const b = await res.json().catch(() => ({}));
+        throw new Error((b as { message?: string }).message ?? `Erreur ${res.status}`);
       }
       setEditingId(null);
       await load();
@@ -115,8 +139,8 @@ export default function VehiclesPage() {
     try {
       const res = await fetch(`/api/proxy/v1/coop/vehicles/${vehicleId}`, { method: 'DELETE' });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as { message?: string }).message ?? `Erreur ${res.status}`);
+        const b = await res.json().catch(() => ({}));
+        throw new Error((b as { message?: string }).message ?? `Erreur ${res.status}`);
       }
       await load();
     } catch (err) {
@@ -212,6 +236,12 @@ export default function VehiclesPage() {
         </div>
       )}
 
+      {deleteError && (
+        <div role="alert" className="bg-red-50 border border-red-300 text-red-700 rounded-xl px-4 py-3 text-sm">
+          {deleteError}
+        </div>
+      )}
+
       {showForm && (
         <form
           onSubmit={handleCreate}
@@ -282,12 +312,6 @@ export default function VehiclesPage() {
         </form>
       )}
 
-      {deleteError && (
-        <div role="alert" className="bg-red-50 border border-red-300 text-red-700 rounded-xl px-4 py-3 text-sm">
-          {deleteError}
-        </div>
-      )}
-
       {loading ? (
         <div className="bg-white border border-gray-200 rounded-xl p-8 text-center animate-pulse">
           <p className="text-sm text-gray-400">{t.coop.vehicles.loading}</p>
@@ -301,67 +325,79 @@ export default function VehiclesPage() {
       ) : (
         <div className="space-y-2">
           {displayed.map((v) => (
-            <div key={v.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 space-y-2">
-              <div className="flex items-center justify-between gap-4">
+            <div key={v.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              {/* Ligne principale */}
+              <div className="px-4 py-3 flex items-center justify-between gap-4">
                 <div className="min-w-0">
-                  {editingId === v.id ? (
-                    <input
-                      autoFocus
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      className="border border-brand-blue rounded-lg px-2 py-1 text-sm font-medium w-full max-w-xs focus:outline-none focus:ring-2 focus:ring-brand-blue"
-                    />
-                  ) : (
-                    <p className="font-medium text-brand-dark truncate">{v.displayName}</p>
-                  )}
+                  <p className="font-medium text-brand-dark truncate">{v.displayName}</p>
                   <p className="text-sm text-gray-500 font-mono">{v.registration}</p>
                   {v.model && <p className="text-xs text-gray-400">{v.model}</p>}
                   <p className="text-xs text-gray-400 mt-0.5">{v.capacity} {t.coop.vehicles.places}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
-                  {editingId === v.id ? (
-                    <>
-                      <Button variant="action" size="sm" isLoading={editSaving} onClick={() => handleEditSave(v.id)}>
-                        Enregistrer
-                      </Button>
-                      <Button variant="secondary" size="sm" onClick={() => setEditingId(null)}>
-                        Annuler
-                      </Button>
-                    </>
-                  ) : (
-                    <>
-                      <Link href={`/${lang}/coop/vehicles/${v.id}`}>
-                        <Button variant="secondary" size="sm">{t.coop.vehicles.see}</Button>
-                      </Link>
-                      {filter === 'inactive' && (
-                        <>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => { setEditingId(v.id); setEditName(v.displayName ?? ''); setEditError(null); }}
-                          >
-                            Modifier
-                          </Button>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            isLoading={deletingId === v.id}
-                            onClick={() => handleDelete(v.id)}
-                            className="text-red-600 border-red-200 hover:bg-red-50"
-                          >
-                            Supprimer
-                          </Button>
-                        </>
-                      )}
-                      <Button variant="secondary" size="sm" onClick={() => handleToggleActive(v)}>
-                        {v.isActive ? t.coop.vehicles.deactivate : t.coop.vehicles.reactivate}
-                      </Button>
-                    </>
+                  <Badge variant={v.isActive ? 'success' : 'neutral'}>
+                    {v.isActive ? t.coop.vehicles.active : t.coop.vehicles.inactive}
+                  </Badge>
+                  <Link href={`/${lang}/coop/vehicles/${v.id}`}>
+                    <Button variant="secondary" size="sm">{t.coop.vehicles.see}</Button>
+                  </Link>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => editingId === v.id ? setEditingId(null) : openEdit(v)}
+                  >
+                    {editingId === v.id ? 'Fermer' : 'Modifier'}
+                  </Button>
+                  {filter === 'inactive' && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      isLoading={deletingId === v.id}
+                      onClick={() => handleDelete(v.id)}
+                      className="text-red-600 border-red-200 hover:bg-red-50"
+                    >
+                      Supprimer
+                    </Button>
                   )}
+                  <Button variant="secondary" size="sm" onClick={() => handleToggleActive(v)}>
+                    {v.isActive ? t.coop.vehicles.deactivate : t.coop.vehicles.reactivate}
+                  </Button>
                 </div>
               </div>
-              {editingId === v.id && editError && (
-                <p className="text-red-600 text-xs">{editError}</p>
+
+              {/* Formulaire d'édition inline */}
+              {editingId === v.id && (
+                <div className="border-t border-gray-100 bg-blue-50 px-4 py-4 space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <Input
+                      label="Nom d'affichage"
+                      value={editForm.displayName}
+                      onChange={(e) => setEditForm((p) => ({ ...p, displayName: e.target.value }))}
+                      required
+                    />
+                    <Input
+                      label="Immatriculation"
+                      value={editForm.registration}
+                      onChange={(e) => setEditForm((p) => ({ ...p, registration: e.target.value }))}
+                      required
+                    />
+                    <Input
+                      label="Modèle"
+                      value={editForm.model}
+                      onChange={(e) => setEditForm((p) => ({ ...p, model: e.target.value }))}
+                      placeholder="Toyota Hiace"
+                    />
+                  </div>
+                  {editError && <p className="text-red-600 text-xs">{editError}</p>}
+                  <div className="flex gap-2">
+                    <Button variant="action" size="sm" isLoading={editSaving} onClick={() => handleEditSave(v.id)}>
+                      Enregistrer
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => setEditingId(null)}>
+                      Annuler
+                    </Button>
+                  </div>
+                </div>
               )}
             </div>
           ))}

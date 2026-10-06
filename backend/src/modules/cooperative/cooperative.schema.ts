@@ -59,10 +59,17 @@ export const UpdateVehicleSchema = z
   .object({
     isActive: z.boolean().optional(),
     displayName: z.string().min(1).max(100).optional(),
+    registration: z.string().min(1).max(30).optional(),
+    model: z.string().max(100).optional(),
   })
-  .refine((d) => d.isActive !== undefined || d.displayName !== undefined, {
-    message: 'Au moins un champ est requis',
-  });
+  .refine(
+    (d) =>
+      d.isActive !== undefined ||
+      d.displayName !== undefined ||
+      d.registration !== undefined ||
+      d.model !== undefined,
+    { message: 'Au moins un champ est requis' },
+  );
 
 // ------------------------------------------------------------------
 // Coopérative — mise à jour du profil public
