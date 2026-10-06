@@ -708,7 +708,15 @@
       "colPaidAt": "Nandoa tamin'ny",
       "statusManual": "Fanaraha-maso tsy tapaka",
       "statusPaid": "Nandoa",
-      "statusOverdue": "Tara"
+      "statusOverdue": "Tara",
+      "commissionsTitle": "Komisiona nalaina",
+      "noCommissions": "Tsy misy komisiona voatanisa.",
+      "colDate": "Daty",
+      "colBooking": "Fandraharahana",
+      "colPassenger": "Mpandeha",
+      "colSubtotal": "Vola tapakila",
+      "colCommission": "Komisiona InsTRAM",
+      "totalCommissions": "Komisiona iombonana"
     }
   },
   "admin": {

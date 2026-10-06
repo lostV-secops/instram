@@ -566,4 +566,24 @@ export default async function cooperativeRoutes(
       }
     },
   );
+
+  // ================================================================
+  // GAP E — Commissions (/coop/commissions)
+  // ================================================================
+
+  fastify.get(
+    '/commissions',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { cooperativeId } = await service.requireMembership(getUserId(req));
+        return reply.send(await service.getCoopCommissions(cooperativeId));
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'FORBIDDEN' || code === 'COOPERATIVE_SUSPENDED') return reply.status(403).send({ code, message: (err as Error).message });
+        req.log.error(err, 'getCoopCommissions error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
 }

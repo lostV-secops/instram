@@ -663,7 +663,15 @@
       "colPaidAt": "Payé le",
       "statusManual": "Suivi manuel",
       "statusPaid": "Payé",
-      "statusOverdue": "En retard"
+      "statusOverdue": "En retard",
+      "commissionsTitle": "Commissions prélevées",
+      "noCommissions": "Aucune commission enregistrée.",
+      "colDate": "Date",
+      "colBooking": "Réservation",
+      "colPassenger": "Passager",
+      "colSubtotal": "Montant billet",
+      "colCommission": "Commission InsTRAM",
+      "totalCommissions": "Total commissions"
     }
   },
   "admin": {

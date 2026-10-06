@@ -916,4 +916,44 @@ export class CooperativeService {
       createdAt: s.createdAt.toISOString(),
     }));
   }
+
+  // ================================================================
+  // GAP E — Commissions (/coop/commissions)
+  // Liste les commissions prélevées pour le plan COMMISSION
+  // ================================================================
+
+  async getCoopCommissions(cooperativeId: string): Promise<unknown[]> {
+    const commissions = await this.db.commission.findMany({
+      where: { cooperativeId },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: {
+        booking: {
+          select: {
+            id: true,
+            reference: true,
+            status: true,
+            seatSubtotalMga: true,
+            passengers: {
+              take: 1,
+              select: { firstName: true, lastName: true },
+            },
+          },
+        },
+      },
+    });
+    return commissions.map((c) => ({
+      id: c.id,
+      bookingId: c.bookingId,
+      bookingRef: c.booking.reference,
+      bookingStatus: c.booking.status,
+      passengerName: c.booking.passengers[0]
+        ? `${c.booking.passengers[0].firstName} ${c.booking.passengers[0].lastName}`.trim()
+        : null,
+      seatSubtotalMga: c.booking.seatSubtotalMga,
+      amountMga: c.amountMga,
+      pricingPlanRef: c.pricingPlanRef ?? null,
+      createdAt: c.createdAt.toISOString(),
+    }));
+  }
 }
