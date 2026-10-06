@@ -29,10 +29,19 @@ import { useWebSocket } from '@/lib/ws';
 import { useTranslations, useLang } from '@/components/TranslationsProvider';
 import Button from '@/components/ui/Button';
 import { SeatLegend } from './SeatLegend';
-import type { Seat, SeatHoldResponse, SeatConflictResponse, WsEvent } from '@/lib/types';
+import type { Seat, SeatHoldResponse, SeatConflictResponse, WsEvent, SeatCategory } from '@/lib/types';
 import type { Translations } from '@/lib/i18n';
 
 const HOLD_DURATION_SECONDS = 2 * 60; // 2 minutes
+
+const CATEGORY_LABELS: Record<SeatCategory, string> = {
+  VIP: 'VIP',
+  PREMIUM: 'Premium',
+  CLASSIC: 'Classique',
+  STANDARD: 'Standard',
+};
+
+interface FareInfo { category: SeatCategory; priceMga: number }
 
 interface SeatMapProps {
   tripId: string;
@@ -41,11 +50,22 @@ interface SeatMapProps {
   wsToken: string | null;
   /** Nombre de sièges demandés lors de la recherche (défaut 6) */
   maxSeats?: number;
+  /** Tarifs par catégorie — pour la légende et le total */
+  fares?: FareInfo[];
 }
+
+// ─── Couleurs par catégorie (sièges disponibles/sélectionnés) ─────────────────
+const CATEGORY_COLORS: Record<string, { idle: string; selected: string }> = {
+  VIP:      { idle: 'bg-amber-50  border-amber-400  text-amber-700  hover:bg-amber-400  hover:text-white focus:ring-amber-400',  selected: 'bg-amber-400  border-amber-500  text-white focus:ring-amber-400' },
+  PREMIUM:  { idle: 'bg-purple-50 border-purple-400 text-purple-700 hover:bg-purple-400 hover:text-white focus:ring-purple-400', selected: 'bg-purple-400 border-purple-500 text-white focus:ring-purple-400' },
+  CLASSIC:  { idle: 'bg-teal-50   border-teal-400   text-teal-700   hover:bg-teal-400   hover:text-white focus:ring-teal-400',   selected: 'bg-teal-400   border-teal-500   text-white focus:ring-teal-400' },
+  STANDARD: { idle: 'bg-gray-50   border-gray-400   text-gray-600   hover:bg-gray-400   hover:text-white focus:ring-gray-400',   selected: 'bg-gray-400   border-gray-500   text-white focus:ring-gray-400' },
+};
 
 // ─── Styles par statut ────────────────────────────────────────────────────────
 function getSeatClasses(
   displayStatus: string,
+  category: string,
   isSelected: boolean,
   isDisabled: boolean,
 ): string {
@@ -61,20 +81,21 @@ function getSeatClasses(
   if (displayStatus === 'HELD_BY_ME') {
     return `${base} bg-brand-light border-brand text-white focus:ring-brand`;
   }
+
+  const colors = CATEGORY_COLORS[category] ?? CATEGORY_COLORS.STANDARD;
+
   // AVAILABLE
   if (isSelected) {
-    return `${base} bg-brand-light border-brand text-white focus:ring-brand`;
+    return `${base} ${colors.selected}`;
   }
   return [
     base,
-    'bg-white border-brand text-brand focus:ring-brand',
-    isDisabled
-      ? 'cursor-not-allowed opacity-50'
-      : 'cursor-pointer hover:bg-brand hover:text-white',
+    colors.idle,
+    isDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
   ].join(' ');
 }
 
-export function SeatMap({ tripId, initialSeats, wsToken, maxSeats = 6 }: SeatMapProps) {
+export function SeatMap({ tripId, initialSeats, wsToken, maxSeats = 6, fares = [] }: SeatMapProps) {
   const t = useTranslations();
   const lang = useLang();
   const router = useRouter();
@@ -298,6 +319,11 @@ export function SeatMap({ tripId, initialSeats, wsToken, maxSeats = 6 }: SeatMap
     return `${m}:${String(s).padStart(2, '0')}`;
   };
 
+  // Total prix des sièges sélectionnés
+  const selectedTotal = seats
+    .filter((s) => selectedIds.has(s.seatDefinitionId))
+    .reduce((sum, s) => sum + s.priceMga, 0);
+
   return (
     <section aria-label={t.seats.title}>
       {/* Bandeau de reconnexion — bloque la sélection */}
@@ -346,6 +372,24 @@ export function SeatMap({ tripId, initialSeats, wsToken, maxSeats = 6 }: SeatMap
             {formatCountdown(holdCountdown)}
           </span>
           <span>{t.seats.holdExpiry}</span>
+        </div>
+      )}
+
+      {/* Légende catégories et prix */}
+      {fares.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {fares.map((f) => {
+            const colors = CATEGORY_COLORS[f.category] ?? CATEGORY_COLORS.STANDARD;
+            return (
+              <span
+                key={f.category}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${colors.idle.split('hover:')[0].trim()}`}
+              >
+                {CATEGORY_LABELS[f.category]}
+                <span className="tabular-nums">{f.priceMga.toLocaleString('fr-MG')} Ar</span>
+              </span>
+            );
+          })}
         </div>
       )}
 
@@ -406,6 +450,7 @@ export function SeatMap({ tripId, initialSeats, wsToken, maxSeats = 6 }: SeatMap
                         title={`${seat.code} — ${seat.priceMga.toLocaleString('fr-MG')} Ar`}
                         className={getSeatClasses(
                           displayStatus,
+                          seat.category,
                           isSelected,
                           !isInteractive,
                         )}
@@ -422,6 +467,18 @@ export function SeatMap({ tripId, initialSeats, wsToken, maxSeats = 6 }: SeatMap
 
       {/* Légende */}
       <SeatLegend t={t} />
+
+      {/* Total sélection */}
+      {selectedIds.size > 0 && selectedTotal > 0 && (
+        <div className="mt-4 bg-brand/5 border border-brand/20 rounded-lg px-4 py-2 flex items-center justify-between text-sm">
+          <span className="text-gray-600">
+            {selectedIds.size} siège{selectedIds.size > 1 ? 's' : ''} sélectionné{selectedIds.size > 1 ? 's' : ''}
+          </span>
+          <span className="font-bold text-brand-dark tabular-nums">
+            {selectedTotal.toLocaleString('fr-MG')} Ar
+          </span>
+        </div>
+      )}
 
       {/* Bouton "Continuer vers la réservation" — VERT TRANSACTIONNEL */}
       <div className="mt-6">

@@ -247,6 +247,7 @@ export default async function TripDetailPage({ params, searchParams }: PageProps
             initialSeats={seatMapData.seats}
             wsToken={wsToken}
             maxSeats={requestedPassengers}
+            fares={sortedFares}
           />
         ) : (
           <div className="bg-red-50 border border-red-300 text-red-700 rounded-lg p-4 text-sm">
