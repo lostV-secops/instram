@@ -75,16 +75,29 @@ export default function VehiclesPage() {
     if (!form.displayName.trim()) { setFormError(t.coop.vehicles.validation.displayName); return; }
     if (!cap || cap < 1) { setFormError(t.coop.vehicles.validation.capacity); return; }
 
+    // Générer un plan de sièges par défaut : 2 colonnes, catégorie STANDARD
+    // La coop peut affiner sur la page détail du véhicule.
+    const cols = 2;
+    const rows = Math.ceil(cap / cols);
+    const colLetters = ['A', 'B'];
+    const defaultSeats: { code: string; row: number; col: number; category: 'STANDARD' }[] = [];
+    for (let r = 0; r < rows && defaultSeats.length < cap; r++) {
+      for (let c = 0; c < cols && defaultSeats.length < cap; c++) {
+        defaultSeats.push({ code: `${r + 1}${colLetters[c]}`, row: r, col: c, category: 'STANDARD' });
+      }
+    }
+
     setSaving(true);
     try {
       const res = await fetch('/api/proxy/v1/coop/vehicles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          registration: form.registration.trim(),
-          displayName: form.displayName.trim(),
-          model: form.model.trim() || null,
+          name: form.displayName.trim(),
+          licensePlate: form.registration.trim(),
+          model: form.model.trim() || undefined,
           capacity: cap,
+          seatMap: { rows, cols, seats: defaultSeats },
         }),
       });
       if (!res.ok) {
