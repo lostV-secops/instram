@@ -72,7 +72,7 @@ export class TripsService {
 
   async getRoutes(cooperativeId: string): Promise<unknown[]> {
     const routes = await this.db.route.findMany({
-      where: { cooperativeId, isActive: true },
+      where: { cooperativeId },
       include: {
         origin: { select: { id: true, nameFr: true, nameMg: true, district: true, region: true } },
         destination: { select: { id: true, nameFr: true, nameMg: true, district: true, region: true } },
