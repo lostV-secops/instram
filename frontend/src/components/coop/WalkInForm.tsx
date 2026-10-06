@@ -83,12 +83,13 @@ export function WalkInForm() {
   // ─── Charger les trajets du jour ─────────────────────────────────────────────
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10);
+    const in7Days = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
     const loadTrips = async () => {
       setTripsLoading(true);
       setTripsError(null);
       try {
         const res = await fetch(
-          `/api/proxy/v1/coop/trips?from=${today}&to=${today}&status=OPEN_FOR_BOOKING&limit=50`,
+          `/api/proxy/v1/coop/trips?from=${today}&to=${in7Days}&status=OPEN_FOR_BOOKING&limit=50`,
           { cache: 'no-store' },
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -288,7 +289,7 @@ export function WalkInForm() {
         )}
 
         {!tripsLoading && !tripsError && trips.length === 0 && (
-          <p className="text-sm text-gray-500">Aucun trajet ouvert aujourd'hui.</p>
+          <p className="text-sm text-gray-500">Aucun trajet ouvert dans les 7 prochains jours.</p>
         )}
 
         {!tripsLoading && trips.length > 0 && (
