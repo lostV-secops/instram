@@ -79,6 +79,15 @@ async function proxyRequest(
     );
   }
 
+  // Les statuts sans corps (204, 304) ne doivent pas transmettre de body ni de Content-Type.
+  const NO_BODY_STATUSES = [204, 304];
+  if (NO_BODY_STATUSES.includes(backendResponse.status)) {
+    return new NextResponse(null, {
+      status: backendResponse.status,
+      headers: { 'Cache-Control': 'no-store' },
+    });
+  }
+
   // Transmettre la réponse du backend telle quelle (statut + corps)
   // On utilise arrayBuffer() pour gérer à la fois le texte (JSON) et le binaire (PDF, CSV…).
   const responseBuffer = await backendResponse.arrayBuffer();

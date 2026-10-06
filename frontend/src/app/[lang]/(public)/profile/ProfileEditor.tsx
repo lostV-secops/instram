@@ -76,7 +76,10 @@ export function ProfileEditor({ me, lang }: Props) {
       if (!res.ok && res.status !== 204) {
         throw new Error(`Erreur ${res.status}`);
       }
-      router.push(`/${lang}/auth/login`);
+      // Effacer les cookies de session avant la redirection
+      await fetch('/api/auth/logout', { method: 'POST', redirect: 'manual' }).catch(() => {});
+      // Navigation dure pour vider le cache App Router et les cookies
+      window.location.href = `/${lang}/auth/login`;
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Erreur réseau.');
       setDeleting(false);
