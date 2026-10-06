@@ -60,7 +60,7 @@ export function FareEditor({ tripId, initialFares }: FareEditorProps) {
     // Construire le tableau de tarifs (ne soumettre que les prix renseignés)
     const faresPayload = CATEGORIES.filter((cat) => prices[cat].trim() !== '').map((cat) => {
       const parsed = parseInt(prices[cat], 10);
-      return { category: cat, priceMga: isNaN(parsed) ? 0 : parsed };
+      return { seatCategory: cat, priceMga: isNaN(parsed) ? 0 : parsed };
     });
 
     if (faresPayload.length === 0) {
