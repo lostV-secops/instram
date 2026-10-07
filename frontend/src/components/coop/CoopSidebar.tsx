@@ -96,6 +96,13 @@ const IconSettings = () => (
   </svg>
 );
 
+const IconUser = () => (
+  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>
+);
+
 const IconTruck = () => (
   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
     <rect x="1" y="3" width="15" height="13" rx="1" />
@@ -130,6 +137,7 @@ export function CoopSidebar({ isOpen, onClose }: CoopSidebarProps) {
     { href: `${base}/exports`, label: t.coop.nav.exports, icon: <IconDownload /> },
     { href: `${base}/billing`, label: t.coop.nav.billing, icon: <IconTag /> },
     { href: `${base}/settings`, label: t.coop.nav.settings, icon: <IconSettings /> },
+    { href: `${base}/profile`, label: lang === 'mg' ? 'Ny mombamomba anao' : 'Mon profil', icon: <IconUser /> },
   ];
 
   const isActive = (href: string) => {

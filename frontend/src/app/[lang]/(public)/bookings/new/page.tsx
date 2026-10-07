@@ -15,7 +15,7 @@ import { getAccessToken, COOKIE_USER_INFO, parseUserInfoCookie } from '@/lib/aut
 import { cookies } from 'next/headers';
 import { BookingSummary } from '@/components/booking/BookingSummary';
 import { PaymentForm } from '@/components/booking/PaymentForm';
-import type { TripInstanceDetail, SeatHoldResponse, Lang } from '@/lib/types';
+import type { TripInstanceDetail, SeatHoldResponse, Lang, Me } from '@/lib/types';
 import { AppError } from '@/lib/api';
 
 interface PageProps {
@@ -57,6 +57,7 @@ export default async function BookingNewPage({
 
   // Ticket WS pour la confirmation de paiement
   let wsToken: string | null = null;
+  let ownerProfile: Me | null = null;
   const accessToken = await getAccessToken();
   if (accessToken) {
     try {
@@ -67,6 +68,12 @@ export default async function BookingNewPage({
       wsToken = wsData.ticket;
     } catch {
       // Pas de WS — PaymentForm fonctionnera sans confirmation temps réel
+    }
+
+    try {
+      ownerProfile = await apiGet<Me>('/auth/me', { cache: 'no-store' });
+    } catch {
+      // Profil indisponible — l'utilisateur saisira manuellement
     }
   }
 
@@ -147,6 +154,7 @@ export default async function BookingNewPage({
         lang={lang}
         wsToken={wsToken}
         userId={userInfo?.id ?? null}
+        ownerProfile={ownerProfile}
       />
     </div>
   );

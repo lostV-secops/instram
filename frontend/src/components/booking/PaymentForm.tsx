@@ -29,6 +29,7 @@ import Input from '@/components/ui/Input';
 import PhoneInput from '@/components/ui/PhoneInput';
 import type {
   Booking,
+  Me,
   PaymentInitiation,
   SeatHoldResponse,
   WsEvent,
@@ -52,6 +53,8 @@ interface PaymentFormProps {
   wsToken: string | null;
   /** userId pour le canal booking:{userId} */
   userId: string | null;
+  /** Profil du compte connecté — pré-remplit le premier siège */
+  ownerProfile?: Me | null;
 }
 
 // ─── Validation Zod ───────────────────────────────────────────────────────────
@@ -77,22 +80,25 @@ export function PaymentForm({
   lang,
   wsToken,
   userId,
+  ownerProfile,
 }: PaymentFormProps) {
   const t = useTranslations();
   const router = useRouter();
 
   // ─── État formulaire ────────────────────────────────────────────────────────
   const [passengers, setPassengers] = useState<PassengerFormData[]>(
-    holdSeats.map((s) => ({
-      firstName: '',
-      lastName: '',
-      phone: '',
+    holdSeats.map((s, i) => ({
+      firstName: i === 0 ? (ownerProfile?.traveler?.firstName ?? '') : '',
+      lastName:  i === 0 ? (ownerProfile?.traveler?.lastName  ?? '') : '',
+      phone:     i === 0 ? (ownerProfile?.phone ?? '') : '',
       nationalIdRef: '',
       seatCode: s.code,
     })),
   );
   const [provider, setProvider] = useState<PaymentProvider>('MVOLA');
-  const [payerPhone, setPayerPhone] = useState('');
+  const [payerPhone, setPayerPhone] = useState(
+    ownerProfile?.traveler?.mobileMoneyPhone ?? ownerProfile?.phone ?? '',
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // ─── État de la requête ─────────────────────────────────────────────────────
@@ -381,15 +387,22 @@ export function PaymentForm({
           className="bg-white rounded-xl border border-gray-200 p-4 space-y-3"
           aria-labelledby={`passenger-heading-${index}`}
         >
-          <h2
-            id={`passenger-heading-${index}`}
-            className="text-sm font-semibold text-brand-dark"
-          >
-            {t.booking.passengerSection.replace('{n}', String(index + 1))}
-            <span className="text-gray-400 font-normal ml-2">
-              — {t.booking.seat} {passenger.seatCode}
-            </span>
-          </h2>
+          <div className="flex items-center justify-between flex-wrap gap-1">
+            <h2
+              id={`passenger-heading-${index}`}
+              className="text-sm font-semibold text-brand-dark"
+            >
+              {t.booking.passengerSection.replace('{n}', String(index + 1))}
+              <span className="text-gray-400 font-normal ml-2">
+                — {t.booking.seat} {passenger.seatCode}
+              </span>
+            </h2>
+            {index === 0 && ownerProfile?.traveler && (
+              <span className="text-xs text-brand bg-brand/10 px-2 py-0.5 rounded-full">
+                {lang === 'mg' ? 'Ny anao' : 'Votre compte'}
+              </span>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <Input

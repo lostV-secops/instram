@@ -109,14 +109,20 @@ export default function LoginPage() {
         return;
       }
 
-      // Si pas de redirect explicite, orienter les membres coop vers leur back-office
+      // Si pas de redirect explicite, orienter selon le rôle
       let destination = redirectTo;
       if (!searchParams.get('redirect')) {
         try {
           const data = await response.json() as { roles?: string[] };
-          const coopRoles = ['COOP_ADMIN', 'COOP_ASSISTANT', 'COOP_DRIVER', 'COOP_CONTROLLER'];
-          if (data.roles?.some((r) => coopRoles.includes(r))) {
+          const adminRoles = ['ADMIN_SUPER', 'ADMIN_OPS', 'ADMIN_MODERATOR'];
+          const coopRoles  = ['COOP_ADMIN', 'COOP_ASSISTANT', 'COOP_DRIVER', 'COOP_CONTROLLER'];
+          const driverOnly = ['COOP_DRIVER'];
+          if (data.roles?.some((r) => adminRoles.includes(r))) {
+            destination = '/fr/admin';
+          } else if (data.roles?.some((r) => coopRoles.includes(r))) {
             destination = `/${lang}/coop`;
+          } else if (data.roles?.some((r) => driverOnly.includes(r))) {
+            destination = `/${lang}/driver`;
           }
         } catch { /* ignore */ }
       }
