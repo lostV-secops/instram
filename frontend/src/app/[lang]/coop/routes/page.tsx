@@ -19,6 +19,23 @@ interface EditForm {
   estimatedDurationMin: string;
 }
 
+function formatDuration(minutes: number): string {
+  const totalHours = Math.floor(minutes / 60);
+  const remainingMin = minutes % 60;
+  if (minutes < 1440) {
+    // moins de 24h → afficher en heures
+    return remainingMin === 0
+      ? `${totalHours}h`
+      : `${totalHours}h${String(remainingMin).padStart(2, '0')}`;
+  }
+  // 24h et plus → afficher en jours
+  const days = Math.floor(minutes / 1440);
+  const leftoverMin = minutes % 1440;
+  const leftoverHours = Math.floor(leftoverMin / 60);
+  if (leftoverHours === 0) return `${days}j`;
+  return `${days}j ${leftoverHours}h`;
+}
+
 export default function RoutesPage() {
   const { lang } = useCoop();
   const t = getTranslations(lang);
@@ -187,7 +204,7 @@ export default function RoutesPage() {
                       <td className="py-3 px-4 text-sm text-gray-600">{r.originCity?.name ?? '—'}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{r.destinationCity?.name ?? '—'}</td>
                       <td className="py-3 px-4 text-sm text-gray-500 tabular-nums">
-                        {r.estimatedDurationMin ? `${r.estimatedDurationMin} ${t.coop.routes.min}` : '—'}
+                        {r.estimatedDurationMin ? formatDuration(r.estimatedDurationMin) : '—'}
                       </td>
                       <td className="py-3 px-4">
                         <Badge variant={r.isActive ? 'success' : 'neutral'}>
