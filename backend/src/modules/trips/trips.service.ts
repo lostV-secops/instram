@@ -1119,8 +1119,13 @@ export class TripsService {
     if (!trip) throw new NotFoundError('Trajet introuvable');
 
     if (trip.status === 'CANCELLED') {
-      // Déjà annulé : suppression physique de la base
-      await this.db.tripInstance.delete({ where: { id: tripInstanceId } });
+      // Suppression physique en transaction :
+      // 1. Réservations en premier (BookingSeat, BoardingEvent, AbsenceEvent cascadent depuis Booking)
+      // 2. Puis TripInstance (Fare, SeatHold, TripDepartureEvent cascadent)
+      await this.db.$transaction(async (tx) => {
+        await tx.booking.deleteMany({ where: { tripInstanceId } });
+        await tx.tripInstance.delete({ where: { id: tripInstanceId } });
+      });
       return { cancelledBookings: 0 };
     }
 
