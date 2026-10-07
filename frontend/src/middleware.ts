@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   COOKIE_ACCESS,
   COOKIE_REFRESH,
+  COOKIE_USER_INFO,
   ACCESS_TOKEN_MAX_AGE,
   REFRESH_TOKEN_MAX_AGE,
   sessionCookieOptions,
@@ -19,6 +20,24 @@ const BACKEND_URL =
 
 /** Routes qui nécessitent une session active (redirection vers login sinon) */
 const PROTECTED_PATH_SEGMENTS = ['/bookings', '/coop', '/driver', '/admin', '/profile'];
+
+/** Rôles identifiant un membre de coopérative */
+const COOP_ROLES = ['COOP_ADMIN', 'COOP_ASSISTANT', 'COOP_DRIVER', 'COOP_CONTROLLER'];
+
+/** Segments réservés aux voyageurs — un membre coop est redirigé vers /coop */
+const TRAVELER_ONLY_SEGMENTS = ['/bookings', '/profile'];
+
+/** Extrait les rôles depuis le cookie public instram_user */
+function getRolesFromCookie(request: NextRequest): string[] {
+  try {
+    const raw = request.cookies.get(COOKIE_USER_INFO)?.value;
+    if (!raw) return [];
+    const info = JSON.parse(decodeURIComponent(raw)) as { roles?: string[] };
+    return info.roles ?? [];
+  } catch {
+    return [];
+  }
+}
 
 function getPreferredLocale(request: NextRequest): Locale {
   const cookieLocale = request.cookies.get(LOCALE_COOKIE)?.value;
@@ -107,10 +126,24 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
         path: '/',
         sameSite: 'lax',
       });
+      if (isTravelerOnly(pathname, currentLocale)) {
+        const roles = getRolesFromCookie(request);
+        if (roles.some((r) => COOP_ROLES.includes(r))) {
+          return NextResponse.redirect(new URL(`/${currentLocale}/coop`, request.url));
+        }
+      }
       if (requiresAuth(pathname, currentLocale)) {
         return handleAuthCheck(request, response, pathname, currentLocale);
       }
       return response;
+    }
+  }
+
+  // Redirection des membres coop hors de l'espace voyageur (avant le check auth)
+  if (currentLocale && isTravelerOnly(pathname, currentLocale)) {
+    const roles = getRolesFromCookie(request);
+    if (roles.some((r) => COOP_ROLES.includes(r))) {
+      return NextResponse.redirect(new URL(`/${currentLocale}/coop`, request.url));
     }
   }
 
@@ -197,6 +230,13 @@ async function handleAuthCheck(
 
 function requiresAuth(pathname: string, locale: Locale): boolean {
   return PROTECTED_PATH_SEGMENTS.some((segment) => {
+    const base = `/${locale}${segment}`;
+    return pathname === base || pathname.startsWith(`${base}/`);
+  });
+}
+
+function isTravelerOnly(pathname: string, locale: Locale): boolean {
+  return TRAVELER_ONLY_SEGMENTS.some((segment) => {
     const base = `/${locale}${segment}`;
     return pathname === base || pathname.startsWith(`${base}/`);
   });
