@@ -62,7 +62,7 @@ const categoryOrder: SeatCategory[] = ['VIP', 'PREMIUM', 'CLASSIC', 'STANDARD'];
 
 export default async function TripDetailPage({ params, searchParams }: PageProps) {
   const { lang, tripId } = params;
-  const requestedPassengers = Math.min(6, Math.max(1, Number(searchParams.passengers ?? 1)));
+  const rawPassengers = Math.max(1, Number(searchParams.passengers ?? 1));
 
   if (!isValidLang(lang)) return null;
 
@@ -115,6 +115,8 @@ export default async function TripDetailPage({ params, searchParams }: PageProps
 
   const { cooperative, route, vehicle, departureAt, arrivalEstimatedAt, fares, policy } =
     trip;
+
+  const requestedPassengers = Math.min(vehicle.capacity, rawPassengers);
 
   // Trier les tarifs par ordre de catégorie
   const sortedFares = [...fares].sort(
