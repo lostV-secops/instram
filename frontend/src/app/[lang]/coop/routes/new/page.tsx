@@ -280,7 +280,7 @@ export default function NewRoutePage() {
   const [destinationCityId, setDestinationCityId] = useState('');
   const [destinationCity, setDestinationCity] = useState<City | null>(null);
   const [distanceKm, setDistanceKm] = useState('');
-  const [estimatedDurationMin, setEstimatedDurationMin] = useState('');
+  const [durationHours, setDurationHours] = useState('');
 
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -311,7 +311,7 @@ export default function NewRoutePage() {
         destinationCityId,
       };
       if (distanceKm) payload.distanceKm = parseInt(distanceKm, 10);
-      if (estimatedDurationMin) payload.estimatedDurationMin = parseInt(estimatedDurationMin, 10);
+      if (durationHours) payload.estimatedDurationMin = Math.round(parseFloat(durationHours) * 60);
 
       const res = await fetch('/api/proxy/v1/coop/routes', {
         method: 'POST',
@@ -384,14 +384,29 @@ export default function NewRoutePage() {
           disabled={isSubmitting}
         />
 
-        <Input
-          label={t.coop.routes.new.durationMin}
-          type="number"
-          min="0"
-          value={estimatedDurationMin}
-          onChange={(e) => setEstimatedDurationMin(e.target.value)}
-          disabled={isSubmitting}
-        />
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-gray-800">Durée estimée (heures)</label>
+          <input
+            type="number"
+            min="0"
+            step="0.5"
+            value={durationHours}
+            onChange={(e) => setDurationHours(e.target.value)}
+            disabled={isSubmitting}
+            placeholder="Ex : 1.5 pour 1h30"
+            className="block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-gray-50"
+          />
+          {durationHours && !isNaN(parseFloat(durationHours)) && (
+            <p className="text-xs text-gray-500">
+              → {(() => {
+                const min = Math.round(parseFloat(durationHours) * 60);
+                const h = Math.floor(min / 60);
+                const m = min % 60;
+                return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`;
+              })()}
+            </p>
+          )}
+        </div>
 
         {submitError && (
           <div role="alert" className="bg-red-50 border border-red-300 text-red-700 rounded-lg px-4 py-3 text-sm">

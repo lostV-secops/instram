@@ -16,7 +16,7 @@ import type { CoopRouteDetail } from '@/lib/types';
 interface EditForm {
   displayName: string;
   distanceKm: string;
-  estimatedDurationMin: string;
+  durationHours: string;
 }
 
 function formatDuration(minutes: number): string {
@@ -46,7 +46,7 @@ export default function RoutesPage() {
   const [filter, setFilter] = useState<'active' | 'inactive'>('active');
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<EditForm>({ displayName: '', distanceKm: '', estimatedDurationMin: '' });
+  const [editForm, setEditForm] = useState<EditForm>({ displayName: '', distanceKm: '', durationHours: '' });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -90,9 +90,9 @@ export default function RoutesPage() {
     try {
       const body: Record<string, unknown> = { displayName: editForm.displayName.trim() };
       const dist = parseInt(editForm.distanceKm, 10);
-      const dur = parseInt(editForm.estimatedDurationMin, 10);
+      const hours = parseFloat(editForm.durationHours);
       if (!isNaN(dist) && dist > 0) body.distanceKm = dist;
-      if (!isNaN(dur) && dur > 0) body.estimatedDurationMin = dur;
+      if (!isNaN(hours) && hours > 0) body.estimatedDurationMin = Math.round(hours * 60);
 
       const res = await fetch(`/api/proxy/v1/coop/routes/${routeId}`, {
         method: 'PATCH',
@@ -233,7 +233,7 @@ export default function RoutesPage() {
                                 setEditForm({
                                   displayName: r.displayName ?? '',
                                   distanceKm: r.distanceKm ? String(r.distanceKm) : '',
-                                  estimatedDurationMin: r.estimatedDurationMin ? String(r.estimatedDurationMin) : '',
+                                  durationHours: r.estimatedDurationMin ? String(r.estimatedDurationMin / 60) : '',
                                 });
                                 setEditError(null);
                               }
@@ -293,11 +293,13 @@ export default function RoutesPage() {
                               onChange={(e) => setEditForm((p) => ({ ...p, distanceKm: e.target.value }))}
                             />
                             <Input
-                              label="Durée estimée (min)"
+                              label="Durée estimée (heures)"
                               type="number"
-                              min={1}
-                              value={editForm.estimatedDurationMin}
-                              onChange={(e) => setEditForm((p) => ({ ...p, estimatedDurationMin: e.target.value }))}
+                              min={0}
+                              step={0.5}
+                              value={editForm.durationHours}
+                              onChange={(e) => setEditForm((p) => ({ ...p, durationHours: e.target.value }))}
+                              placeholder="Ex : 1.5 pour 1h30"
                             />
                           </div>
                           {editError && <p className="text-red-600 text-xs mt-2">{editError}</p>}
