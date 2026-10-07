@@ -1,10 +1,14 @@
 /**
- * Interface EmailProvider + adaptateurs Stub (dev) et SMTP (prod).
+ * Interface EmailProvider + adaptateurs Stub (dev), SMTP et API Brevo (prod).
  * Architecture symétrique au SmsProvider.
  *
  * Variables d'environnement :
- *   EMAIL_PROVIDER=stub|smtp  (défaut : stub)
- *   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM
+ *   EMAIL_PROVIDER=stub|smtp|brevo  (défaut : stub)
+ *   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM  (provider smtp)
+ *   BREVO_API_KEY, SMTP_FROM                               (provider brevo)
+ *
+ * Privilégier EMAIL_PROVIDER=brevo en production : l'API REST Brevo
+ * n'impose aucune restriction d'adresse IP (contrairement au relais SMTP).
  */
 
 import nodemailer, { Transporter } from 'nodemailer';
@@ -70,12 +74,59 @@ export class SmtpEmailProvider implements EmailProvider {
 }
 
 // =====================================================================
+// API REST Brevo (recommandé en production — pas de restriction IP)
+// =====================================================================
+
+export class BrevoApiEmailProvider implements EmailProvider {
+  private readonly apiKey: string;
+  private readonly from: { name: string; email: string };
+
+  constructor() {
+    const apiKey = process.env.BREVO_API_KEY;
+    if (!apiKey) throw new Error('[BrevoApiEmailProvider] BREVO_API_KEY manquant');
+
+    this.apiKey = apiKey;
+
+    const fromEnv = process.env.SMTP_FROM ?? 'InsTRAM <noreply@instram.mg>';
+    // Décompose "Nom <email>" ou "email"
+    const match = fromEnv.match(/^(.+?)\s*<(.+?)>$/);
+    this.from = match
+      ? { name: match[1].trim(), email: match[2].trim() }
+      : { name: 'InsTRAM', email: fromEnv.trim() };
+  }
+
+  async send(params: EmailSendParams): Promise<void> {
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': this.apiKey,
+      },
+      body: JSON.stringify({
+        sender: this.from,
+        to: [{ email: params.to }],
+        subject: params.subject,
+        textContent: params.text,
+        htmlContent: params.html,
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`[BrevoApiEmailProvider] Erreur ${res.status}: ${body}`);
+    }
+  }
+}
+
+// =====================================================================
 // Factory
 // =====================================================================
 
 export function createEmailProvider(): EmailProvider {
   const provider = (process.env.EMAIL_PROVIDER ?? 'stub').toLowerCase();
   switch (provider) {
+    case 'brevo':
+      return new BrevoApiEmailProvider();
     case 'smtp':
       return new SmtpEmailProvider();
     case 'stub':
