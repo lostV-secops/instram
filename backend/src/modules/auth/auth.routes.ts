@@ -253,6 +253,8 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       } catch (err) {
         const code = (err as NodeJS.ErrnoException).code;
         if (code === 'NOT_FOUND') return reply.status(404).send({ code, message: 'Utilisateur introuvable' });
+        if (code === 'DUPLICATE_EMAIL') return reply.status(409).send({ code, message: (err as Error).message });
+        if (code === 'DUPLICATE_PHONE') return reply.status(409).send({ code, message: (err as Error).message });
         req.log.error(err, 'updateMe error');
         return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
       }

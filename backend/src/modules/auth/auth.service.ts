@@ -819,12 +819,38 @@ export class AuthService {
   // ------------------------------------------------------------------
 
   async updateMe(userId: string, input: UpdateMeInput): Promise<SafeUser> {
+    // Vérification d'unicité email
+    if (input.email) {
+      const conflict = await this.db.user.findFirst({
+        where: { email: input.email, id: { not: userId } },
+      });
+      if (conflict) {
+        const err = new Error('Cet email est déjà utilisé par un autre compte');
+        (err as NodeJS.ErrnoException).code = 'DUPLICATE_EMAIL';
+        throw err;
+      }
+    }
+
+    // Vérification d'unicité téléphone
+    if (input.phone) {
+      const conflict = await this.db.user.findFirst({
+        where: { phone: input.phone, id: { not: userId } },
+      });
+      if (conflict) {
+        const err = new Error('Ce numéro est déjà utilisé par un autre compte');
+        (err as NodeJS.ErrnoException).code = 'DUPLICATE_PHONE';
+        throw err;
+      }
+    }
+
     await this.db.$transaction(async (tx) => {
-      if (input.preferredLang !== undefined) {
-        await tx.user.update({
-          where: { id: userId },
-          data: { preferredLang: input.preferredLang as Lang },
-        });
+      const userData: Record<string, unknown> = {};
+      if (input.preferredLang !== undefined) userData.preferredLang = input.preferredLang as Lang;
+      if (input.email !== undefined) userData.email = input.email || null;
+      if (input.phone !== undefined) userData.phone = input.phone || null;
+
+      if (Object.keys(userData).length > 0) {
+        await tx.user.update({ where: { id: userId }, data: userData });
       }
 
       const profileData: Record<string, unknown> = {};
@@ -835,9 +861,10 @@ export class AuthService {
       }
 
       if (Object.keys(profileData).length > 0) {
-        await tx.travelerProfile.update({
+        await tx.travelerProfile.upsert({
           where: { userId },
-          data: profileData,
+          update: profileData,
+          create: { userId, firstName: '', lastName: '', ...profileData },
         });
       }
     });

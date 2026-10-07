@@ -22,6 +22,8 @@ export function ProfileEditor({ me, lang }: Props) {
   const [editing, setEditing] = useState(false);
   const [firstName, setFirstName] = useState(me.traveler?.firstName ?? '');
   const [lastName, setLastName] = useState(me.traveler?.lastName ?? '');
+  const [email, setEmail] = useState(me.email ?? '');
+  const [phone, setPhone] = useState(me.phone ?? '');
   const [mobileMoneyPhone, setMobileMoneyPhone] = useState(me.traveler?.mobileMoneyPhone ?? '');
   const [preferredLang, setPreferredLang] = useState<'FR' | 'MG'>(
     me.preferredLang === 'mg' ? 'MG' : 'FR',
@@ -47,6 +49,8 @@ export function ProfileEditor({ me, lang }: Props) {
     body.preferredLang = preferredLang;
     if (mobileMoneyPhone.trim()) body.mobileMoneyPhone = mobileMoneyPhone.trim();
     else body.mobileMoneyPhone = '';
+    body.email = email.trim();
+    body.phone = phone.trim();
 
     try {
       const res = await fetch('/api/proxy/v1/auth/me', {
@@ -116,6 +120,23 @@ export function ProfileEditor({ me, lang }: Props) {
               disabled={saving}
             />
           </div>
+
+          <Input
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={saving}
+            placeholder="exemple@mail.mg"
+          />
+
+          <PhoneInput
+            label="Numéro de téléphone"
+            value={phone}
+            onChange={setPhone}
+            hint="Format international (ex. +261 34 00 000 00)"
+            disabled={saving}
+          />
 
           <PhoneInput
             label={tp.mobileMoneyPhoneOptional}
