@@ -109,23 +109,18 @@ export default function LoginPage() {
         return;
       }
 
-      // Si pas de redirect explicite, orienter selon le rôle
+      // Orienter selon le rôle — le rôle prime toujours sur le redirect param
       let destination = redirectTo;
-      if (!searchParams.get('redirect')) {
-        try {
-          const data = await response.json() as { roles?: string[] };
-          const adminRoles = ['ADMIN_SUPER', 'ADMIN_OPS', 'ADMIN_MODERATOR'];
-          const coopRoles  = ['COOP_ADMIN', 'COOP_ASSISTANT', 'COOP_DRIVER', 'COOP_CONTROLLER'];
-          const driverOnly = ['COOP_DRIVER'];
-          if (data.roles?.some((r) => adminRoles.includes(r))) {
-            destination = '/fr/admin';
-          } else if (data.roles?.some((r) => coopRoles.includes(r))) {
-            destination = `/${lang}/coop`;
-          } else if (data.roles?.some((r) => driverOnly.includes(r))) {
-            destination = `/${lang}/driver`;
-          }
-        } catch { /* ignore */ }
-      }
+      try {
+        const data = await response.json() as { roles?: string[] };
+        const adminRoles = ['ADMIN_SUPER', 'ADMIN_OPS', 'ADMIN_MODERATOR'];
+        const coopRoles  = ['COOP_ADMIN', 'COOP_ASSISTANT', 'COOP_DRIVER', 'COOP_CONTROLLER'];
+        if (data.roles?.some((r) => adminRoles.includes(r))) {
+          destination = '/fr/admin';
+        } else if (data.roles?.some((r) => coopRoles.includes(r))) {
+          destination = `/${lang}/coop`;
+        }
+      } catch { /* ignore */ }
 
       router.push(destination);
       router.refresh();
