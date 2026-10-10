@@ -138,13 +138,21 @@ export const UpdateMeSchema = z
       .regex(/^\+[1-9]\d{6,14}$/, 'Format international requis')
       .optional()
       .or(z.literal('')),
+    email: z.string().email('Email invalide').max(200).optional().or(z.literal('')),
+    phone: z
+      .string()
+      .regex(/^\+[1-9]\d{6,14}$/, 'Format international requis')
+      .optional()
+      .or(z.literal('')),
   })
   .refine(
     (d) =>
       d.firstName !== undefined ||
       d.lastName !== undefined ||
       d.preferredLang !== undefined ||
-      d.mobileMoneyPhone !== undefined,
+      d.mobileMoneyPhone !== undefined ||
+      d.email !== undefined ||
+      d.phone !== undefined,
     { message: 'Au moins un champ est requis' },
   );
 
