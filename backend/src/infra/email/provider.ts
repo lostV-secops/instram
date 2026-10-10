@@ -1,14 +1,14 @@
 /**
- * Interface EmailProvider + adaptateurs Stub (dev), SMTP et API Brevo (prod).
+ * Interface EmailProvider + adaptateurs Stub (dev), SMTP, API Brevo et Resend (prod).
  * Architecture symétrique au SmsProvider.
  *
  * Variables d'environnement :
- *   EMAIL_PROVIDER=stub|smtp|brevo  (défaut : stub)
+ *   EMAIL_PROVIDER=stub|smtp|brevo|resend  (défaut : stub)
  *   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM  (provider smtp)
  *   BREVO_API_KEY, SMTP_FROM                               (provider brevo)
+ *   RESEND_API_KEY, SMTP_FROM                              (provider resend)
  *
- * Privilégier EMAIL_PROVIDER=brevo en production : l'API REST Brevo
- * n'impose aucune restriction d'adresse IP (contrairement au relais SMTP).
+ * Les providers brevo et resend utilisent l'API REST — aucune restriction IP.
  */
 
 import nodemailer, { Transporter } from 'nodemailer';
@@ -119,6 +119,45 @@ export class BrevoApiEmailProvider implements EmailProvider {
 }
 
 // =====================================================================
+// API REST Resend
+// =====================================================================
+
+export class ResendEmailProvider implements EmailProvider {
+  private readonly apiKey: string;
+  private readonly from: string;
+
+  constructor() {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) throw new Error('[ResendEmailProvider] RESEND_API_KEY manquant');
+
+    this.apiKey = apiKey;
+    this.from = process.env.SMTP_FROM ?? 'InsTRAM <onboarding@resend.dev>';
+  }
+
+  async send(params: EmailSendParams): Promise<void> {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify({
+        from: this.from,
+        to: [params.to],
+        subject: params.subject,
+        text: params.text,
+        html: params.html,
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`[ResendEmailProvider] Erreur ${res.status}: ${body}`);
+    }
+  }
+}
+
+// =====================================================================
 // Factory
 // =====================================================================
 
@@ -127,6 +166,8 @@ export function createEmailProvider(): EmailProvider {
   switch (provider) {
     case 'brevo':
       return new BrevoApiEmailProvider();
+    case 'resend':
+      return new ResendEmailProvider();
     case 'smtp':
       return new SmtpEmailProvider();
     case 'stub':
