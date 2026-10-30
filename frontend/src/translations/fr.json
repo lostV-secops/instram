@@ -255,7 +255,7 @@
     "confirmDelete": "Confirmer la suppression"
   },
   "footer": {
-    "copyright": "© 2024 InsTRAM — CODEL Technologies Co.",
+    "copyright": "© 2026 InsTRAM — CODEL Technologies Co.",
     "terms": "Conditions d'utilisation",
     "privacy": "Politique de confidentialité",
     "contact": "Contact"
@@ -462,7 +462,7 @@
     },
     "walkIn": {
       "title": "Réservation guichet (Walk-in)",
-      "subtitle": "Réservation gratuite — aucune commission, aucun frais plateforme (RG-02)",
+      "subtitle": "Réservation gratuite — aucune commission, aucun frais plateforme",
       "step1": "1. Sélectionner le trajet",
       "step2": "2. Sélectionner les sièges",
       "step3": "3. Informations passager(s)",

@@ -292,7 +292,7 @@ export function WalkInForm() {
     <form onSubmit={handleSubmit} className="space-y-6" noValidate>
       {/* Bandeau informatif RG-02 */}
       <div className="bg-brand/5 border border-brand/20 rounded-lg px-4 py-3 text-sm text-brand-dark">
-        Réservation gratuite — aucune commission, aucun frais plateforme (RG-02).
+        Réservation gratuite — aucune commission, aucun frais plateforme.
       </div>
 
       {/* ─── Étape 1 : Trajet ──────────────────────────────────────────────────── */}

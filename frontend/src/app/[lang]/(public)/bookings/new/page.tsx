@@ -50,6 +50,9 @@ export default async function BookingNewPage({
     redirect(`/${lang}`);
   }
 
+  // Hold expiré côté URL → afficher un message clair sans faire attendre la soumission
+  const holdExpired = expiresAt ? new Date(expiresAt) < new Date() : false;
+
   // Récupérer l'userId pour le canal WS booking:{userId}
   const cookieStore = cookies();
   const userInfoRaw = cookieStore.get(COOKIE_USER_INFO)?.value;
@@ -128,8 +131,19 @@ export default async function BookingNewPage({
           code: `?`,
           priceMga: fare.priceMga,
         })),
-    expiresAt: expiresAt ?? new Date(Date.now() + 120_000).toISOString(),
+    expiresAt: expiresAt ?? new Date(Date.now() + 30 * 60_000).toISOString(),
   };
+
+  if (holdExpired) {
+    return (
+      <div className="max-w-xl mx-auto space-y-6 text-center py-16">
+        <p className="text-red-600 mb-4">{t.booking.errorHoldExpired}</p>
+        <Link href={`/${lang}/trips/${tripId}`} className="text-brand underline">
+          {t.common.back}
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-xl mx-auto space-y-6">
