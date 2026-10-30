@@ -146,10 +146,10 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
   });
 
   // ------------------------------------------------------------------
-  // POST /login  (rate-limit renforcé : 5 req / 15 min / IP)
+  // POST /login  (rate-limit renforcé : 5 req / 15 min / IP — 1000 en dev)
   // ------------------------------------------------------------------
   fastify.post('/login', {
-    config: { rateLimit: { max: 5, timeWindow: '15m' } },
+    config: { rateLimit: { max: process.env.NODE_ENV === 'production' ? 5 : 1000, timeWindow: '15m' } },
   }, async (req: FastifyRequest, reply: FastifyReply) => {
     const parseResult = LoginSchema.safeParse(req.body);
     if (!parseResult.success) {
