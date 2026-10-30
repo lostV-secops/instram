@@ -113,10 +113,13 @@ export default function LoginPage() {
       let destination = redirectTo;
       try {
         const data = await response.json() as { roles?: string[] };
-        const adminRoles = ['ADMIN_SUPER', 'ADMIN_OPS', 'ADMIN_MODERATOR'];
-        const coopRoles  = ['COOP_ADMIN', 'COOP_ASSISTANT', 'COOP_DRIVER', 'COOP_CONTROLLER'];
+        const adminRoles  = ['ADMIN_SUPER', 'ADMIN_OPS', 'ADMIN_MODERATOR'];
+        const driverRoles = ['COOP_DRIVER'];
+        const coopRoles   = ['COOP_ADMIN', 'COOP_ASSISTANT', 'COOP_CONTROLLER'];
         if (data.roles?.some((r) => adminRoles.includes(r))) {
           destination = '/fr/admin';
+        } else if (data.roles?.some((r) => driverRoles.includes(r))) {
+          destination = `/${lang}/driver`;
         } else if (data.roles?.some((r) => coopRoles.includes(r))) {
           destination = `/${lang}/coop`;
         }
