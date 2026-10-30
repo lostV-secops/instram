@@ -121,6 +121,10 @@ export function PaymentForm({
 
   useEffect(() => {
     return () => {
+      // En dev, le HMR et la compilation lazy déclenchent un démontage parasite
+      // qui libèrerait le hold avant soumission — on désactive en dev.
+      if (process.env.NODE_ENV !== 'production') return;
+
       // Ne pas libérer si le paiement est déjà en attente ou confirmé
       const s = stepRef.current;
       if (s === 'instructions' || s === 'confirmed') return;
