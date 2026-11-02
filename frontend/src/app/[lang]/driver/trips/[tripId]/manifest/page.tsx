@@ -21,6 +21,20 @@ function formatTime(iso: string): string {
   return `${d.getHours().toString().padStart(2, '0')}h${d.getMinutes().toString().padStart(2, '0')}`;
 }
 
+function useIsDeparted(departureAt: string | undefined): boolean {
+  const [isDeparted, setIsDeparted] = useState(() =>
+    departureAt ? new Date(departureAt) <= new Date() : false,
+  );
+  useEffect(() => {
+    if (!departureAt) return;
+    const diff = new Date(departureAt).getTime() - Date.now();
+    if (diff <= 0) { setIsDeparted(true); return; }
+    const timer = setTimeout(() => setIsDeparted(true), diff);
+    return () => clearTimeout(timer);
+  }, [departureAt]);
+  return isDeparted;
+}
+
 const IconChevronLeft = () => (
   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
     <polyline points="15 18 9 12 15 6" />
@@ -119,7 +133,8 @@ export default function ManifestPage() {
 
   useEffect(() => {
     if (!lastEvent) return;
-    if (['BOARDING_CONFIRMED', 'PASSENGER_BOARDED', 'PASSENGER_ABSENT'].includes(lastEvent.event)) {
+    // DRIVER_BOARDING_UPDATE couvre : BOARDED, NO_SHOW, DEPARTED, AUTO_DEPARTED
+    if (lastEvent.event === 'DRIVER_BOARDING_UPDATE') {
       loadManifest(true);
     }
   }, [lastEvent, loadManifest]);
@@ -177,6 +192,7 @@ export default function ManifestPage() {
   }
 
   const { manifest } = pageState;
+  const isDeparted = useIsDeparted(manifest.departureAt);
 
   return (
     <div>
@@ -199,12 +215,24 @@ export default function ManifestPage() {
       </div>
 
       {manifest.departureAt && (
-        <div className="px-4 py-2 bg-brand-dark/5 border-b border-gray-100">
-          <p className="text-xs text-gray-600">
-            {td.tripDetail.departure}{' '}
-            <span className="font-semibold text-brand">{formatTime(manifest.departureAt)}</span>
-          </p>
-        </div>
+        isDeparted ? (
+          <div className="px-4 py-2 bg-red-50 border-b border-red-200 flex items-center gap-2" role="alert" aria-live="polite">
+            <svg className="w-4 h-4 text-red-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+              <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <p className="text-xs text-red-700 font-semibold">
+              {td.manifest.boardingClosed ?? 'Embarquement fermé'}{' '}
+              <span className="font-normal text-red-500">— {td.tripDetail.departure} {formatTime(manifest.departureAt)}</span>
+            </p>
+          </div>
+        ) : (
+          <div className="px-4 py-2 bg-brand-dark/5 border-b border-gray-100">
+            <p className="text-xs text-gray-600">
+              {td.tripDetail.departure}{' '}
+              <span className="font-semibold text-brand">{formatTime(manifest.departureAt)}</span>
+            </p>
+          </div>
+        )
       )}
 
       {counts && (

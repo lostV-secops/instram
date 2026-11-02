@@ -1145,6 +1145,7 @@
       "filterAbsent": "Absents",
       "noPassengers": "Aucun passager",
       "noPassengersFiltered": "Aucun passager dans cette catégorie",
+      "boardingClosed": "Embarquement fermé",
       "seat": "Siège",
       "boardingStatuses": {
         "BOARDED": "Embarqué",

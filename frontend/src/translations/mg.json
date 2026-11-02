@@ -1145,6 +1145,7 @@
       "filterAbsent": "Tsy tonga",
       "noPassengers": "Tsy misy mpandeha",
       "noPassengersFiltered": "Tsy misy mpandeha amin'ity sokajy ity",
+      "boardingClosed": "Voakatona ny fiakarana",
       "seat": "Seza",
       "boardingStatuses": {
         "BOARDED": "Niakatra",

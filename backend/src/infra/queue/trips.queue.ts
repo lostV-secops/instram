@@ -3,6 +3,7 @@ import type { Redis as RedisType } from 'ioredis';
 import { TripStatus, AuditAction } from '@prisma/client';
 import prisma from '../db/prisma';
 import { enqueueSms } from './sms.queue';
+import { emitDriverBoardingUpdate, emitCoopDashboardUpdate } from '../../modules/ws/ws.publisher';
 
 // =====================================================================
 // Worker trip.autoClose — Architecture §2.7, §6.6
@@ -349,4 +350,127 @@ export function createTripReminderWorker(): Worker {
   });
 
   return _reminderWorker;
+}
+
+// =====================================================================
+// Worker trip.autoDepart — fermeture automatique de l'embarquement
+//
+// Au moment du départ planifié (departureAt), tous les passagers encore
+// en statut NOT_BOARDED passent automatiquement en ABSENT et le trajet
+// bascule en DEPARTED. Le conducteur n'a rien à faire manuellement.
+//
+// Fréquence : toutes les minutes (* * * * *)
+// Cibles : TripInstance dont departureAt ≤ NOW() ET status ∉ {DEPARTED, COMPLETED, CANCELLED}
+// =====================================================================
+
+const AUTO_DEPART_QUEUE_NAME = 'trip.autoDepart';
+const AUTO_DEPART_CRON = '* * * * *'; // chaque minute
+
+let _autoDepartQueue: Queue | undefined;
+
+export function getTripAutoDepartQueue(): Queue {
+  if (_autoDepartQueue) return _autoDepartQueue;
+  _autoDepartQueue = new Queue(AUTO_DEPART_QUEUE_NAME, {
+    connection: createBullConnection(),
+    defaultJobOptions: {
+      removeOnComplete: { count: 5 },
+      removeOnFail: { count: 20 },
+    },
+  });
+  return _autoDepartQueue;
+}
+
+export async function scheduleTripAutoDepart(): Promise<void> {
+  const queue = getTripAutoDepartQueue();
+  await queue.add('autoDepart', {}, {
+    repeat: { pattern: AUTO_DEPART_CRON },
+    removeOnComplete: { count: 1 },
+    removeOnFail: { count: 10 },
+  });
+  process.stdout.write(`[trip.autoDepart] Job répété planifié : ${AUTO_DEPART_CRON}\n`);
+}
+
+export interface AutoDepartResult {
+  departedCount: number;
+  tripIds: string[];
+}
+
+export async function runAutoDepart(): Promise<AutoDepartResult> {
+  const now = new Date();
+
+  const trips = await prisma.tripInstance.findMany({
+    where: {
+      departureAt: { lte: now },
+      status: { notIn: [TripStatus.DEPARTED, TripStatus.COMPLETED, TripStatus.CANCELLED] },
+    },
+    select: { id: true, cooperativeId: true, departureAt: true },
+  });
+
+  if (trips.length === 0) return { departedCount: 0, tripIds: [] };
+
+  for (const trip of trips) {
+    await prisma.$transaction(async (tx) => {
+      await tx.tripInstance.update({
+        where: { id: trip.id },
+        data: {
+          status: TripStatus.DEPARTED,
+          actualDepartedAt: trip.departureAt,
+        },
+      });
+
+      // Marquer tous les passagers non embarqués comme absents
+      await tx.booking.updateMany({
+        where: {
+          tripInstanceId: trip.id,
+          status: 'CONFIRMED',
+          boardingStatus: 'NOT_BOARDED',
+        },
+        data: { boardingStatus: 'ABSENT' },
+      });
+    });
+
+    // Émissions WS après le commit
+    await emitDriverBoardingUpdate(trip.id, {
+      type: 'AUTO_DEPARTED',
+      departedAt: trip.departureAt.toISOString(),
+    }).catch(() => {});
+
+    await emitCoopDashboardUpdate(trip.cooperativeId, {
+      type: 'TRIP_DEPARTED',
+      tripInstanceId: trip.id,
+      departedAt: trip.departureAt.toISOString(),
+    }).catch(() => {});
+  }
+
+  const tripIds = trips.map((t) => t.id);
+  process.stdout.write(
+    `[trip.autoDepart] ${tripIds.length} trajet(s) clôturé(s) automatiquement à l'heure de départ\n`,
+  );
+  return { departedCount: tripIds.length, tripIds };
+}
+
+let _autoDepartWorker: Worker | undefined;
+
+export function createTripAutoDepartWorker(): Worker {
+  if (_autoDepartWorker) return _autoDepartWorker;
+
+  _autoDepartWorker = new Worker(
+    AUTO_DEPART_QUEUE_NAME,
+    async (_job: Job) => runAutoDepart(),
+    { connection: createBullConnection(), concurrency: 1 },
+  );
+
+  _autoDepartWorker.on('completed', (job, result: AutoDepartResult) => {
+    if (result.departedCount > 0) {
+      process.stdout.write(
+        `[trip.autoDepart] Job ${job.id} : ${result.departedCount} trajet(s)\n`,
+      );
+    }
+  });
+
+  _autoDepartWorker.on('failed', (job, err) => {
+    process.stderr.write(`[trip.autoDepart] Job ${job?.id} échoué : ${err.message}\n`);
+  });
+
+  return _autoDepartWorker;
 }

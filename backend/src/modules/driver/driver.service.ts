@@ -316,7 +316,7 @@ export class DriverService {
   }> {
     const trip = await this.db.tripInstance.findUnique({
       where: { id: tripInstanceId },
-      select: { id: true, cooperativeId: true },
+      select: { id: true, cooperativeId: true, departureAt: true },
     });
     if (!trip) throw new NotFoundError('Trajet introuvable');
 
@@ -378,6 +378,7 @@ export class DriverService {
 
     return {
       tripInstanceId,
+      departureAt: trip.departureAt.toISOString(),
       passengers: entries,
       totalPassengers: entries.length,
       boarded,
