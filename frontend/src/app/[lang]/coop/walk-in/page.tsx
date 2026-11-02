@@ -17,9 +17,6 @@ export default function WalkInPage({ params }: { params: { lang: string } }) {
         <h1 className="text-xl font-bold text-brand-dark">
           {t.coop.walkIn.title}
         </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          {t.coop.walkIn.subtitle}
-        </p>
       </div>
       <WalkInForm />
     </div>

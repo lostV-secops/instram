@@ -44,8 +44,8 @@ export default async function SearchPage({ params, searchParams }: PageProps) {
     cursor,
   } = searchParams;
 
-  // Paramètres manquants → rediriger vers l'accueil
-  if (!originCityId || !destinationCityId || !date) {
+  // Paramètres obligatoires : origin + destination
+  if (!originCityId || !destinationCityId) {
     return (
       <div className="text-center py-16">
         <p className="text-gray-500 mb-4">{t.search.noResults}</p>
@@ -59,14 +59,14 @@ export default async function SearchPage({ params, searchParams }: PageProps) {
     );
   }
 
-  // Construction de la query string pour l'API
+  // Construction de la query string pour l'API (date optionnelle)
   const apiParams = new URLSearchParams({
     originCityId,
     destinationCityId,
-    date,
     passengers,
     limit: '20',
   });
+  if (date) apiParams.set('date', date);
   if (cursor) apiParams.set('cursor', cursor);
 
   let searchResult: TripSearchResponse = { items: [], nextCursor: null };
@@ -128,7 +128,7 @@ export default async function SearchPage({ params, searchParams }: PageProps) {
           {originName} → {destName}
         </h1>
         <p className="text-sm text-gray-500 mt-1">
-          {date} · {passengers}{' '}
+          {date ? `${date} · ` : ''}{passengers}{' '}
           {t.home.passengers}
         </p>
       </div>

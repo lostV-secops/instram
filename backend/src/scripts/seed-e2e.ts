@@ -14,9 +14,10 @@
  * - 1 utilisateur COOP_ADMIN     (phone +261340000002) + Membership
  * - 1 utilisateur voyageur E2E   (phone +261340000001)
  * - 1 utilisateur COOP_DRIVER    (phone +261340000003) + Membership
- * - 1 utilisateur INSTRAM_ADMIN  (phone +261340000004) + AdminProfile
+ * - 1 utilisateur INSTRAM_ADMIN  (phone +261340000004) + AdminProfile ADMIN_OPS
  * - 1 utilisateur COOP_ASSISTANT (phone +261340000005) + Membership
  * - 1 utilisateur à supprimer    (phone +261340000006)
+ * - 1 super-administrateur       (phone +261340000007) + AdminProfile ADMIN_SUPER
  *
  * Usage :
  *   npx ts-node -r tsconfig-paths/register src/scripts/seed-e2e.ts
@@ -79,6 +80,14 @@ export const USER_TO_DELETE = {
   phone: '+261340000006',
   password: 'DeleteMe2024!!',
   firstName: 'ToDelete',
+  lastName: 'E2E',
+};
+
+// Super-administrateur InsTRAM (accès total, gestion des admins)
+export const SUPER_ADMIN_USER = {
+  phone: '+261340000007',
+  password: 'SuperAdmin2024!',
+  firstName: 'SuperAdmin',
   lastName: 'E2E',
 };
 
@@ -365,6 +374,31 @@ async function main() {
     create: { userId: adminUser.id, role: 'ADMIN_OPS' },
   });
   console.log(`[seed-e2e] ✓ Utilisateur INSTRAM_ADMIN (${ADMIN_USER.phone})`);
+
+  // Super-administrateur InsTRAM (ADMIN_SUPER — gestion des admins, accès total)
+  const superAdminHash = await argon2.hash(SUPER_ADMIN_USER.password);
+  const superAdminUser = await db.user.upsert({
+    where: { phone: SUPER_ADMIN_USER.phone },
+    update: { passwordHash: superAdminHash, phoneVerifiedAt: verifiedAt, status: 'ACTIVE' },
+    create: {
+      phone: SUPER_ADMIN_USER.phone,
+      passwordHash: superAdminHash,
+      preferredLang: 'FR',
+      status: 'ACTIVE',
+      phoneVerifiedAt: verifiedAt,
+    },
+  });
+  await db.travelerProfile.upsert({
+    where: { userId: superAdminUser.id },
+    update: {},
+    create: { userId: superAdminUser.id, firstName: SUPER_ADMIN_USER.firstName, lastName: SUPER_ADMIN_USER.lastName },
+  });
+  await db.adminProfile.upsert({
+    where: { userId: superAdminUser.id },
+    update: { role: 'ADMIN_SUPER' },
+    create: { userId: superAdminUser.id, role: 'ADMIN_SUPER' },
+  });
+  console.log(`[seed-e2e] ✓ Super-administrateur (${SUPER_ADMIN_USER.phone})`);
 
   // 11. Assistant coopérative (COOP_ASSISTANT)
   const assistantHash = await argon2.hash(ASSISTANT_USER.password);

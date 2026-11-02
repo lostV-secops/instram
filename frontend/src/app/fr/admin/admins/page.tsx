@@ -237,12 +237,6 @@ export default function AdminsPage() {
         </>
       )}
 
-      {/* Note sur les endpoints */}
-      <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-xs text-gray-500">
-        Source : <code>GET /admin/users?role=ADMIN_*</code> (contrat-api.yaml, tag Admin).
-        Un endpoint dédié <code>GET /admin/admins</code> pourrait être ajouté dans une prochaine
-        version du contrat pour une gestion plus fine.
-      </div>
     </div>
   );
 }

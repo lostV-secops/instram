@@ -47,8 +47,13 @@ export default function EditFarePage() {
     load();
   }, [tripId, t.common.errorNetwork]);
 
+  const cityName = (city: unknown): string => {
+    if (!city || typeof city !== 'object') return '—';
+    const c = city as Record<string, string>;
+    return c.nameFr ?? c.name ?? '—';
+  };
   const tripLabel = trip
-    ? `${trip.route?.originCity?.name ?? '—'} → ${trip.route?.destinationCity?.name ?? '—'}`
+    ? `${cityName(trip.route?.originCity)} → ${cityName(trip.route?.destinationCity)}`
     : tripId;
 
   if (loading) {

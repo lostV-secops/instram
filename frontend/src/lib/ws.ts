@@ -16,8 +16,15 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { WsEvent } from './types';
 
-const WS_BASE_URL =
-  process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:4000/ws';
+function getWsBaseUrl(): string {
+  if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
+  if (typeof window !== 'undefined') {
+    return `ws://${window.location.hostname}:4000/ws`;
+  }
+  return 'ws://localhost:4000/ws';
+}
+
+const WS_BASE_URL = getWsBaseUrl();
 
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000]; // ms
 const MAX_RECONNECT_DELAY = 30000;

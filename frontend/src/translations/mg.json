@@ -1169,11 +1169,17 @@
       "loading": "Mampiditra ny mombamomba...",
       "errorLoad": "Tsy azo atao ny mampiditra ny mombamomba.",
       "name": "Anarana",
+      "firstName": "Anarana voalohany",
+      "lastName": "Fananamana",
       "email": "Mailaka",
       "phone": "Finday",
       "role": "Anjara",
       "roleName": "Mpamily",
       "cooperative": "Kooperatera",
+      "editProfile": "Hanova ny mombamomba",
+      "saving": "Fitahirizana...",
+      "saveSuccess": "Mombamomba voaova",
+      "saveError": "Tsy azo atao. Andramo indray.",
       "logout": "Hivoaka",
       "loggingOut": "Fiverenana..."
     }

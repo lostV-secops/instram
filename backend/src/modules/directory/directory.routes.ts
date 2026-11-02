@@ -82,6 +82,103 @@ export default async function directoryRoutes(fastify: FastifyInstance): Promise
     },
   );
   // ------------------------------------------------------------------
+  // GET /cooperatives/:slug/trips
+  // Tous les trajets OPEN_FOR_BOOKING à venir pour une coopérative
+  // Public, sans auth, cache 60 s
+  // ------------------------------------------------------------------
+  fastify.get(
+    '/cooperatives/:slug/trips',
+    async (req: FastifyRequest<{ Params: { slug: string } }>, reply: FastifyReply) => {
+      const { slug } = req.params;
+      if (!slug || slug.length > 200) {
+        return reply.status(400).send({ code: 'VALIDATION_ERROR', message: 'slug invalide' });
+      }
+
+      const lang = resolveLanguage(req.headers['accept-language']);
+
+      try {
+        const entry = await prisma.directoryEntry.findUnique({
+          where: { slug },
+          select: {
+            cooperativeId: true,
+            cooperative: { select: { status: true } },
+          },
+        });
+
+        if (!entry || entry.cooperative.status !== 'VALIDATED') {
+          return reply.status(404).send({ code: 'NOT_FOUND', message: 'Coopérative introuvable' });
+        }
+
+        const trips = await prisma.tripInstance.findMany({
+          where: {
+            cooperativeId: entry.cooperativeId,
+            status: 'OPEN_FOR_BOOKING',
+            departureAt: { gte: new Date() },
+          },
+          select: {
+            id: true,
+            departureAt: true,
+            arrivalEstimatedAt: true,
+            cooperative: {
+              select: { id: true, displayName: true, ratingAverage: true, ratingCount: true },
+            },
+            route: {
+              select: {
+                estimatedDurationMin: true,
+                origin: { select: { id: true, nameFr: true, nameMg: true } },
+                destination: { select: { id: true, nameFr: true, nameMg: true } },
+              },
+            },
+            vehicle: { select: { model: true, capacity: true } },
+            fares: { select: { priceMga: true } },
+            _count: { select: { bookingSeats: { where: { isActive: true } } } },
+          },
+          orderBy: { departureAt: 'asc' },
+        });
+
+        const items = trips.map((trip) => {
+          const prices = trip.fares.map((f) => f.priceMga);
+          const fareMinMga = prices.length > 0 ? Math.min(...prices) : 0;
+          const fareMaxMga = prices.length > 0 ? Math.max(...prices) : 0;
+          const seatsAvailable = Math.max(0, trip.vehicle.capacity - trip._count.bookingSeats);
+          return {
+            tripInstanceId: trip.id,
+            cooperative: {
+              id: trip.cooperative.id,
+              displayName: trip.cooperative.displayName,
+              ratingAverage: trip.cooperative.ratingAverage,
+              ratingCount: trip.cooperative.ratingCount,
+            },
+            route: {
+              originCity: {
+                id: trip.route.origin.id,
+                name: lang === 'mg' ? trip.route.origin.nameMg : trip.route.origin.nameFr,
+              },
+              destinationCity: {
+                id: trip.route.destination.id,
+                name: lang === 'mg' ? trip.route.destination.nameMg : trip.route.destination.nameFr,
+              },
+              estimatedDurationMin: trip.route.estimatedDurationMin,
+            },
+            departureAt: trip.departureAt.toISOString(),
+            arrivalEstimatedAt: trip.arrivalEstimatedAt?.toISOString() ?? null,
+            fareMinMga,
+            fareMaxMga,
+            seatsAvailable,
+            vehicle: { model: trip.vehicle.model, capacity: trip.vehicle.capacity },
+          };
+        });
+
+        reply.header('Cache-Control', 'public, max-age=60');
+        return reply.status(200).send({ items, nextCursor: null });
+      } catch (err) {
+        req.log.error(err, 'directory trips error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
   // GET /cooperatives/:slug/ratings
   // Public — avis approuvés et anonymisés, paginés
   // Contrat : docs/contrat-api.yaml §Directory GET /directory/cooperatives/{slug}/ratings

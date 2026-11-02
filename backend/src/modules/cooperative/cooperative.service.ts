@@ -167,6 +167,19 @@ export class CooperativeService {
       data,
     });
 
+    // Synchroniser DirectoryEntry (cache dénormalisé de l'annuaire public)
+    const directoryData: Record<string, unknown> = {};
+    if (input.displayName !== undefined) directoryData.displayName = input.displayName;
+    if (input.descriptionFr !== undefined) directoryData.descriptionFr = input.descriptionFr || null;
+    if (input.descriptionMg !== undefined) directoryData.descriptionMg = input.descriptionMg || null;
+    if (input.logoUrl !== undefined) directoryData.logoUrl = input.logoUrl || null;
+    if (Object.keys(directoryData).length > 0) {
+      await this.db.directoryEntry.updateMany({
+        where: { cooperativeId },
+        data: directoryData,
+      });
+    }
+
     return this._formatCoop(updated);
   }
 

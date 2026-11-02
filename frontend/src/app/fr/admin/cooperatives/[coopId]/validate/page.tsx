@@ -263,7 +263,7 @@ export default function ValidateCoopPage() {
             Plan tarifaire
           </h2>
           <p className="text-xs text-gray-500">
-            Valeur par défaut : 8 % (VH-04). Ce taux s'applique sur les réservations en ligne.
+            Valeur par défaut : 8 %. Ce taux s'applique sur les réservations en ligne.
           </p>
         </div>
 

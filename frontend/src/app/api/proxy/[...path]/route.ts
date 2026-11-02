@@ -12,12 +12,31 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { COOKIE_ACCESS } from '@/lib/auth';
+import { COOKIE_ACCESS, COOKIE_REFRESH, ACCESS_TOKEN_MAX_AGE, REFRESH_TOKEN_MAX_AGE, sessionCookieOptions } from '@/lib/auth';
 
 const BACKEND_URL =
   process.env.BACKEND_URL ||
   process.env.NEXT_PUBLIC_API_URL ||
   'http://localhost:4000';
+
+async function tryRefreshToken(
+  refreshToken: string,
+): Promise<{ accessToken: string; refreshToken: string } | null> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/v1/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.accessToken || !data.refreshToken) return null;
+    return { accessToken: data.accessToken, refreshToken: data.refreshToken };
+  } catch {
+    return null;
+  }
+}
 
 interface RouteParams {
   params: { path: string[] };
@@ -79,13 +98,43 @@ async function proxyRequest(
     );
   }
 
+  // Si 401 : tenter un refresh silencieux et rejouer la requête une fois
+  let refreshedTokens: { accessToken: string; refreshToken: string } | null = null;
+  if (backendResponse.status === 401) {
+    const rawRefresh = request.cookies.get(COOKIE_REFRESH)?.value;
+    if (rawRefresh) {
+      refreshedTokens = await tryRefreshToken(rawRefresh);
+      if (refreshedTokens) {
+        const retryHeaders = { ...headers, Authorization: `Bearer ${refreshedTokens.accessToken}` };
+        try {
+          backendResponse = await fetch(backendUrl, {
+            method,
+            headers: retryHeaders,
+            body,
+            cache: 'no-store',
+          });
+        } catch {
+          return NextResponse.json(
+            { code: 'NETWORK_ERROR', message: 'Impossible de contacter le serveur' },
+            { status: 503 },
+          );
+        }
+      }
+    }
+  }
+
   // Les statuts sans corps (204, 304) ne doivent pas transmettre de body ni de Content-Type.
   const NO_BODY_STATUSES = [204, 304];
   if (NO_BODY_STATUSES.includes(backendResponse.status)) {
-    return new NextResponse(null, {
+    const noBodyRes = new NextResponse(null, {
       status: backendResponse.status,
       headers: { 'Cache-Control': 'no-store' },
     });
+    if (refreshedTokens) {
+      noBodyRes.cookies.set(COOKIE_ACCESS, refreshedTokens.accessToken, { ...sessionCookieOptions, maxAge: ACCESS_TOKEN_MAX_AGE });
+      noBodyRes.cookies.set(COOKIE_REFRESH, refreshedTokens.refreshToken, { ...sessionCookieOptions, maxAge: REFRESH_TOKEN_MAX_AGE });
+    }
+    return noBodyRes;
   }
 
   // Transmettre la réponse du backend telle quelle (statut + corps)
@@ -100,10 +149,15 @@ async function proxyRequest(
   const disposition = backendResponse.headers.get('content-disposition');
   if (disposition) responseHeaders['Content-Disposition'] = disposition;
 
-  return new NextResponse(responseBuffer, {
+  const finalResponse = new NextResponse(responseBuffer, {
     status: backendResponse.status,
     headers: responseHeaders,
   });
+  if (refreshedTokens) {
+    finalResponse.cookies.set(COOKIE_ACCESS, refreshedTokens.accessToken, { ...sessionCookieOptions, maxAge: ACCESS_TOKEN_MAX_AGE });
+    finalResponse.cookies.set(COOKIE_REFRESH, refreshedTokens.refreshToken, { ...sessionCookieOptions, maxAge: REFRESH_TOKEN_MAX_AGE });
+  }
+  return finalResponse;
 }
 
 export const GET = proxyRequest;

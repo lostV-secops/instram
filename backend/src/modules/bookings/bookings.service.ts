@@ -639,38 +639,16 @@ export class BookingsService {
   // Accessible uniquement si réservation CONFIRMED.
   // ------------------------------------------------------------------
 
-  async generateTicketPdf(bookingId: string, userId: string): Promise<Buffer> {
-    const booking = await this.db.booking.findFirst({
-      where: { id: bookingId, buyerUserId: userId },
-      select: {
-        reference: true,
-        status: true,
-        qrPayload: true,
-        confirmedAt: true,
-        createdAt: true,
-        passengers: { select: { firstName: true, lastName: true, seatCode: true } },
-        tripInstance: {
-          select: {
-            departureAt: true,
-            cooperative: { select: { displayName: true } },
-            route: {
-              select: {
-                origin: { select: { nameFr: true } },
-                destination: { select: { nameFr: true } },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    if (!booking) throw new NotFoundError('Réservation introuvable');
-    if (booking.status !== BookingStatus.CONFIRMED) {
-      const err = new Error('Billet disponible uniquement pour les réservations confirmées') as NodeJS.ErrnoException;
-      err.code = 'FORBIDDEN';
-      throw err;
-    }
-
+  private async buildTicketPdf(booking: {
+    reference: string;
+    qrPayload: string | null;
+    passengers: { firstName: string; lastName: string; seatCode: string }[];
+    tripInstance: {
+      departureAt: Date;
+      cooperative: { displayName: string };
+      route: { origin: { nameFr: string }; destination: { nameFr: string } };
+    };
+  }): Promise<Buffer> {
     const qrBuffer = await QRCode.toBuffer(booking.qrPayload ?? booking.reference, {
       width: 200,
       margin: 2,
@@ -758,6 +736,133 @@ export class BookingsService {
     });
 
     return Buffer.concat(chunks);
+  }
+
+  async generateTicketPdf(bookingId: string, userId: string): Promise<Buffer> {
+    const booking = await this.db.booking.findFirst({
+      where: { id: bookingId, buyerUserId: userId },
+      select: {
+        reference: true,
+        status: true,
+        qrPayload: true,
+        confirmedAt: true,
+        createdAt: true,
+        passengers: { select: { firstName: true, lastName: true, seatCode: true } },
+        tripInstance: {
+          select: {
+            departureAt: true,
+            cooperative: { select: { displayName: true } },
+            route: {
+              select: {
+                origin: { select: { nameFr: true } },
+                destination: { select: { nameFr: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!booking) throw new NotFoundError('Réservation introuvable');
+    if (booking.status !== BookingStatus.CONFIRMED) {
+      const err = new Error('Billet disponible uniquement pour les réservations confirmées') as NodeJS.ErrnoException;
+      err.code = 'FORBIDDEN';
+      throw err;
+    }
+
+    return this.buildTicketPdf(booking);
+  }
+
+  // ------------------------------------------------------------------
+  // GET /coop/bookings/:bookingId/ticket.pdf
+  // Billet PDF accessible par le staff de la coopérative propriétaire.
+  // ------------------------------------------------------------------
+
+  async generateTicketPdfByCoop(bookingId: string, cooperativeId: string): Promise<Buffer> {
+    const booking = await this.db.booking.findFirst({
+      where: { id: bookingId, cooperativeId },
+      select: {
+        reference: true,
+        status: true,
+        qrPayload: true,
+        confirmedAt: true,
+        createdAt: true,
+        passengers: { select: { firstName: true, lastName: true, seatCode: true } },
+        tripInstance: {
+          select: {
+            departureAt: true,
+            cooperative: { select: { displayName: true } },
+            route: {
+              select: {
+                origin: { select: { nameFr: true } },
+                destination: { select: { nameFr: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!booking) throw new NotFoundError('Réservation introuvable');
+    if (booking.status !== BookingStatus.CONFIRMED) {
+      const err = new Error('Billet disponible uniquement pour les réservations confirmées') as NodeJS.ErrnoException;
+      err.code = 'FORBIDDEN';
+      throw err;
+    }
+
+    return this.buildTicketPdf(booking);
+  }
+
+  // ------------------------------------------------------------------
+  // POST /coop/bookings/:bookingId/resend-ticket
+  // Renvoi SMS du billet walk-in par le staff (utilise le tel du passager).
+  // ------------------------------------------------------------------
+
+  async resendTicketByCoop(bookingId: string, cooperativeId: string): Promise<void> {
+    const booking = await this.db.booking.findFirst({
+      where: { id: bookingId, cooperativeId, status: BookingStatus.CONFIRMED },
+      include: {
+        passengers: { take: 1, select: { phone: true } },
+        tripInstance: {
+          include: { route: { include: { origin: true, destination: true } } },
+        },
+      },
+    });
+
+    if (!booking) throw new NotFoundError('Réservation introuvable ou non confirmée');
+
+    const phone = booking.passengers[0]?.phone;
+    if (!phone) throw new NotFoundError('Numéro de téléphone passager introuvable');
+
+    const lang = 'FR' as const;
+    const departureStr = booking.tripInstance.departureAt.toLocaleString('fr-MG', {
+      dateStyle: 'short', timeStyle: 'short', timeZone: 'Indian/Antananarivo',
+    });
+
+    const vars = {
+      reference: booking.reference,
+      departureAt: departureStr,
+      origin: booking.tripInstance.route.origin.nameFr,
+    };
+
+    if (this.notifications) {
+      await this.notifications.enqueue({
+        bookingId,
+        templateKey: 'BOOKING_CONFIRMED',
+        variables: vars,
+        lang,
+        phone,
+        transactional: true,
+      });
+    } else {
+      await enqueueSms({
+        phone,
+        lang,
+        templateCode: 'BOOKING_CONFIRMED',
+        params: vars,
+        isTransactional: true,
+      });
+    }
   }
 
   // ------------------------------------------------------------------

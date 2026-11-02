@@ -1169,11 +1169,17 @@
       "loading": "Chargement du profil...",
       "errorLoad": "Impossible de charger le profil.",
       "name": "Nom",
+      "firstName": "Prénom",
+      "lastName": "Nom de famille",
       "email": "Email",
       "phone": "Téléphone",
       "role": "Rôle",
       "roleName": "Conducteur",
       "cooperative": "Coopérative",
+      "editProfile": "Modifier le profil",
+      "saving": "Enregistrement...",
+      "saveSuccess": "Profil mis à jour",
+      "saveError": "Impossible de sauvegarder le profil.",
       "logout": "Se déconnecter",
       "loggingOut": "Déconnexion..."
     }

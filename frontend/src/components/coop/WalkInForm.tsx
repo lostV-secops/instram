@@ -85,6 +85,9 @@ export function WalkInForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [successRef, setSuccessRef] = useState<string | null>(null);
+  const [successId, setSuccessId] = useState<string | null>(null);
+  const [smsSending, setSmsSending] = useState(false);
+  const [smsStatus, setSmsStatus] = useState<'idle' | 'sent' | 'error'>('idle');
 
   // ─── Charger les villes une seule fois ───────────────────────────────────────
   useEffect(() => {
@@ -234,6 +237,7 @@ export function WalkInForm() {
 
       const booking = await res.json();
       setSuccessRef(booking.reference ?? booking.id);
+      setSuccessId(booking.id ?? null);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setSubmitError(
@@ -247,8 +251,24 @@ export function WalkInForm() {
   };
 
   // ─── Réinitialiser après succès ───────────────────────────────────────────────
+  const handleResendSms = async () => {
+    if (!successId) return;
+    setSmsSending(true);
+    setSmsStatus('idle');
+    try {
+      const res = await fetch(`/api/proxy/v1/coop/bookings/${successId}/resend-ticket`, { method: 'POST' });
+      setSmsStatus(res.ok ? 'sent' : 'error');
+    } catch {
+      setSmsStatus('error');
+    } finally {
+      setSmsSending(false);
+    }
+  };
+
   const handleNewBooking = () => {
     setSuccessRef(null);
+    setSuccessId(null);
+    setSmsStatus('idle');
     setOriginCityId('');
     setDestinationCityId('');
     setTrips([]);
@@ -277,9 +297,43 @@ export function WalkInForm() {
         <p className="text-green-700">
           Référence : <span className="font-mono font-bold">{successRef}</span>
         </p>
-        <p className="text-sm text-green-600">
-          Aucun frais plateforme (walk-in, RG-02).
-        </p>
+
+        {/* Actions ticket */}
+        <div className="flex flex-col gap-2 w-full max-w-xs mx-auto">
+          {successId && (
+            <a
+              href={`/api/proxy/v1/coop/bookings/${successId}/ticket.pdf`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-brand text-brand text-sm font-medium hover:bg-brand/5 transition-colors"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              Imprimer / voir le billet PDF
+            </a>
+          )}
+
+          {successId && (
+            <button
+              type="button"
+              onClick={handleResendSms}
+              disabled={smsSending || smsStatus === 'sent'}
+              className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.12 2 2 0 0 1 3.6 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.64a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+              </svg>
+              {smsSending ? 'Envoi…' : smsStatus === 'sent' ? 'SMS envoyé ✓' : 'Renvoyer le ticket par SMS'}
+            </button>
+          )}
+
+          {smsStatus === 'error' && (
+            <p className="text-red-600 text-xs text-center">Échec de l&apos;envoi SMS. Réessayez.</p>
+          )}
+        </div>
+
         {/* Bouton vert car action transactionnelle suivante */}
         <Button variant="action" onClick={handleNewBooking}>
           Nouvelle réservation
@@ -290,11 +344,6 @@ export function WalkInForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6" noValidate>
-      {/* Bandeau informatif RG-02 */}
-      <div className="bg-brand/5 border border-brand/20 rounded-lg px-4 py-3 text-sm text-brand-dark">
-        Réservation gratuite — aucune commission, aucun frais plateforme.
-      </div>
-
       {/* ─── Étape 1 : Trajet ──────────────────────────────────────────────────── */}
       <fieldset className="border border-gray-200 rounded-xl p-4 space-y-3">
         <legend className="px-2 text-sm font-semibold text-brand-dark">

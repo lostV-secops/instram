@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { CoopRow } from '@/components/admin/CoopRow';
 import { Button } from '@/components/ui/Button';
 import type { Cooperative, CooperativeStatus } from '@/lib/types';
@@ -88,6 +89,12 @@ export default function AdminCooperativesPage() {
       {/* En-tête */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-bold text-brand-dark">Coopératives</h1>
+
+        <Link href="/fr/admin/cooperatives/new">
+          <Button variant="primary" size="sm">
+            + Nouvelle coopérative
+          </Button>
+        </Link>
 
         {/* Filtre statut */}
         <div className="flex items-center gap-2">

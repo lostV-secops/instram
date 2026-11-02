@@ -26,11 +26,13 @@ const CATEGORY_LABELS: Record<SeatCategory, string> = {
 };
 
 interface FareEditorProps {
-  tripId: string;
+  tripId?: string;
+  endpoint?: string;
+  redirectTo?: string; // URL vers laquelle rediriger après sauvegarde réussie
   initialFares: Fare[];
 }
 
-export function FareEditor({ tripId, initialFares }: FareEditorProps) {
+export function FareEditor({ tripId, endpoint, redirectTo, initialFares }: FareEditorProps) {
   const router = useRouter();
 
   // Initialiser l'état avec les tarifs existants
@@ -76,7 +78,8 @@ export function FareEditor({ tripId, initialFares }: FareEditorProps) {
 
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/proxy/v1/coop/trips/${tripId}/fares`, {
+      const url = endpoint ?? `/api/proxy/v1/coop/trips/${tripId}/fares`;
+      const res = await fetch(url, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(faresPayload),
@@ -91,7 +94,11 @@ export function FareEditor({ tripId, initialFares }: FareEditorProps) {
       }
 
       setSuccess(true);
-      router.refresh();
+      if (redirectTo) {
+        router.push(redirectTo);
+      } else {
+        router.refresh();
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(
@@ -106,12 +113,6 @@ export function FareEditor({ tripId, initialFares }: FareEditorProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-      {/* Bandeau souveraineté coopérative */}
-      <div className="bg-brand/5 border border-brand/20 rounded-lg px-4 py-3 text-sm text-brand-dark">
-        La coopérative fixe librement ses tarifs (RG-04). Aucune validation
-        InsTRAM n'est appliquée.
-      </div>
-
       <div className="grid gap-4 sm:grid-cols-2">
         {CATEGORIES.map((cat) => (
           <Input

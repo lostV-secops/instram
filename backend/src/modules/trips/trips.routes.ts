@@ -270,6 +270,47 @@ export async function tripsCoopRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   // ----------------------------------------------------------------
+  // GET /routes/:routeId/fares — tarifs par ligne
+  // ----------------------------------------------------------------
+  fastify.get<{ Params: { routeId: string } }>(
+    '/routes/:routeId/fares',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest<{ Params: { routeId: string } }>, reply: FastifyReply) => {
+      try {
+        const cooperativeId = await getCoopId(getUserId(req));
+        const fares = await tripsService.getRouteFares(cooperativeId, req.params.routeId);
+        return reply.send(fares);
+      } catch (err) {
+        return handleError(err, req, reply, 'getRouteFares');
+      }
+    },
+  );
+
+  // ----------------------------------------------------------------
+  // PUT /routes/:routeId/fares — définir tarifs d'une ligne
+  // ----------------------------------------------------------------
+  fastify.put<{ Params: { routeId: string } }>(
+    '/routes/:routeId/fares',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest<{ Params: { routeId: string } }>, reply: FastifyReply) => {
+      const parse = UpsertFaresSchema.safeParse(req.body);
+      if (!parse.success) return reply.status(400).send({ code: 'VALIDATION_ERROR', message: formatZodError(parse.error) });
+      try {
+        const cooperativeId = await getCoopId(getUserId(req), ['COOP_ADMIN', 'COOP_ASSISTANT']);
+        const fares = await tripsService.upsertRouteFares(
+          cooperativeId,
+          req.params.routeId,
+          getUserId(req),
+          parse.data,
+        );
+        return reply.send(fares);
+      } catch (err) {
+        return handleError(err, req, reply, 'upsertRouteFares');
+      }
+    },
+  );
+
+  // ----------------------------------------------------------------
   // GET /trips/:tripInstanceId/fares
   // ----------------------------------------------------------------
   fastify.get<{ Params: { tripInstanceId: string } }>(

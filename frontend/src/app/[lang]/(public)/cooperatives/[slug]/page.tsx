@@ -353,7 +353,7 @@ export default async function CooperativeDetailPage({ params }: PageProps) {
                 </div>
                 {/* Lien "Voir les trajets" — bleu primaire (navigation) */}
                 <Link
-                  href={`/${lang}`}
+                  href={`/${lang}/search?originCityId=${route.originCity.id}&destinationCityId=${route.destinationCity.id}&passengers=1`}
                   className="text-xs text-brand hover:text-brand-dark border border-brand rounded-lg px-3 py-1.5 transition-colors flex-shrink-0 font-medium"
                 >
                   {tc.seeTrips}

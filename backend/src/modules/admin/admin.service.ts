@@ -35,6 +35,7 @@ import {
 } from '@prisma/client';
 import type {
   ListCooperativesQuery,
+  CreateCooperativeBody,
   SuspendRejectBody,
   CreatePricingPlanBody,
   CreateSubscriptionBody,
@@ -265,6 +266,64 @@ export class AdminService {
     if (!cooperative) {
       throw new NotFoundError(`Coopérative introuvable : ${cooperativeId}`);
     }
+
+    return cooperative;
+  }
+
+  // ------------------------------------------------------------------
+  // POST /admin/cooperatives — créer une coopérative (PENDING_VALIDATION)
+  // AuditLog : COOP_CREATED
+  // ------------------------------------------------------------------
+
+  async createCooperative(
+    body: CreateCooperativeBody,
+    ctx: AdminContext,
+  ): Promise<Cooperative> {
+    // Génère le slug depuis displayName si non fourni
+    const slug =
+      body.slug ??
+      body.displayName
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 80);
+
+    const existing = await this.db.cooperative.findUnique({ where: { slug } });
+    if (existing) {
+      throw new ConflictError(
+        `Un slug identique existe déjà : "${slug}". Choisissez un nom différent ou précisez un slug manuellement.`,
+      );
+    }
+
+    const cooperative = await this.db.$transaction(async (tx) => {
+      const coop = await tx.cooperative.create({
+        data: {
+          slug,
+          legalName: body.legalName,
+          displayName: body.displayName,
+          status: CooperativeStatus.PENDING_VALIDATION,
+          contactEmail: body.contactEmail || null,
+          contactPhone: body.contactPhone || null,
+          descriptionFr: body.descriptionFr || null,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          action: AuditAction.COOP_CREATED,
+          entityType: 'Cooperative',
+          entityId: coop.id,
+          actorUserId: ctx.actorUserId,
+          ipAddress: ctx.ipAddress ?? null,
+          userAgent: ctx.userAgent ?? null,
+          after: { slug, legalName: body.legalName },
+        },
+      });
+
+      return coop;
+    });
 
     return cooperative;
   }

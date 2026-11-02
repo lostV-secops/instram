@@ -44,6 +44,20 @@ export const ListCooperativesQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+export const CreateCooperativeBodySchema = z.object({
+  legalName: z.string().min(2, 'Le nom légal est obligatoire'),
+  displayName: z.string().min(2, 'Le nom affiché est obligatoire'),
+  slug: z
+    .string()
+    .min(2)
+    .max(80)
+    .regex(/^[a-z0-9-]+$/, 'Uniquement lettres minuscules, chiffres et tirets')
+    .optional(),
+  contactEmail: z.string().email('Email invalide').optional().or(z.literal('')),
+  contactPhone: z.string().optional(),
+  descriptionFr: z.string().max(2000).optional(),
+});
+
 export const SuspendRejectBodySchema = z.object({
   reason: z.string().min(1, 'La raison est obligatoire'),
 });
@@ -213,6 +227,7 @@ export const UpdateTemplateSchema = z.object({
 // ------------------------------------------------------------------
 
 export type ListCooperativesQuery = z.infer<typeof ListCooperativesQuerySchema>;
+export type CreateCooperativeBody = z.infer<typeof CreateCooperativeBodySchema>;
 export type SuspendRejectBody = z.infer<typeof SuspendRejectBodySchema>;
 export type CreatePricingPlanBody = z.infer<typeof CreatePricingPlanBodySchema>;
 export type CreateSubscriptionBody = z.infer<typeof CreateSubscriptionBodySchema>;

@@ -121,7 +121,7 @@ export function CoopCard({ coop, lang, t }: CoopCardProps) {
 
         {/* Voir les trajets — bleu primaire (navigation, PAS vert) */}
         <Link
-          href={`/${lang}/search?cooperativeSlug=${encodeURIComponent(coop.slug)}`}
+          href={`/${lang}/cooperatives/${encodeURIComponent(coop.slug)}/trips`}
           className="flex-1 text-center text-sm bg-brand text-white py-3 px-2 hover:bg-brand-dark transition-colors font-medium rounded-b-xl"
         >
           {tc.seeTrips}

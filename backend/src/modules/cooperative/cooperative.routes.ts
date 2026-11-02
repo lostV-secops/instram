@@ -12,6 +12,7 @@ import {
   UpdateSeatMapSchema,
   DashboardQuerySchema,
 } from './cooperative.schema';
+import { BookingsService } from '../bookings/bookings.service';
 import prisma from '../../infra/db/prisma';
 
 // =====================================================================
@@ -42,6 +43,7 @@ export default async function cooperativeRoutes(
   fastify: FastifyInstance,
 ): Promise<void> {
   const service = new CooperativeService(prisma);
+  const bookingsService = new BookingsService(prisma);
 
   // ------------------------------------------------------------------
   // GET /cooperatives/current  (et alias /me — tâche vs contrat)
@@ -582,6 +584,51 @@ export default async function cooperativeRoutes(
         const code = (err as NodeJS.ErrnoException).code;
         if (code === 'FORBIDDEN' || code === 'COOPERATIVE_SUSPENDED') return reply.status(403).send({ code, message: (err as Error).message });
         req.log.error(err, 'getCoopCommissions error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
+  // GET /bookings/:bookingId/ticket.pdf — billet PDF pour le staff coop
+  // ------------------------------------------------------------------
+  fastify.get<{ Params: { bookingId: string } }>(
+    '/bookings/:bookingId/ticket.pdf',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest<{ Params: { bookingId: string } }>, reply: FastifyReply) => {
+      try {
+        const { cooperativeId } = await service.requireMembership(getUserId(req));
+        const pdf = await bookingsService.generateTicketPdfByCoop(req.params.bookingId, cooperativeId);
+        reply.header('Content-Type', 'application/pdf');
+        reply.header('Content-Disposition', `inline; filename="billet-${req.params.bookingId}.pdf"`);
+        reply.header('Cache-Control', 'no-store');
+        return reply.status(200).send(pdf);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'NOT_FOUND') return reply.status(404).send({ code: 'NOT_FOUND', message: (err as Error).message });
+        if (code === 'FORBIDDEN' || code === 'COOPERATIVE_SUSPENDED') return reply.status(403).send({ code, message: (err as Error).message });
+        req.log.error(err, 'generateTicketPdfByCoop error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
+  // POST /bookings/:bookingId/resend-ticket — renvoi SMS par le staff coop
+  // ------------------------------------------------------------------
+  fastify.post<{ Params: { bookingId: string } }>(
+    '/bookings/:bookingId/resend-ticket',
+    { onRequest: [fastify.authenticate] },
+    async (req: FastifyRequest<{ Params: { bookingId: string } }>, reply: FastifyReply) => {
+      try {
+        const { cooperativeId } = await service.requireMembership(getUserId(req), ['COOP_ADMIN', 'COOP_ASSISTANT']);
+        await bookingsService.resendTicketByCoop(req.params.bookingId, cooperativeId);
+        return reply.status(200).send({ message: 'Billet renvoyé par SMS' });
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'NOT_FOUND') return reply.status(404).send({ code: 'NOT_FOUND', message: (err as Error).message });
+        if (code === 'FORBIDDEN' || code === 'COOPERATIVE_SUSPENDED') return reply.status(403).send({ code, message: (err as Error).message });
+        req.log.error(err, 'resendTicketByCoop error');
         return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
       }
     },

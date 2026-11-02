@@ -162,6 +162,9 @@ export default function ManifestPage() {
     { mode: 'ABSENT', label: td.manifest.filterAbsent },
   ];
 
+  const departureAt = pageState.status === 'ready' ? pageState.manifest.departureAt : undefined;
+  const isDeparted = useIsDeparted(departureAt);
+
   if (pageState.status === 'loading') {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-3">
@@ -192,7 +195,6 @@ export default function ManifestPage() {
   }
 
   const { manifest } = pageState;
-  const isDeparted = useIsDeparted(manifest.departureAt);
 
   return (
     <div>

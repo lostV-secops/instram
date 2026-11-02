@@ -76,6 +76,7 @@ export class TripsService {
       include: {
         origin: { select: { id: true, nameFr: true, nameMg: true, district: true, region: true } },
         destination: { select: { id: true, nameFr: true, nameMg: true, district: true, region: true } },
+        routeFares: { select: { category: true, priceMga: true }, orderBy: { category: 'asc' } },
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -389,6 +390,19 @@ export class TripsService {
       },
     });
 
+    // Copier automatiquement les tarifs de la ligne vers ce trajet
+    const routeFares = await this.db.routeFare.findMany({ where: { routeId: resolvedRouteId } });
+    if (routeFares.length > 0) {
+      await this.db.fare.createMany({
+        data: routeFares.map((rf) => ({
+          tripInstanceId: trip.id,
+          category: rf.category,
+          priceMga: rf.priceMga,
+          seatDefinitionId: null,
+        })),
+      });
+    }
+
     return this._formatTripSummary(trip);
   }
 
@@ -688,6 +702,85 @@ export class TripsService {
   }
 
   // ----------------------------------------------------------------
+  // GET /coop/routes/:routeId/fares — tarifs par ligne
+  // ----------------------------------------------------------------
+
+  async getRouteFares(
+    cooperativeId: string,
+    routeId: string,
+  ): Promise<unknown[]> {
+    const route = await this.db.route.findFirst({
+      where: { id: routeId, cooperativeId },
+      select: { id: true },
+    });
+    if (!route) throw new NotFoundError('Ligne introuvable');
+
+    const fares = await this.db.routeFare.findMany({
+      where: { routeId },
+      orderBy: { category: 'asc' },
+    });
+
+    return fares.map((f) => ({
+      id: f.id,
+      routeId: f.routeId,
+      category: f.category,
+      priceMga: f.priceMga,
+      updatedAt: f.updatedAt.toISOString(),
+    }));
+  }
+
+  // ----------------------------------------------------------------
+  // PUT /coop/routes/:routeId/fares — définir les tarifs de la ligne
+  // Remplace tous les tarifs existants. Propage aux futurs trajets à la création.
+  // ----------------------------------------------------------------
+
+  async upsertRouteFares(
+    cooperativeId: string,
+    routeId: string,
+    actorUserId: string,
+    items: FareItem[],
+  ): Promise<unknown[]> {
+    const route = await this.db.route.findFirst({
+      where: { id: routeId, cooperativeId },
+      select: { id: true },
+    });
+    if (!route) throw new NotFoundError('Ligne introuvable');
+
+    const fares = await this.db.$transaction(async (tx) => {
+      await tx.routeFare.deleteMany({ where: { routeId } });
+      const created = await Promise.all(
+        items.map((item) =>
+          tx.routeFare.create({
+            data: {
+              routeId,
+              category: item.seatCategory as SeatCategory,
+              priceMga: item.priceMga,
+            },
+          }),
+        ),
+      );
+      await tx.auditLog.create({
+        data: {
+          actorUserId,
+          action: AuditAction.FARE_CHANGED,
+          entityType: 'RouteFare',
+          entityId: routeId,
+          after: JSON.stringify(items),
+        },
+      });
+      return created;
+    });
+
+    return fares.map((f) => ({
+      id: f.id,
+      routeId: f.routeId,
+      category: f.category,
+      priceMga: f.priceMga,
+      updatedAt: f.updatedAt.toISOString(),
+    }));
+  }
+
+  // ----------------------------------------------------------------
   // GET /coop/trips/:id/dashboard — tableau de bord temps réel
   // Non présent dans le contrat officiel (contrat a GET /coop/dashboard
   // mais c'est un dashboard global). Documenté comme extension.
@@ -866,6 +959,7 @@ export class TripsService {
     origin: { id: string; nameFr: string; nameMg: string; district?: string; region?: string };
     destination: { id: string; nameFr: string; nameMg: string; district?: string; region?: string };
     stops?: Array<{ orderIndex: number; offsetMin: number; city: { id: string; nameFr: string; nameMg: string } }>;
+    routeFares?: Array<{ category: string; priceMga: number }>;
   }): Record<string, unknown> {
     return {
       id: route.id,
@@ -893,6 +987,7 @@ export class TripsService {
         offsetMin: s.offsetMin,
         city: { id: s.city.id, nameFr: s.city.nameFr, nameMg: s.city.nameMg },
       })) ?? [],
+      routeFares: route.routeFares?.map((f) => ({ category: f.category, priceMga: f.priceMga })) ?? [],
       createdAt: route.createdAt.toISOString(),
       updatedAt: route.updatedAt.toISOString(),
     };

@@ -31,6 +31,7 @@ import { PlatformRole } from '@prisma/client';
 import { AdminService } from './admin.service';
 import {
   ListCooperativesQuerySchema,
+  CreateCooperativeBodySchema,
   SuspendRejectBodySchema,
   CreatePricingPlanBodySchema,
   CreateSubscriptionBodySchema,
@@ -136,6 +137,26 @@ export default async function adminRoutes(fastify: FastifyInstance): Promise<voi
   // ==================================================================
   // GESTION DES COOPÉRATIVES
   // ==================================================================
+
+  // ------------------------------------------------------------------
+  // POST /admin/cooperatives — créer une coopérative
+  // ------------------------------------------------------------------
+  fastify.post(
+    '/cooperatives',
+    { onRequest: [fastify.authenticate, requireSuperOrOps] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const parse = CreateCooperativeBodySchema.safeParse(req.body);
+      if (!parse.success) {
+        return reply.status(400).send({ code: 'VALIDATION_ERROR', message: formatZodError(parse.error) });
+      }
+      try {
+        const coop = await service.createCooperative(parse.data, getAdminContext(req));
+        return reply.status(201).send(coop);
+      } catch (err) {
+        return handleError(err, req, reply, 'createCooperative');
+      }
+    },
+  );
 
   // ------------------------------------------------------------------
   // GET /admin/cooperatives — liste paginée

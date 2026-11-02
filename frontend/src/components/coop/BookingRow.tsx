@@ -79,7 +79,7 @@ export function BookingRow({
       </td>
       <td className="py-3 px-4 text-sm tabular-nums text-gray-900">
         {isWalkIn ? (
-          <span title="Gratuit (RG-02)">{formatMGA(totalAmountMga)}</span>
+          <span>{formatMGA(totalAmountMga)}</span>
         ) : (
           formatMGA(totalAmountMga)
         )}

@@ -11,10 +11,23 @@ type PageState =
   | { status: 'ready'; me: Me }
   | { status: 'error'; message: string };
 
+interface EditForm {
+  firstName: string;
+  lastName: string;
+  phone: string;
+}
+
 const IconUser = () => (
   <svg className="w-8 h-8 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
     <circle cx="12" cy="8" r="4" />
     <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+  </svg>
+);
+
+const IconPencil = () => (
+  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
   </svg>
 );
 
@@ -37,6 +50,11 @@ export default function ProfilePage() {
   const td = t.driver;
   const [pageState, setPageState] = useState<PageState>({ status: 'loading' });
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [editForm, setEditForm] = useState<EditForm>({ firstName: '', lastName: '', phone: '' });
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -62,6 +80,61 @@ export default function ProfilePage() {
     setIsLoggingOut(true);
     try { await fetch('/api/auth/logout', { method: 'POST' }); } catch { /* ignorer */ }
     router.replace(`/${lang}/auth/login`);
+  };
+
+  const startEdit = () => {
+    if (pageState.status !== 'ready') return;
+    const { me } = pageState;
+    setEditForm({
+      firstName: me.traveler?.firstName ?? '',
+      lastName: me.traveler?.lastName ?? '',
+      phone: me.phone ?? '',
+    });
+    setSaveError(null);
+    setSaveSuccess(false);
+    setIsEditing(true);
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      const body: Record<string, string> = {};
+      if (editForm.firstName.trim()) body.firstName = editForm.firstName.trim();
+      if (editForm.lastName.trim()) body.lastName = editForm.lastName.trim();
+      if (editForm.phone.trim()) body.phone = editForm.phone.trim();
+
+      if (Object.keys(body).length === 0) {
+        setIsEditing(false);
+        return;
+      }
+
+      const res = await fetch('/api/proxy/v1/auth/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        let msg = td.profile.saveError;
+        try {
+          const data = await res.json() as { message?: string };
+          if (data.message) msg = data.message;
+        } catch { /* ignorer */ }
+        setSaveError(msg);
+        return;
+      }
+
+      const updated = await res.json() as Me;
+      setPageState({ status: 'ready', me: updated });
+      setIsEditing(false);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch {
+      setSaveError(t.common.errorNetwork);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const ROLE_LABELS: Record<string, string> = {
@@ -117,14 +190,95 @@ export default function ProfilePage() {
         </div>
       </div>
 
+      {saveSuccess && (
+        <div className="mx-4 mt-3 bg-green-50 border border-green-300 rounded-xl px-4 py-3 text-sm text-green-700 font-medium">
+          {td.profile.saveSuccess}
+        </div>
+      )}
+
       <div className="mx-4 mt-4 bg-white rounded-xl shadow-sm border border-gray-100 px-4">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide pt-3 pb-1">{td.profile.title}</p>
-        <InfoRow label={td.profile.name} value={fullName} />
-        <InfoRow label={td.profile.email} value={me.email} />
-        <InfoRow label={td.profile.phone} value={me.phone} mono />
-        {traveler?.mobileMoneyPhone && <InfoRow label={t.profile.mobileMoneyPhone} value={traveler.mobileMoneyPhone} mono />}
-        <InfoRow label={td.profile.role} value={roleLabel} />
-        <InfoRow label={td.profile.cooperative} value={coopName} />
+        <div className="flex items-center justify-between pt-3 pb-1">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{td.profile.title}</p>
+          {!isEditing && (
+            <button
+              type="button"
+              onClick={startEdit}
+              className="flex items-center gap-1.5 text-sm text-brand font-medium hover:underline min-h-[36px] px-1"
+              aria-label={td.profile.editProfile}
+            >
+              <IconPencil />
+              {td.profile.editProfile}
+            </button>
+          )}
+        </div>
+
+        {isEditing ? (
+          <div className="py-3 space-y-4">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium uppercase tracking-wide" htmlFor="edit-firstName">
+                {td.profile.firstName}
+              </label>
+              <input
+                id="edit-firstName"
+                type="text"
+                value={editForm.firstName}
+                onChange={(e) => setEditForm((f) => ({ ...f, firstName: e.target.value }))}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
+                autoComplete="given-name"
+                disabled={isSaving}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium uppercase tracking-wide" htmlFor="edit-lastName">
+                {td.profile.lastName}
+              </label>
+              <input
+                id="edit-lastName"
+                type="text"
+                value={editForm.lastName}
+                onChange={(e) => setEditForm((f) => ({ ...f, lastName: e.target.value }))}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
+                autoComplete="family-name"
+                disabled={isSaving}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium uppercase tracking-wide" htmlFor="edit-phone">
+                {td.profile.phone}
+              </label>
+              <input
+                id="edit-phone"
+                type="tel"
+                value={editForm.phone}
+                onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base text-gray-900 font-mono focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
+                placeholder="+261..."
+                autoComplete="tel"
+                disabled={isSaving}
+              />
+            </div>
+            {saveError && (
+              <p className="text-sm text-red-600">{saveError}</p>
+            )}
+            <div className="flex gap-3 pt-1">
+              <Button variant="primary" size="md" fullWidth isLoading={isSaving} onClick={handleSave} className="min-h-[44px]">
+                {isSaving ? td.profile.saving : t.common.save}
+              </Button>
+              <Button variant="ghost" size="md" fullWidth onClick={() => setIsEditing(false)} disabled={isSaving} className="min-h-[44px]">
+                {t.common.cancel}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <InfoRow label={td.profile.name} value={fullName} />
+            <InfoRow label={td.profile.email} value={me.email} />
+            <InfoRow label={td.profile.phone} value={me.phone} mono />
+            {traveler?.mobileMoneyPhone && <InfoRow label={t.profile.mobileMoneyPhone} value={traveler.mobileMoneyPhone} mono />}
+            <InfoRow label={td.profile.role} value={roleLabel} />
+            <InfoRow label={td.profile.cooperative} value={coopName} />
+          </>
+        )}
       </div>
 
       <div className="mx-4 mt-3 bg-white rounded-xl border border-gray-100 px-4 py-3">

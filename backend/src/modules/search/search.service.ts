@@ -73,7 +73,7 @@ export class SearchService {
       query;
 
     // Clé de cache Redis : pas de cursor/limit pour avoir un cache partagé entre pages
-    const cacheKey = `search:trips:${originCityId}:${destinationCityId}:${date}:${lang}`;
+    const cacheKey = `search:trips:${originCityId}:${destinationCityId}:${date ?? 'all'}:${lang}`;
 
     // Tentative de lecture depuis le cache
     const cached = await this.redis.get(cacheKey);
@@ -82,18 +82,16 @@ export class SearchService {
       return this._paginate(allItems, cursor, limit);
     }
 
-    // Calcul de la plage horaire pour le jour demandé (toute la journée UTC)
-    const dayStart = new Date(`${date}T00:00:00.000Z`);
-    const dayEnd = new Date(`${date}T23:59:59.999Z`);
+    // Filtre temporel : jour précis si date fournie, sinon tous les trajets à venir
+    const departureFilter = date
+      ? { gte: new Date(`${date}T00:00:00.000Z`), lte: new Date(`${date}T23:59:59.999Z`) }
+      : { gte: new Date() };
 
     // Requête Prisma avec projections légères
     const trips = await this.db.tripInstance.findMany({
       where: {
         status: 'OPEN_FOR_BOOKING',
-        departureAt: {
-          gte: dayStart,
-          lte: dayEnd,
-        },
+        departureAt: departureFilter,
         route: {
           originCityId,
           destinationCityId,
