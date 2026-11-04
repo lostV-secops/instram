@@ -126,13 +126,22 @@ export async function runAutoClose(): Promise<AutoCloseResult> {
   const tripIds = tripsToClose.map((t) => t.id);
 
   await prisma.$transaction(async (tx) => {
-    // Mise à jour en lot
+    // Clôturer les trajets
     await tx.tripInstance.updateMany({
       where: { id: { in: tripIds } },
       data: {
         status: TripStatus.COMPLETED,
         completedAt: now,
       },
+    });
+
+    // Passer les réservations CONFIRMED en COMPLETED pour débloquer la notation
+    await tx.booking.updateMany({
+      where: {
+        tripInstanceId: { in: tripIds },
+        status: 'CONFIRMED',
+      },
+      data: { status: 'COMPLETED' },
     });
 
     // AuditLog par trajet (RG-13 — traçabilité)
