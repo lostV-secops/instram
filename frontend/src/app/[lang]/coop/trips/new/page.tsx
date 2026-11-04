@@ -32,8 +32,14 @@ export default function NewTripPage() {
   const [routeId, setRouteId] = useState('');
   const [vehicleId, setVehicleId] = useState('');
   const [departureAt, setDepartureAt] = useState('');
-  const [arrivalEstimatedAt, setArrivalEstimatedAt] = useState('');
   const [notesFr, setNotesFr] = useState('');
+
+  // Heure d'arrivée calculée automatiquement d'après la durée de la ligne
+  const selectedRoute = routes.find((r) => r.id === routeId) ?? null;
+  const arrivalEstimatedAt = (() => {
+    if (!departureAt || !selectedRoute?.estimatedDurationMin) return null;
+    return new Date(new Date(departureAt).getTime() + selectedRoute.estimatedDurationMin * 60 * 1000);
+  })();
 
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -88,9 +94,8 @@ export default function NewTripPage() {
         vehicleId,
         departureAt: new Date(departureAt).toISOString(),
       };
-      if (arrivalEstimatedAt) {
-        payload.arrivalEstimatedAt = new Date(arrivalEstimatedAt).toISOString();
-      }
+      // arrivalEstimatedAt calculé côté backend depuis route.estimatedDurationMin ;
+      // on ne l'envoie pas depuis le formulaire.
       if (notesFr.trim()) payload.notesFr = notesFr.trim();
 
       const res = await fetch('/api/proxy/v1/coop/trips', {
@@ -203,13 +208,35 @@ export default function NewTripPage() {
             disabled={isSubmitting}
           />
 
-          <Input
-            label={t.coop.trips.new.arrivalEstimatedAt}
-            type="datetime-local"
-            value={arrivalEstimatedAt}
-            onChange={(e) => setArrivalEstimatedAt(e.target.value)}
-            disabled={isSubmitting}
-          />
+          {/* Arrivée estimée — calculée automatiquement, non modifiable */}
+          <div className="flex flex-col gap-1">
+            <span className="text-sm font-medium text-gray-800">
+              {t.coop.trips.new.arrivalEstimatedAt}
+            </span>
+            {arrivalEstimatedAt ? (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-base text-gray-700">
+                {arrivalEstimatedAt.toLocaleString('fr-MG', {
+                  dateStyle: 'short',
+                  timeStyle: 'short',
+                })}
+                {selectedRoute?.estimatedDurationMin && (
+                  <span className="ml-2 text-xs text-gray-400">
+                    ({Math.floor(selectedRoute.estimatedDurationMin / 60)}h
+                    {selectedRoute.estimatedDurationMin % 60 > 0
+                      ? `${selectedRoute.estimatedDurationMin % 60}min`
+                      : ''}{' '}
+                    de trajet)
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-3 py-2.5 text-sm text-gray-400">
+                {routeId && !selectedRoute?.estimatedDurationMin
+                  ? 'Durée non renseignée sur la ligne — à définir dans la fiche route'
+                  : 'Calculée après sélection de la ligne et de l\'heure de départ'}
+              </div>
+            )}
+          </div>
 
           <div className="flex flex-col gap-1">
             <label htmlFor="notes" className="text-sm font-medium text-gray-800">{t.coop.trips.new.notesFr}</label>

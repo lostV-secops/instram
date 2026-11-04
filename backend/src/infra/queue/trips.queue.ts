@@ -22,8 +22,10 @@ import { emitDriverBoardingUpdate, emitCoopDashboardUpdate } from '../../modules
 // =====================================================================
 
 const QUEUE_NAME = 'trip.autoClose';
-const AUTO_CLOSE_HOURS = 72; // VH-03
 const AUTO_CLOSE_CRON = '*/10 * * * *'; // toutes les 10 minutes
+// Délai de clôture : durée estimée de la ligne (route.estimatedDurationMin).
+// Fallback si la durée n'est pas renseignée sur la ligne : 24h.
+const AUTO_CLOSE_FALLBACK_MIN = 24 * 60;
 
 // ------------------------------------------------------------------
 // Connexion Redis dédiée BullMQ (distincte du client principal pour
@@ -86,17 +88,20 @@ export interface AutoCloseResult {
 }
 
 export async function runAutoClose(): Promise<AutoCloseResult> {
-  const cutoff = new Date(Date.now() - AUTO_CLOSE_HOURS * 60 * 60 * 1000);
+  const now = new Date();
 
-  // Trouver les trajets à clôturer : DEPARTED depuis plus de 72h (VH-03)
+  // Trouver les trajets DEPARTED avec actualDepartedAt renseigné.
   // On utilise actualDepartedAt, pas departureAt, pour ne pas fermer
   // un trajet retardé qui n'est jamais parti.
-  const tripsToClose = await prisma.tripInstance.findMany({
+  // Filtre grossier : partis il y a au moins 30 min (évite les faux positifs immédiats).
+  const thirtyMinAgo = new Date(now.getTime() - 30 * 60 * 1000);
+  const candidates = await prisma.tripInstance.findMany({
     where: {
       status: TripStatus.DEPARTED,
-      actualDepartedAt: { lt: cutoff },
+      actualDepartedAt: { lt: thirtyMinAgo },
     },
     include: {
+      route: { select: { estimatedDurationMin: true } },
       bookings: {
         where: { status: 'CONFIRMED' },
         include: {
@@ -107,12 +112,18 @@ export async function runAutoClose(): Promise<AutoCloseResult> {
     },
   });
 
+  // Filtre précis : vérifier que la durée estimée est écoulée depuis actualDepartedAt
+  const tripsToClose = candidates.filter((trip) => {
+    const durationMin = trip.route.estimatedDurationMin ?? AUTO_CLOSE_FALLBACK_MIN;
+    const closeAt = new Date((trip.actualDepartedAt as Date).getTime() + durationMin * 60 * 1000);
+    return closeAt <= now;
+  });
+
   if (tripsToClose.length === 0) {
     return { closedCount: 0, tripIds: [] };
   }
 
   const tripIds = tripsToClose.map((t) => t.id);
-  const now = new Date();
 
   await prisma.$transaction(async (tx) => {
     // Mise à jour en lot
@@ -135,7 +146,7 @@ export async function runAutoClose(): Promise<AutoCloseResult> {
           before: { status: trip.status },
           after: {
             status: TripStatus.COMPLETED,
-            reason: 'AUTO_CLOSE_72H',
+            reason: 'AUTO_CLOSE_ESTIMATED_DURATION',
             completedAt: now.toISOString(),
           },
         },

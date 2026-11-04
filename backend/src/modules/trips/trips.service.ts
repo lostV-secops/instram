@@ -366,14 +366,23 @@ export class TripsService {
     });
     if (!vehicle) throw new NotFoundError('Véhicule introuvable ou non actif');
 
+    // Calculer l'heure d'arrivée estimée d'après la durée de la ligne si non fournie
+    const departureDate = new Date(input.departureAt);
+    let computedArrival: Date | null = null;
+    if (input.arrivalEstimatedAt) {
+      computedArrival = new Date(input.arrivalEstimatedAt);
+    } else if (route.estimatedDurationMin) {
+      computedArrival = new Date(departureDate.getTime() + route.estimatedDurationMin * 60 * 1000);
+    }
+
     const trip = await this.db.tripInstance.create({
       data: {
         cooperativeId,
         routeId: resolvedRouteId,
         scheduleId: input.scheduleId ?? null,
         vehicleId: input.vehicleId,
-        departureAt: new Date(input.departureAt),
-        arrivalEstimatedAt: input.arrivalEstimatedAt ? new Date(input.arrivalEstimatedAt) : null,
+        departureAt: departureDate,
+        arrivalEstimatedAt: computedArrival,
         notesFr: input.notesFr ?? null,
         notesMg: input.notesMg ?? null,
         status: TripStatus.DRAFT,
