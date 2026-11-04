@@ -41,6 +41,7 @@ function getExportQueue(): Queue {
   const connection = new IoRedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
+    keepAlive: 10_000,
   });
 
   _exportQueue = new Queue(QUEUE_NAME, { connection });
@@ -303,6 +304,7 @@ export function startExportWorker(prisma: PrismaClient): Worker {
   const connection = new IoRedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
+    keepAlive: 10_000,
   });
 
   const storage = createStorageClient();

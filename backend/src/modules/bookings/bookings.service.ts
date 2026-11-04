@@ -882,7 +882,10 @@ export class BookingsService {
     // Vérifier que le trajet appartient à la coopérative de l'agent
     const trip = await this.db.tripInstance.findFirst({
       where: { id: tripInstanceId, cooperativeId },
-      include: { fares: true },
+      include: {
+        fares: true,
+        route: { include: { origin: { select: { nameFr: true } }, destination: { select: { nameFr: true } } } },
+      },
     });
 
     if (!trip) {
@@ -1121,9 +1124,9 @@ export class BookingsService {
           variables: {
             reference,
             seatCodes: seatCodes.join(', '),
-            departureAt: '',   // sera renseigné si trip inclus
-            origin: '',
-            destination: '',
+            departureAt: trip.departureAt.toLocaleString('fr-MG', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Indian/Antananarivo' }),
+            origin: trip.route.origin.nameFr,
+            destination: trip.route.destination.nameFr,
           },
           lang: smsLang,
           phone: smsPhone,
@@ -1134,7 +1137,12 @@ export class BookingsService {
         await enqueueSms({
           phone: smsPhone,
           templateCode: 'WALK_IN_CONFIRMED',
-          params: { reference, seatCodes: seatCodes.join(', '), departureAt: '', origin: '', destination: '' },
+          params: {
+            reference, seatCodes: seatCodes.join(', '),
+            departureAt: trip.departureAt.toLocaleString('fr-MG', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Indian/Antananarivo' }),
+            origin: trip.route.origin.nameFr,
+            destination: trip.route.destination.nameFr,
+          },
           lang: smsLang,
           bookingId: booking.id,
           isTransactional: true,

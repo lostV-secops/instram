@@ -32,6 +32,7 @@ function getReconcileQueue(): Queue {
   const connection = new IoRedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
+    keepAlive: 10_000,
   });
 
   _reconcileQueue = new Queue(QUEUE_NAME, { connection });
@@ -88,6 +89,7 @@ export function startPaymentReconcileWorker(deps: ReconcileWorkerDeps): Worker {
   const connection = new IoRedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
+    keepAlive: 10_000,
   });
 
   const worker = new Worker<Record<string, never>>(

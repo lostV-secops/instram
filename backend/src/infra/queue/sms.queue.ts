@@ -34,6 +34,7 @@ function getSmsQueue(): Queue {
   const connection = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
+    keepAlive: 10_000,
   }) as Redis;
 
   _smsQueue = new Queue('sms.dispatch', { connection });
@@ -81,6 +82,7 @@ export function startSmsWorker(notificationsService: {
   const connection = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
+    keepAlive: 10_000,
   });
 
   const worker = new Worker<SmsJobData>(

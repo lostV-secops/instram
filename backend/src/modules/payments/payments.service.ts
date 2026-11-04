@@ -690,24 +690,41 @@ export class PaymentsService {
     }
 
     // SMS BOOKING_CONFIRMED (transactionnel — immédiat, bypass silence nocturne VH-02)
-    if (this.notifications) {
-      await this.notifications.enqueue({
-        bookingId: booking.id,
-        templateKey: 'BOOKING_CONFIRMED',
-        variables: { reference: booking.reference, departureAt: '', origin: '' },
-        lang: 'FR',
-        phone: '',
-        transactional: true,
-      });
-    } else {
-      await enqueueSms({
-        phone: '',
-        templateCode: 'BOOKING_CONFIRMED',
-        params: { reference: booking.reference, departureAt: '', origin: '' },
-        lang: 'FR',
-        bookingId: booking.id,
-        isTransactional: true,
-      });
+    // Charger les données nécessaires au SMS (non incluses dans BookingForConfirm)
+    const bookingForSms = await this.db.booking.findUnique({
+      where: { id: booking.id },
+      select: {
+        reference: true,
+        buyer: { select: { phone: true, preferredLang: true } },
+        passengers: { take: 1, select: { phone: true } },
+        tripInstance: {
+          select: {
+            departureAt: true,
+            route: { select: { origin: { select: { nameFr: true } } } },
+          },
+        },
+      },
+    });
+    if (bookingForSms) {
+      const smsPhone = bookingForSms.buyer?.phone ?? bookingForSms.passengers[0]?.phone;
+      const smsLang = (bookingForSms.buyer?.preferredLang ?? 'FR') as 'FR' | 'MG';
+      if (smsPhone) {
+        const departureStr = bookingForSms.tripInstance?.departureAt
+          .toLocaleString('fr-MG', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Indian/Antananarivo' }) ?? '';
+        const origin = bookingForSms.tripInstance?.route.origin.nameFr ?? '';
+        const vars = { reference: bookingForSms.reference, departureAt: departureStr, origin };
+        if (this.notifications) {
+          await this.notifications.enqueue({
+            bookingId: booking.id, templateKey: 'BOOKING_CONFIRMED',
+            variables: vars, lang: smsLang, phone: smsPhone, transactional: true,
+          });
+        } else {
+          await enqueueSms({
+            phone: smsPhone, templateCode: 'BOOKING_CONFIRMED',
+            params: vars, lang: smsLang, bookingId: booking.id, isTransactional: true,
+          });
+        }
+      }
     }
 
     return { status: 'processed' };
@@ -769,29 +786,34 @@ export class PaymentsService {
       );
     }
 
-    // SMS PAYMENT_FAILED si template existe (non bloquant — template optionnel)
+    // SMS PAYMENT_FAILED (non bloquant)
     try {
-      if (this.notifications) {
-        await this.notifications.enqueue({
-          bookingId: booking.id,
-          templateKey: 'PAYMENT_FAILED',
-          variables: {},
-          lang: 'FR',
-          phone: '',
-          transactional: true,
-        });
-      } else {
-        await enqueueSms({
-          phone: '',
-          templateCode: 'PAYMENT_FAILED',
-          params: {},
-          lang: 'FR',
-          bookingId: booking.id,
-          isTransactional: true,
-        });
+      const failedBooking = await this.db.booking.findUnique({
+        where: { id: booking.id },
+        select: {
+          reference: true,
+          buyer: { select: { phone: true, preferredLang: true } },
+          passengers: { take: 1, select: { phone: true } },
+        },
+      });
+      const smsPhone = failedBooking?.buyer?.phone ?? failedBooking?.passengers[0]?.phone;
+      const smsLang = (failedBooking?.buyer?.preferredLang ?? 'FR') as 'FR' | 'MG';
+      if (smsPhone && failedBooking) {
+        const vars = { reference: failedBooking.reference };
+        if (this.notifications) {
+          await this.notifications.enqueue({
+            bookingId: booking.id, templateKey: 'PAYMENT_FAILED',
+            variables: vars, lang: smsLang, phone: smsPhone, transactional: true,
+          });
+        } else {
+          await enqueueSms({
+            phone: smsPhone, templateCode: 'PAYMENT_FAILED',
+            params: vars, lang: smsLang, bookingId: booking.id, isTransactional: true,
+          });
+        }
       }
     } catch (_err) {
-      // Template absent ou erreur d'enfilage — non bloquant
+      // Non bloquant
     }
 
     return { status: 'failed' };

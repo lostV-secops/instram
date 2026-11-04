@@ -39,6 +39,7 @@ function createBullConnection(): RedisType {
   return new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
+    keepAlive: 10_000,
   }) as RedisType;
 }
 

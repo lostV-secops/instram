@@ -14,13 +14,11 @@ function createRedisClient(): Redis {
 
   const client = new Redis(url, {
     maxRetriesPerRequest: null, // Requis par BullMQ
+    keepAlive: 10_000, // TCP keepalive toutes les 10s — évite que Memurai/Redis ferme les connexions inactives
     retryStrategy(times: number): number | null {
-      if (times > 10) {
-        // Abandon après 10 tentatives
-        return null;
-      }
-      // Backoff exponentiel : 50 ms, 100 ms, 200 ms ... plafond 3 s
-      return Math.min(50 * Math.pow(2, times - 1), 3000);
+      // En production on abandonne après 20 tentatives ; en dev on réessaie indéfiniment
+      if (process.env.NODE_ENV === 'production' && times > 20) return null;
+      return Math.min(100 * Math.pow(2, times - 1), 5000);
     },
     reconnectOnError(err: Error): boolean {
       // Reconnecte sur les erreurs READONLY (failover Redis Sentinel)

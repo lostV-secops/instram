@@ -82,8 +82,9 @@ function createSubscriberClient(): Redis {
     // si on perd la souscription, l'UI cesse silencieusement d'être à jour,
     // ce qui est exactement le scénario de double réservation qu'on interdit.
     maxRetriesPerRequest: null,
+    keepAlive: 10_000, // TCP keepalive — évite la fermeture des connexions inactives
     retryStrategy(times: number): number {
-      return Math.min(50 * Math.pow(2, times - 1), 3000);
+      return Math.min(100 * Math.pow(2, times - 1), 5000);
     },
     reconnectOnError(err: Error): boolean {
       return err.message.includes('READONLY');

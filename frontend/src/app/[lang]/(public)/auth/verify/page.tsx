@@ -8,7 +8,7 @@
  * et l'utilisateur est redirigé vers l'accueil.
  */
 
-import { useState, useId, type FormEvent } from 'react';
+import { useState, useId, useEffect, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useTranslations, useLang } from '@/components/TranslationsProvider';
@@ -27,7 +27,20 @@ export default function VerifyPage() {
   const [isResending, setIsResending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resendSuccess, setResendSuccess] = useState(false);
+  const [devCode, setDevCode] = useState<string | null>(null);
   const codeId = useId();
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        const stored = sessionStorage.getItem('_instram_dev_otp');
+        if (stored) {
+          setDevCode(stored);
+          sessionStorage.removeItem('_instram_dev_otp');
+        }
+      } catch { /* ignore */ }
+    }
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -123,6 +136,20 @@ export default function VerifyPage() {
             className="rounded-lg border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-700"
           >
             {t.auth.otpResent}
+          </div>
+        )}
+
+        {devCode && (
+          <div className="rounded-lg border-2 border-dashed border-amber-400 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <span className="font-semibold">[DEV] Code OTP : </span>
+            <button
+              type="button"
+              className="font-mono font-bold text-base tracking-widest hover:underline"
+              onClick={() => setCode(devCode)}
+            >
+              {devCode}
+            </button>
+            <span className="ml-2 text-xs text-amber-600">(cliquer pour remplir)</span>
           </div>
         )}
 
