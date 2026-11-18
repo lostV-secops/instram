@@ -132,6 +132,19 @@ type BookingForConfirm = {
 };
 
 // =====================================================================
+// Helpers module-level
+// =====================================================================
+
+/** Normalise un numéro malgache vers +261XXXXXXXXX (sans espaces ni tirets). */
+function _normalizePhone(raw: string): string {
+  const cleaned = raw.replace(/[\s\-.()]/g, '');
+  if (cleaned.startsWith('+261')) return cleaned;
+  if (cleaned.startsWith('261') && cleaned.length === 12) return `+${cleaned}`;
+  if (cleaned.startsWith('0') && cleaned.length === 10) return `+261${cleaned.slice(1)}`;
+  return cleaned;
+}
+
+// =====================================================================
 // Service
 // =====================================================================
 
@@ -572,6 +585,74 @@ export class PaymentsService {
       `dev-stub-${Date.now()}`,
       payment.provider,
     );
+  }
+
+  // ------------------------------------------------------------------
+  // confirmViaSmsWebhook — Appelé par POST /payments/sms-webhook (IFTTT)
+  // Parse le texte SMS MVola, retrouve le paiement PENDING correspondant
+  // et déclenche _confirmPayment.
+  // ------------------------------------------------------------------
+  async confirmViaSmsWebhook(params: {
+    smsText: string;
+    fromPhone?: string;
+  }): Promise<{ status: 'processed' | 'no_match' }> {
+    const { smsText, fromPhone } = params;
+
+    // Extraire le montant — MVola envoie "25 000 Ar" ou "25000 Ar"
+    const amountMatch = smsText.match(/(\d[\d\s]*)\s*(?:Ar|MGA|ariary)/i);
+    if (!amountMatch) return { status: 'no_match' };
+    const amountMga = parseInt(amountMatch[1].replace(/\s/g, ''), 10);
+    if (isNaN(amountMga) || amountMga <= 0) return { status: 'no_match' };
+
+    // Normaliser le numéro expéditeur (fourni par IFTTT ou extrait du texte)
+    const rawPhone =
+      fromPhone ??
+      smsText.match(/(?:\+261|0)(3[2-9]\d{7})/)?.[0] ??
+      null;
+    const phoneCandidates: string[] = [];
+    if (rawPhone) {
+      const norm = _normalizePhone(rawPhone);
+      phoneCandidates.push(norm);
+      // Ajouter la forme locale (034XXXXXXX) pour correspondre aux deux formats stockés
+      if (norm.startsWith('+261') && norm.length === 13) {
+        phoneCandidates.push('0' + norm.slice(4));
+      }
+    }
+
+    // Chercher d'abord avec le numéro de téléphone (plus précis)
+    let payment = phoneCandidates.length > 0
+      ? await this.db.payment.findFirst({
+          where: {
+            status: PaymentStatus.PENDING,
+            amountMga,
+            booking: {
+              status: BookingStatus.PENDING_PAYMENT,
+              buyer: { phone: { in: phoneCandidates } },
+            },
+          },
+          include: { booking: { include: { seatHolds: true, payments: true } } },
+          orderBy: { initiatedAt: 'desc' },
+        })
+      : null;
+
+    // Fallback : correspondance par montant uniquement (sans téléphone)
+    if (!payment) {
+      payment = await this.db.payment.findFirst({
+        where: {
+          status: PaymentStatus.PENDING,
+          amountMga,
+          booking: { status: BookingStatus.PENDING_PAYMENT },
+        },
+        include: { booking: { include: { seatHolds: true, payments: true } } },
+        orderBy: { initiatedAt: 'desc' },
+      });
+    }
+
+    if (!payment?.booking) return { status: 'no_match' };
+
+    const txId = `sms-ifttt-${Date.now()}-${payment.id.slice(0, 8)}`;
+    await this._confirmPayment(payment.booking as BookingForConfirm, txId, payment.provider);
+    return { status: 'processed' };
   }
 
   // _confirmPayment — BEGIN TRANSACTION : Payment CONFIRMED + BookingSeats + Booking CONFIRMED

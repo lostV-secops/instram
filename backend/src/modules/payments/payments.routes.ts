@@ -156,6 +156,46 @@ export default async function paymentsRoutes(fastify: FastifyInstance): Promise<
   );
 
   // ------------------------------------------------------------------
+  // POST /payments/sms-webhook — Appelé par IFTTT quand un SMS MVola arrive
+  // Pas d'auth JWT — sécurisé par SMS_WEBHOOK_SECRET dans le corps.
+  // Corps attendu : { text: string, from?: string, secret: string }
+  // ------------------------------------------------------------------
+  fastify.post(
+    '/payments/sms-webhook',
+    {},
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      reply.header('Cache-Control', 'no-store');
+
+      const webhookSecret = process.env.SMS_WEBHOOK_SECRET;
+      if (!webhookSecret) {
+        req.log.warn('SMS_WEBHOOK_SECRET non configuré — webhook désactivé');
+        return reply.status(503).send({ code: 'NOT_CONFIGURED', message: 'SMS webhook not configured' });
+      }
+
+      const body = req.body as Record<string, unknown> | null;
+      if (!body || body.secret !== webhookSecret) {
+        return reply.status(401).send({ code: 'UNAUTHORIZED', message: 'Invalid webhook secret' });
+      }
+
+      const smsText = typeof body.text === 'string' ? body.text.trim() : '';
+      const fromPhone = typeof body.from === 'string' ? body.from.trim() : undefined;
+
+      if (!smsText) {
+        return reply.status(400).send({ code: 'VALIDATION_ERROR', message: 'text requis' });
+      }
+
+      try {
+        const result = await paymentsService.confirmViaSmsWebhook({ smsText, fromPhone });
+        req.log.info({ smsText, fromPhone, result: result.status }, 'sms-webhook processed');
+        return reply.status(200).send({ ok: true, matched: result.status === 'processed' });
+      } catch (err) {
+        req.log.error(err, 'sms-webhook: erreur confirmation');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
   // POST /dev/payments/simulate-success — DEV/TEST UNIQUEMENT
   // Confirme instantanément un paiement PENDING sans passer par le provider.
   // Protégé : disponible uniquement si NODE_ENV !== 'production'.
