@@ -126,7 +126,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     keyGenerator: (req) =>
       req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() ?? req.ip ?? 'unknown',
     errorResponseBuilder: (_req, context) => ({
-      statusCode: context.statusCode ?? 429,
+      statusCode: (context as unknown as { statusCode?: number }).statusCode ?? 429,
       code: 'RATE_LIMIT_EXCEEDED',
       message: `Trop de requêtes. Réessayez dans ${Math.ceil(context.ttl / 1000)} secondes.`,
     }),

@@ -14,6 +14,8 @@ import {
 } from './cooperative.schema';
 import { BookingsService } from '../bookings/bookings.service';
 import prisma from '../../infra/db/prisma';
+import redis from '../../infra/cache/redis';
+import { mobileMoneyGateway } from '../../infra/mobileMoney/gateway';
 
 // =====================================================================
 // Plugin Fastify — module cooperative
@@ -43,7 +45,7 @@ export default async function cooperativeRoutes(
   fastify: FastifyInstance,
 ): Promise<void> {
   const service = new CooperativeService(prisma);
-  const bookingsService = new BookingsService(prisma);
+  const bookingsService = new BookingsService(prisma, redis, mobileMoneyGateway);
 
   // ------------------------------------------------------------------
   // GET /cooperatives/current  (et alias /me — tâche vs contrat)

@@ -5,7 +5,8 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+COPY schema.prisma ./
+RUN npm ci && npx prisma generate
 
 # ─── Stage 2 : dev ───────────────────────────────────────────────────────────
 # Cible par défaut pour docker-compose en développement.
@@ -42,7 +43,8 @@ FROM node:20-alpine AS prod
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+COPY schema.prisma ./
+RUN npm ci --omit=dev && npx prisma generate
 
 COPY --from=build /app/dist ./dist
 

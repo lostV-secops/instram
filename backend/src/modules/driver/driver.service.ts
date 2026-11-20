@@ -301,6 +301,7 @@ export class DriverService {
     tripInstanceId: string,
   ): Promise<{
     tripInstanceId: string;
+    departureAt: string;
     passengers: {
       bookingId: string;
       reference: string;
