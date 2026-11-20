@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
   webpack: (config) => {
     config.watchOptions = { poll: 1000, aggregateTimeout: 300 };
     return config;
@@ -10,6 +9,7 @@ const nextConfig = {
       { protocol: 'http', hostname: 'localhost', port: '4000' },
       { protocol: 'https', hostname: 'api.instram.mg' },
       { protocol: 'https', hostname: 'staging.api.instram.mg' },
+      { protocol: 'https', hostname: 'instram-backend.fly.dev' },
     ],
     formats: ['image/webp'],
   },
@@ -36,15 +36,17 @@ const nextConfig = {
               "default-src 'self'",
               scriptSrc,
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: blob: https://api.instram.mg https://staging.api.instram.mg http://localhost:4000",
+              "img-src 'self' data: blob: https://api.instram.mg https://staging.api.instram.mg https://instram-backend.fly.dev http://localhost:4000",
               [
                 "connect-src 'self'",
                 "http://localhost:4000",
                 "https://api.instram.mg",
                 "https://staging.api.instram.mg",
+                "https://instram-backend.fly.dev",
                 "ws://localhost:4000",
                 "wss://api.instram.mg",
                 "wss://staging.api.instram.mg",
+                "wss://instram-backend.fly.dev",
               ].join(' '),
               "font-src 'self'",
               "frame-src 'none'",
