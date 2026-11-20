@@ -642,7 +642,7 @@ export class BookingsService {
   private async buildTicketPdf(booking: {
     reference: string;
     qrPayload: string | null;
-    passengers: { firstName: string; lastName: string; seatCode: string }[];
+    passengers: { firstName: string; lastName: string; seatCode: string | null }[];
     tripInstance: {
       departureAt: Date;
       cooperative: { displayName: string };
@@ -1124,9 +1124,9 @@ export class BookingsService {
           variables: {
             reference,
             seatCodes: seatCodes.join(', '),
-            departureAt: trip.departureAt.toLocaleString('fr-MG', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Indian/Antananarivo' }),
-            origin: trip.route.origin.nameFr,
-            destination: trip.route.destination.nameFr,
+            departureAt: trip.departureAt?.toLocaleString('fr-MG', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Indian/Antananarivo' }) ?? '',
+            origin: trip.route?.origin?.nameFr ?? '',
+            destination: trip.route?.destination?.nameFr ?? '',
           },
           lang: smsLang,
           phone: smsPhone,
@@ -1139,9 +1139,9 @@ export class BookingsService {
           templateCode: 'WALK_IN_CONFIRMED',
           params: {
             reference, seatCodes: seatCodes.join(', '),
-            departureAt: trip.departureAt.toLocaleString('fr-MG', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Indian/Antananarivo' }),
-            origin: trip.route.origin.nameFr,
-            destination: trip.route.destination.nameFr,
+            departureAt: trip.departureAt?.toLocaleString('fr-MG', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Indian/Antananarivo' }) ?? '',
+            origin: trip.route?.origin?.nameFr ?? '',
+            destination: trip.route?.destination?.nameFr ?? '',
           },
           lang: smsLang,
           bookingId: booking.id,
@@ -1250,7 +1250,7 @@ export class BookingsService {
     }
 
     // Notification SMS annulation (transactionnelle — envoi immédiat)
-    const cancelPhone = booking.buyer?.phone ?? booking.passengers[0]?.phone;
+    const cancelPhone = booking.buyer?.phone ?? booking.passengers?.[0]?.phone;
     const cancelLang = (booking.buyer?.preferredLang ?? 'FR') as 'FR' | 'MG';
     if (cancelPhone) {
       const vars = { reference: booking.reference };
