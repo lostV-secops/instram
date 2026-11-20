@@ -4,6 +4,8 @@ FROM node:20-alpine AS deps
 
 WORKDIR /app
 
+RUN apk add --no-cache openssl
+
 COPY package.json package-lock.json ./
 COPY schema.prisma ./
 RUN npm ci && npx prisma generate
@@ -41,6 +43,8 @@ RUN npm run build
 FROM node:20-alpine AS prod
 
 WORKDIR /app
+
+RUN apk add --no-cache openssl
 
 COPY package.json package-lock.json ./
 COPY schema.prisma ./
