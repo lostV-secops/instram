@@ -10,9 +10,11 @@
 # de ce fichier, d'où la substitution ${VAR} ci-dessous.
 #
 # Accès en HTTP pur sur l'IP du serveur (pas de nom de domaine, pas de TLS) :
-#   - Frontend : http://<IP>        → Domaine Dokploy (Host = <IP>, port 3000, HTTPS off)
+#   - Frontend : http://<IP>:8080   → port publié directement
 #   - Backend  : http://<IP>:4000   → port publié directement (API REST + WebSocket /ws)
-# Le port 3000 de l'hôte n'est PAS publié : il est occupé par le dashboard Dokploy.
+# Les deux ports contournent Traefik : sur ce serveur, Traefik (80/443) n'accepte
+# que le trafic Cloudflare (middleware cloudflare-only). Le port 3000 de l'hôte
+# est occupé par le dashboard Dokploy.
 # ============================================================================
 
 volumes:
@@ -141,8 +143,8 @@ services:
       COOKIE_SECURE:       ${COOKIE_SECURE:-false}
       NODE_ENV: production
       PORT:     "3000"
-    expose:
-      - "3000"
+    ports:
+      - "${FRONTEND_PORT:-8080}:3000"
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
       interval: 15s
