@@ -65,7 +65,9 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-instram}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-instram_prod}
+      # Connexion DIRECTE (sans PgBouncer) : prisma migrate a besoin des advisory locks.
+      # Base externe (Neon…) : DATABASE_DIRECT_URL ; sinon DATABASE_URL ; sinon Postgres local.
+      DATABASE_URL: ${DATABASE_DIRECT_URL:-${DATABASE_URL:-postgresql://${POSTGRES_USER:-instram}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-instram_prod}}}
     command: ["npx", "prisma", "migrate", "deploy"]
     restart: "no"
 
@@ -83,7 +85,8 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-instram}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-instram_prod}
+      # Base externe (Neon…) si DATABASE_URL est défini, sinon Postgres local du stack
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-instram}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-instram_prod}}
       REDIS_URL:    redis://redis:6379
 
       JWT_ACCESS_SECRET:      ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET manquant}
