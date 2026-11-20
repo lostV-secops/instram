@@ -92,8 +92,8 @@ export const SUPER_ADMIN_USER = {
 };
 
 // Villes issues du seed officiel des villes
-const CITY_TANA_ID    = '770b9808-5087-431b-8342-243848dcb4fe'; // Antananarivo
-const CITY_TOAMA_ID   = 'd90e8189-f95c-4ea7-9238-396c127f870c'; // Toamasina
+const CITY_TANA_ID    = '697a12bb-8b18-46fc-a607-1b511d19d795'; // Antananarivo
+const CITY_TOAMA_ID   = '38a86248-473a-4a8a-882d-cefa59b8a183'; // Toamasina
 
 async function main() {
   console.log('[seed-e2e] Début du seed E2E...');
