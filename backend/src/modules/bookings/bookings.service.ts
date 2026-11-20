@@ -676,7 +676,7 @@ export class BookingsService {
       doc.fillColor('#ffffff').fontSize(24).font('Helvetica-Bold')
          .text('InsTRAM', 50, 16, { lineBreak: false });
       doc.fillColor('#9CC43D').fontSize(10).font('Helvetica')
-         .text('  ●  Billet de transport', 50, 46, { lineBreak: false });
+         .text('  -  Billet de transport', 50, 46, { lineBreak: false });
 
       doc.y = 88;
 
@@ -687,7 +687,7 @@ export class BookingsService {
       // ── Trajet ───────────────────────────────────────────────────
       doc.moveDown(0.4);
       doc.fillColor('#162E49').fontSize(22).font('Helvetica-Bold')
-         .text(`${origin}  →  ${dest}`, { align: 'center' });
+         .text(`${origin}  >  ${dest}`, { align: 'center' });
 
       // ── Date de départ ───────────────────────────────────────────
       doc.moveDown(0.4);
@@ -704,10 +704,10 @@ export class BookingsService {
          .text('Passagers', { align: 'left' });
       doc.moveDown(0.5);
       for (const p of booking.passengers) {
-        doc.fontSize(11).font('Helvetica').fillColor('#374151')
-           .text(`${p.firstName} ${p.lastName}`, { continued: true, width: 300 });
-        doc.fillColor('#205E98')
-           .text(`  Siège ${p.seatCode ?? '—'}`);
+        doc.fillColor('#205E98').fontSize(11).font('Helvetica-Bold')
+           .text(`Siege ${p.seatCode ?? '-'}`, { continued: true, width: 110 });
+        doc.fillColor('#374151').font('Helvetica')
+           .text(`  ${p.firstName} ${p.lastName}`);
       }
 
       // ── QR code centré ───────────────────────────────────────────
