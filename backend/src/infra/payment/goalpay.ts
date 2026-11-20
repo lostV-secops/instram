@@ -12,6 +12,13 @@ import crypto from 'crypto';
 
 const GOALPAY_API_URL = process.env.GOALPAY_API_URL ?? 'https://api.goalpay.pro';
 
+// Chemin sandbox : /api/sandbox/payement/service
+// Chemin prod    : /api/payement/service
+const GOALPAY_PATH =
+  process.env.GOALPAY_SANDBOX === 'true'
+    ? '/api/sandbox/payement/service'
+    : '/api/payement/service';
+
 export interface GoalPayOrderRequest {
   description: string;
   reference: string; // Notre référence interne (ex: booking.reference)
@@ -62,7 +69,7 @@ export async function createGoalPayOrder(
     metadata: req.metadata,
   };
 
-  const response = await fetch(`${GOALPAY_API_URL}/api/payement/service`, {
+  const response = await fetch(`${GOALPAY_API_URL}${GOALPAY_PATH}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

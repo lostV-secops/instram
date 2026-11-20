@@ -140,6 +140,8 @@ services:
       GOALPAY_API_URL:          ${GOALPAY_API_URL:-https://api.goalpay.pro}
       GOALPAY_API_TOKEN:        ${GOALPAY_API_TOKEN:-}
       GOALPAY_WEBHOOK_SECRET:   ${GOALPAY_WEBHOOK_SECRET:-}
+      # Mettre à false en production réelle
+      GOALPAY_SANDBOX:          ${GOALPAY_SANDBOX:-false}
 
       # Webhook SMS IFTTT (confirmation paiement automatique)
       SMS_WEBHOOK_SECRET: ${SMS_WEBHOOK_SECRET:-}
