@@ -23,6 +23,17 @@ CMD ["npm", "run", "dev"]
 # ─── Stage 4 : build de production ───────────────────────────────────────────
 FROM node:20-alpine AS builder
 WORKDIR /app
+# Les variables NEXT_PUBLIC_* sont figées dans le bundle navigateur au build :
+# elles doivent être passées en build args (cf. docker-compose.dokploy.yml).
+# Elles alimentent aussi la CSP (next.config.js).
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_WS_URL
+ARG COOKIE_SECURE
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
+    NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL \
+    COOKIE_SECURE=$COOKIE_SECURE \
+    NEXT_TELEMETRY_DISABLED=1 \
+    NEXT_OUTPUT=standalone
 COPY --from=all-deps /app/node_modules ./node_modules
 COPY . .
 # next build avec output: standalone

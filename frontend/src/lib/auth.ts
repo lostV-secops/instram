@@ -59,10 +59,18 @@ export function parseUserInfoCookie(
   }
 }
 
+/**
+ * Flag `Secure` des cookies : actif en production, sauf si COOKIE_SECURE=false
+ * (déploiement temporaire en HTTP pur sur IP, sans TLS — le navigateur
+ * refuserait sinon les cookies et la connexion échouerait).
+ */
+export const COOKIE_SECURE =
+  process.env.NODE_ENV === 'production' && process.env.COOKIE_SECURE !== 'false';
+
 /** Options communes pour les cookies de session */
 export const sessionCookieOptions = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
+  secure: COOKIE_SECURE,
   sameSite: 'lax' as const,
   path: '/',
 };

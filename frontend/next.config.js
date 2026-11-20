@@ -1,5 +1,30 @@
+// URLs publiques du backend (injectées au build — cf. Dockerfile ARG).
+// Ajoutées à la CSP pour les déploiements sur IP / domaine personnalisé.
+const PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+const PUBLIC_WS_URL = process.env.NEXT_PUBLIC_WS_URL || '';
+const toOrigin = (url) => {
+  try {
+    return new URL(url).origin; // ex. http://1.2.3.4:4000 / ws://1.2.3.4:4000
+  } catch {
+    return null;
+  }
+};
+const extraApiOrigins = [toOrigin(PUBLIC_API_URL)].filter(Boolean);
+const extraWsOrigins = [toOrigin(PUBLIC_WS_URL)].filter(Boolean);
+const apiRemotePattern = (() => {
+  try {
+    const u = new URL(PUBLIC_API_URL);
+    return [{ protocol: u.protocol.replace(':', ''), hostname: u.hostname, port: u.port }];
+  } catch {
+    return [];
+  }
+})();
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Image Docker (Dokploy) : sortie standalone. Vercel ne définit pas cette
+  // variable et garde son build par défaut (standalone incompatible).
+  ...(process.env.NEXT_OUTPUT === 'standalone' ? { output: 'standalone' } : {}),
   webpack: (config) => {
     config.watchOptions = { poll: 1000, aggregateTimeout: 300 };
     return config;
@@ -10,6 +35,7 @@ const nextConfig = {
       { protocol: 'https', hostname: 'api.instram.mg' },
       { protocol: 'https', hostname: 'staging.api.instram.mg' },
       { protocol: 'https', hostname: 'instram-backend.fly.dev' },
+      ...apiRemotePattern,
     ],
     formats: ['image/webp'],
   },
@@ -36,7 +62,8 @@ const nextConfig = {
               "default-src 'self'",
               scriptSrc,
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: blob: https://api.instram.mg https://staging.api.instram.mg https://instram-backend.fly.dev http://localhost:4000",
+              "img-src 'self' data: blob: https://api.instram.mg https://staging.api.instram.mg https://instram-backend.fly.dev http://localhost:4000" +
+                (extraApiOrigins.length ? ` ${extraApiOrigins.join(' ')}` : ''),
               [
                 "connect-src 'self'",
                 "http://localhost:4000",
@@ -47,6 +74,8 @@ const nextConfig = {
                 "wss://api.instram.mg",
                 "wss://staging.api.instram.mg",
                 "wss://instram-backend.fly.dev",
+                ...extraApiOrigins,
+                ...extraWsOrigins,
               ].join(' '),
               "font-src 'self'",
               "frame-src 'none'",

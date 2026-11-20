@@ -14,6 +14,7 @@ import {
   ACCESS_TOKEN_MAX_AGE,
   REFRESH_TOKEN_MAX_AGE,
   sessionCookieOptions,
+  COOKIE_SECURE,
 } from '@/lib/auth';
 import type { AuthTokens } from '@/lib/types';
 
@@ -89,7 +90,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       encodeURIComponent(JSON.stringify(publicUserInfo)),
       {
         httpOnly: false, // Accessible côté client pour le nom/WS userId
-        secure: process.env.NODE_ENV === 'production',
+        secure: COOKIE_SECURE,
         sameSite: 'lax',
         path: '/',
         maxAge: REFRESH_TOKEN_MAX_AGE,

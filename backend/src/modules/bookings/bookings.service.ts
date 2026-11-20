@@ -707,7 +707,7 @@ export class BookingsService {
         doc.fontSize(11).font('Helvetica').fillColor('#374151')
            .text(`${p.firstName} ${p.lastName}`, { continued: true, width: 300 });
         doc.fillColor('#205E98')
-           .text(`  Siège ${p.seatCode}`);
+           .text(`  Siège ${p.seatCode ?? '—'}`);
       }
 
       // ── QR code centré ───────────────────────────────────────────
