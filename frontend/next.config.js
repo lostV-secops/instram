@@ -16,11 +16,11 @@ const nextConfig = {
   async headers() {
     const isDev = process.env.NODE_ENV === 'development';
 
-    // En dev, Next.js App Router injecte des scripts inline pour l'hydratation
-    // et le HMR — unsafe-inline est requis, sinon React ne s'active pas.
+    // Next.js App Router injecte des scripts inline pour l'hydratation en dev ET en prod.
+    // unsafe-inline est requis dans les deux cas ; unsafe-eval est réservé au dev (HMR).
     const scriptSrc = isDev
       ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
-      : "script-src 'self'";
+      : "script-src 'self' 'unsafe-inline'";
 
     return [
       {
