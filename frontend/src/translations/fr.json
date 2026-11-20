@@ -160,7 +160,21 @@
     "rateSubmitting": "Envoi en cours…",
     "rateSuccess": "Merci pour votre avis !",
     "rateAlreadyDone": "Vous avez déjà noté ce voyage.",
-    "rateCommentPlaceholder": "Commentaire (facultatif, 2000 caractères max)"
+    "rateCommentPlaceholder": "Commentaire (facultatif, 2000 caractères max)",
+    "payWithGoalPay": "Payer en ligne",
+    "payWithGoalPaySub": "MVola · Orange Money · Airtel Money",
+    "payWithGoalPayLoading": "Redirection vers GoalPay…",
+    "payWithGoalPayError": "Impossible d'initialiser le paiement. Vérifiez votre connexion."
+  },
+  "paymentResult": {
+    "successTitle": "Paiement confirmé !",
+    "successMessage": "Votre réservation est confirmée. Vous recevrez votre billet par SMS.",
+    "failedTitle": "Paiement échoué",
+    "failedMessage": "Le paiement n'a pas abouti. Votre réservation est toujours active, vous pouvez réessayer.",
+    "canceledTitle": "Paiement annulé",
+    "canceledMessage": "Vous avez annulé le paiement. Votre réservation est toujours active.",
+    "backToBookings": "Retour à mes réservations",
+    "tryAgain": "Réessayer"
   },
   "bookingList": {
     "title": "Mes réservations",

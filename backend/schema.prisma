@@ -104,6 +104,7 @@ enum PaymentProvider {
   ORANGE_MONEY
   AIRTEL_MONEY // Réservé V2 (CDC §4.2)
   CASH
+  GOALPAY
 }
 
 enum PaymentStatus {
@@ -779,6 +780,8 @@ model Payment {
   amountMga             Int
   status                PaymentStatus   @default(INITIATED)
   providerTransactionId String?         @unique
+  goalpayOrderRef       String?         @unique // Référence GoalPay (order_reference)
+  checkoutUrl           String?         // URL de paiement GoalPay (redirigée côté frontend)
   providerRawPayload    Json?
   errorMessage          String?
   initiatedAt           DateTime        @default(now())
@@ -792,6 +795,7 @@ model Payment {
   @@index([bookingId])
   @@index([status])
   @@index([provider, status])
+  @@index([goalpayOrderRef])
 }
 
 model PlatformFee {

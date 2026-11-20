@@ -136,6 +136,11 @@ services:
       ORANGE_MONEY_RETURN_URL:      ${ORANGE_MONEY_RETURN_URL:-}
       ORANGE_MONEY_CANCEL_URL:      ${ORANGE_MONEY_CANCEL_URL:-}
 
+      # GoalPay — agrégateur Mobile Money malgache
+      GOALPAY_API_URL:          ${GOALPAY_API_URL:-https://api.goalpay.pro}
+      GOALPAY_API_TOKEN:        ${GOALPAY_API_TOKEN:-}
+      GOALPAY_WEBHOOK_SECRET:   ${GOALPAY_WEBHOOK_SECRET:-}
+
       # Webhook SMS IFTTT (confirmation paiement automatique)
       SMS_WEBHOOK_SECRET: ${SMS_WEBHOOK_SECRET:-}
 

@@ -13,6 +13,11 @@ import type { NotificationsService } from '../notifications/notifications.servic
 import type { WebhookPayload } from '../bookings/bookings.schema';
 import { bookingChannel } from '../../infra/ws/channels';
 import { publishToChannel } from '../../infra/ws/pubsub';
+import {
+  createGoalPayOrder,
+  verifyGoalPaySignature,
+  type GoalPayWebhookPayload,
+} from '../../infra/payment/goalpay';
 
 // =====================================================================
 // PaymentsService
@@ -114,6 +119,12 @@ export interface PaymentInitiationResponse {
     ussdCode: string | null;
     expiresAt: string;
   };
+}
+
+export interface GoalPayInitiationResponse {
+  paymentId: string;
+  checkoutUrl: string;
+  expiresInMinutes: number;
 }
 
 // Type interne pour les bookings chargés dans les méthodes privées
@@ -653,6 +664,207 @@ export class PaymentsService {
     const txId = `sms-ifttt-${Date.now()}-${payment.id.slice(0, 8)}`;
     await this._confirmPayment(payment.booking as BookingForConfirm, txId, payment.provider);
     return { status: 'processed' };
+  }
+
+  // ------------------------------------------------------------------
+  // initiateGoalPay — Crée une commande de paiement GoalPay
+  // Retourne l'URL checkout vers laquelle le frontend redirige l'utilisateur.
+  // ------------------------------------------------------------------
+
+  async initiateGoalPay(params: {
+    bookingId: string;
+    userId: string;
+  }): Promise<GoalPayInitiationResponse> {
+    const { bookingId, userId } = params;
+
+    const booking = await this.db.booking.findFirst({
+      where: {
+        id: bookingId,
+        buyerUserId: userId,
+        status: BookingStatus.PENDING_PAYMENT,
+      },
+      include: {
+        passengers: { take: 1, select: { firstName: true, lastName: true } },
+        tripInstance: {
+          include: {
+            route: { include: { origin: true, destination: true } },
+            cooperative: {
+              include: {
+                pricingPlans: {
+                  where: {
+                    effectiveFrom: { lte: new Date() },
+                    OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: new Date() } }],
+                  },
+                  orderBy: { effectiveFrom: 'desc' },
+                  take: 1,
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundError('Réservation introuvable ou non en attente de paiement');
+    }
+
+    const existingPayment = await this.db.payment.findFirst({
+      where: {
+        bookingId,
+        status: { in: [PaymentStatus.INITIATED, PaymentStatus.PENDING, PaymentStatus.CONFIRMED] },
+      },
+    });
+    if (existingPayment) {
+      throw new ConflictError('Un paiement est déjà en cours ou confirmé pour cette réservation');
+    }
+
+    const isWalkIn = booking.channel === BookingChannel.WALK_IN;
+    const pricingPlan = booking.tripInstance.cooperative.pricingPlans[0];
+    const isSubscriptionPlan = pricingPlan?.type === 'SUBSCRIPTION';
+    const platformFeeMga = isWalkIn ? 0 : calculatePlatformFee(booking.seatSubtotalMga);
+    const commissionMga =
+      isWalkIn || isSubscriptionPlan
+        ? 0
+        : calculateCommission(booking.seatSubtotalMga, pricingPlan?.commissionRate);
+
+    const origin = booking.tripInstance.route.origin.nameFr;
+    const dest = booking.tripInstance.route.destination.nameFr;
+    const description = `Billet ${origin} > ${dest} — Réf. ${booking.reference}`;
+
+    const gpOrder = await createGoalPayOrder({
+      description,
+      reference: booking.reference,
+      amount: booking.totalAmountMga,
+      metadata: [
+        {
+          label: `Billet ${origin} > ${dest}`,
+          unit_price: booking.seatSubtotalMga,
+          quantity: booking.passengers.length || 1,
+        },
+        ...(platformFeeMga > 0
+          ? [{ label: 'Frais de service InsTRAM', unit_price: platformFeeMga, quantity: 1 }]
+          : []),
+      ],
+    });
+
+    const payment = await this.db.$transaction(async (tx) => {
+      const p = await tx.payment.create({
+        data: {
+          bookingId,
+          provider: 'GOALPAY' as PaymentProvider,
+          amountMga: booking.totalAmountMga,
+          status: PaymentStatus.PENDING,
+          goalpayOrderRef: gpOrder.orderReference,
+          checkoutUrl: gpOrder.checkoutUrl,
+        },
+      });
+
+      await tx.platformFee.create({
+        data: {
+          paymentId: p.id,
+          amountMga: platformFeeMga,
+          policyRef: isWalkIn ? 'RG-02-WALK_IN' : 'VH-05',
+        },
+      });
+
+      if (!isWalkIn) {
+        await tx.commission.updateMany({
+          where: { bookingId, paymentId: null },
+          data: { amountMga: commissionMga },
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          actorUserId: userId,
+          action: AuditAction.PAYMENT_INITIATED,
+          entityType: 'Payment',
+          entityId: p.id,
+          after: {
+            bookingId,
+            provider: 'GOALPAY',
+            amountMga: booking.totalAmountMga,
+            platformFeeMga,
+            commissionMga,
+            goalpayOrderRef: gpOrder.orderReference,
+          },
+        },
+      });
+
+      return p;
+    });
+
+    return {
+      paymentId: payment.id,
+      checkoutUrl: gpOrder.checkoutUrl,
+      expiresInMinutes: gpOrder.expiresInMinutes,
+    };
+  }
+
+  // ------------------------------------------------------------------
+  // handleGoalPayWebhook — Traite un événement webhook GoalPay
+  // Architecture §7.4 : signature vérifiée AVANT tout traitement
+  // ------------------------------------------------------------------
+
+  async handleGoalPayWebhook(params: {
+    signature: string;
+    payload: GoalPayWebhookPayload;
+  }): Promise<{ status: 'processed' | 'duplicate' | 'failed' | 'ignored' }> {
+    const { signature, payload } = params;
+
+    if (!verifyGoalPaySignature(signature)) {
+      throw new WebhookSignatureError();
+    }
+
+    const { event, data } = payload;
+    const { order_reference } = data;
+
+    if (!order_reference) {
+      return { status: 'ignored' };
+    }
+
+    // Idempotence : paiement déjà confirmé
+    const existingConfirmed = await this.db.payment.findFirst({
+      where: { goalpayOrderRef: order_reference, status: PaymentStatus.CONFIRMED },
+    });
+    if (existingConfirmed) {
+      return { status: 'duplicate' };
+    }
+
+    const payment = await this.db.payment.findFirst({
+      where: { goalpayOrderRef: order_reference },
+      include: {
+        booking: {
+          include: { seatHolds: true, payments: true },
+        },
+      },
+    });
+
+    if (!payment?.booking) {
+      await this.db.auditLog.create({
+        data: {
+          action: AuditAction.PAYMENT_FAILED,
+          entityType: 'Payment',
+          entityId: 'unknown',
+          before: { provider: 'GOALPAY', reason: 'no_matching_payment', order_reference },
+        },
+      });
+      return { status: 'ignored' };
+    }
+
+    if (event === 'payment.success') {
+      return this._confirmPayment(
+        payment.booking as BookingForConfirm,
+        `goalpay-${order_reference}`,
+        'GOALPAY',
+      );
+    } else {
+      return this._failPayment(
+        payment.booking as BookingForConfirm,
+        `goalpay-${order_reference}`,
+      );
+    }
   }
 
   // _confirmPayment — BEGIN TRANSACTION : Payment CONFIRMED + BookingSeats + Booking CONFIRMED

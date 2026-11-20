@@ -16,6 +16,7 @@ import type { BookingDetail, Lang } from '@/lib/types';
 import { QrCodeCanvas } from '@/components/ui/QrCodeCanvas';
 import { RatingForm } from '@/components/booking/RatingForm';
 import { ResendSMSButton } from './ResendSMSButton';
+import { GoalPayButton } from './GoalPayButton';
 
 interface PageProps {
   params: { lang: string; bookingId: string };
@@ -281,14 +282,31 @@ export default async function BookingDetailPage({ params }: PageProps) {
         </section>
       )}
 
-      {/* Message si en attente de paiement */}
+      {/* Paiement en ligne GoalPay — affiché si réservation en attente */}
       {booking.status === 'PENDING_PAYMENT' && (
-        <div
-          className="bg-yellow-50 border border-yellow-300 text-yellow-800 rounded-xl p-4 text-sm text-center"
-          role="status"
+        <section
+          className="bg-white rounded-xl border border-gray-200 p-4 space-y-3"
+          aria-labelledby="booking-pay"
         >
-          {t.booking.paymentPending}
-        </div>
+          <h2
+            id="booking-pay"
+            className="text-sm font-semibold text-brand-dark uppercase tracking-wide"
+          >
+            {t.bookingDetail.payment}
+          </h2>
+          <GoalPayButton
+            bookingId={booking.id}
+            labels={{
+              pay: t.bookingDetail.payWithGoalPay,
+              sub: t.bookingDetail.payWithGoalPaySub,
+              loading: t.bookingDetail.payWithGoalPayLoading,
+              error: t.bookingDetail.payWithGoalPayError,
+            }}
+          />
+          <p className="text-xs text-gray-500 text-center">
+            {t.booking.paymentPending}
+          </p>
+        </section>
       )}
 
       {/* Notation — visible uniquement si voyage terminé */}

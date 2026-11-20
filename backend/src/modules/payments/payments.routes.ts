@@ -4,6 +4,7 @@ import { PaymentsService } from './payments.service';
 import prisma from '../../infra/db/prisma';
 import redis from '../../infra/cache/redis';
 import { buildGatewayMap } from '../../infra/mobileMoney/gateway';
+import type { GoalPayWebhookPayload } from '../../infra/payment/goalpay';
 
 // Re-export pour bookings.routes.ts (délégation webhook)
 export { WebhookSignatureError } from './payments.service';
@@ -191,6 +192,93 @@ export default async function paymentsRoutes(fastify: FastifyInstance): Promise<
       } catch (err) {
         req.log.error(err, 'sms-webhook: erreur confirmation');
         return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
+  // POST /payments/goalpay — Initier un paiement via GoalPay
+  // Auth obligatoire. Retourne checkoutUrl vers laquelle le frontend redirige.
+  // Contrat : { bookingId } → GoalPayInitiationResponse
+  // ------------------------------------------------------------------
+  fastify.post(
+    '/payments/goalpay',
+    {
+      onRequest: [fastify.authenticate],
+      config: { rateLimit: { max: 10, timeWindow: '1m' } },
+    },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      reply.header('Cache-Control', 'no-store');
+
+      const schema = z.object({
+        bookingId: z.string().uuid({ message: 'bookingId doit être un UUID valide' }),
+      });
+      const parseResult = schema.safeParse(req.body);
+      if (!parseResult.success) {
+        return reply.status(400).send({
+          code: 'VALIDATION_ERROR',
+          message: formatZodError(parseResult.error),
+        });
+      }
+
+      try {
+        const result = await paymentsService.initiateGoalPay({
+          bookingId: parseResult.data.bookingId,
+          userId: getUserId(req),
+        });
+        return reply.status(201).send(result);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'NOT_FOUND') {
+          return reply.status(404).send({ code: 'NOT_FOUND', message: (err as Error).message });
+        }
+        if (code === 'CONFLICT') {
+          return reply.status(409).send({ code: 'PAYMENT_ALREADY_EXISTS', message: (err as Error).message });
+        }
+        if (code === 'GATEWAY_ERROR' || code === 'MISCONFIGURATION') {
+          return reply.status(502).send({ code: 'GATEWAY_ERROR', message: 'Erreur passerelle de paiement' });
+        }
+        req.log.error(err, 'initiate goalpay error');
+        return reply.status(500).send({ code: 'INTERNAL_ERROR', message: 'Erreur serveur' });
+      }
+    },
+  );
+
+  // ------------------------------------------------------------------
+  // POST /webhooks/goalpay — Webhook GoalPay (payment.success/failed/...)
+  // PAS d'auth JWT — sécurisé par signature HMAC x-gpay-signature.
+  // Toujours retourner 200 pour éviter les relivraisons répétées GoalPay.
+  // ------------------------------------------------------------------
+  fastify.post(
+    '/webhooks/goalpay',
+    {},
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      reply.header('Cache-Control', 'no-store');
+
+      const signature = req.headers['x-gpay-signature'];
+      if (!signature || typeof signature !== 'string') {
+        req.log.warn('GoalPay webhook: x-gpay-signature manquant');
+        return reply.status(401).send({ code: 'UNAUTHORIZED', message: 'Signature manquante' });
+      }
+
+      const payload = req.body as GoalPayWebhookPayload;
+      if (!payload?.event || !payload?.data) {
+        return reply.status(400).send({ code: 'VALIDATION_ERROR', message: 'Payload invalide' });
+      }
+
+      try {
+        const result = await paymentsService.handleGoalPayWebhook({ signature, payload });
+        req.log.info({ event: payload.event, status: result.status }, 'goalpay webhook processed');
+        return reply.status(200).send({ ok: true, status: result.status });
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'INVALID_SIGNATURE') {
+          req.log.warn({ signature }, 'GoalPay webhook: signature invalide');
+          return reply.status(401).send({ code: 'UNAUTHORIZED', message: 'Signature invalide' });
+        }
+        req.log.error(err, 'goalpay webhook error');
+        // Retourner 200 pour éviter les relivraisons répétées
+        return reply.status(200).send({ ok: false, error: 'Erreur interne' });
       }
     },
   );

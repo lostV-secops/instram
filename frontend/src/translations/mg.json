@@ -160,7 +160,21 @@
     "rateSubmitting": "Alefa…",
     "rateSuccess": "Misaotra anao noho ny hevitrao !",
     "rateAlreadyDone": "Efa nomenao tsara toerana ity dia ity.",
-    "rateCommentPlaceholder": "Fanehoan-kevitra (tsy voatery, 2000 litera fara-betsiny)"
+    "rateCommentPlaceholder": "Fanehoan-kevitra (tsy voatery, 2000 litera fara-betsiny)",
+    "payWithGoalPay": "Aloa amin'ny internet",
+    "payWithGoalPaySub": "MVola · Orange Money · Airtel Money",
+    "payWithGoalPayLoading": "Averina any GoalPay…",
+    "payWithGoalPayError": "Tsy afaka nanomboka ny fandoavana. Jereo ny fampifandraisana."
+  },
+  "paymentResult": {
+    "successTitle": "Voantara ny fandoavana!",
+    "successMessage": "Voantara ny firakirana. Handray SMS fitahirizana ianao.",
+    "failedTitle": "Tsy nahomby ny fandoavana",
+    "failedMessage": "Tsy vita ny fandoavana. Mbola velona ny firakirana, afaka averina ny fandoavana.",
+    "canceledTitle": "Voafoana ny fandoavana",
+    "canceledMessage": "Nokendrena foana ny fandoavana. Mbola velona ny firakirana.",
+    "backToBookings": "Hiverina any amin'ny firakirana",
+    "tryAgain": "Averina indray"
   },
   "bookingList": {
     "title": "Ny fandraharahako",
