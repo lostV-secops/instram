@@ -120,9 +120,6 @@ export default function AdminBookingsPage() {
       {/* Titre */}
       <div>
         <h1 className="text-xl font-bold text-brand-dark">Supervision des paiements</h1>
-        <p className="text-xs text-gray-500 mt-0.5">
-          Source : <code className="text-xs bg-gray-100 px-1 rounded">GET /admin/payments</code>
-        </p>
       </div>
 
       {/* Filtres */}

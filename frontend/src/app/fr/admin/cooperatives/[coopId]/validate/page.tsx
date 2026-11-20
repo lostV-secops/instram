@@ -126,6 +126,7 @@ export default function ValidateCoopPage() {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
         },
       );
       if (!validateRes.ok) throw new Error("Erreur lors de la validation.");
