@@ -111,8 +111,9 @@ services:
       SILENCE_END_HOUR:   ${SILENCE_END_HOUR:-6}
 
       QR_SECRET:          ${QR_SECRET:?QR_SECRET manquant}
-      STORAGE_PROVIDER:   ${STORAGE_PROVIDER:-local}
-      SMS_WEBHOOK_SECRET: ${SMS_WEBHOOK_SECRET:-}
+      STORAGE_PROVIDER:    ${STORAGE_PROVIDER:-local}
+      BACKEND_PUBLIC_URL:  ${BACKEND_PUBLIC_URL:-}
+      SMS_WEBHOOK_SECRET:  ${SMS_WEBHOOK_SECRET:-}
     volumes:
       - exports:/app/exports
     ports:

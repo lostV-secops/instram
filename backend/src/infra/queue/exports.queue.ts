@@ -152,7 +152,7 @@ async function generateManifestPdf(
     if (trip) {
       const origin = trip.route.origin.nameFr;
       const dest = trip.route.destination.nameFr;
-      doc.fontSize(12).text(`Trajet : ${origin} → ${dest}`);
+      doc.fontSize(12).text(`Trajet : ${origin} > ${dest}`);
       doc.text(`Départ : ${trip.departureAt.toISOString()}`);
       doc.text(`Généré le : ${new Date().toISOString()}`);
     }

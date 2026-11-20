@@ -37,7 +37,9 @@ export class LocalStorageClient implements StorageClient {
 
   constructor(
     baseDir = path.resolve(process.cwd(), 'exports'),
-    baseUrl = `http://localhost:${process.env.PORT ?? 4000}/exports`,
+    baseUrl = process.env.BACKEND_PUBLIC_URL
+      ? `${process.env.BACKEND_PUBLIC_URL}/exports`
+      : `http://localhost:${process.env.PORT ?? 4000}/exports`,
   ) {
     this.baseDir = baseDir;
     this.baseUrl = baseUrl;
