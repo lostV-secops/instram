@@ -18,7 +18,7 @@ export type BookingStatus =
 export type BookingChannel = 'ONLINE' | 'WALK_IN';
 export type BoardingStatus = 'NOT_BOARDED' | 'BOARDED' | 'ABSENT';
 
-export type PaymentProvider = 'MVOLA' | 'ORANGE_MONEY' | 'AIRTEL_MONEY' | 'CASH';
+export type PaymentProvider = 'MVOLA' | 'ORANGE_MONEY' | 'AIRTEL_MONEY' | 'CASH' | 'GOALPAY';
 export type PaymentStatus =
   | 'INITIATED'
   | 'PENDING'

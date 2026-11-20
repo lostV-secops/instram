@@ -108,6 +108,8 @@
     "paymentMethod": "Méthode de paiement",
     "mvola": "MVola",
     "orangeMoney": "Orange Money",
+    "goalpay": "GoalPay",
+    "goalpaySubtitle": "MVola · Orange · Airtel",
     "payerPhone": "Numéro Mobile Money",
     "payerPhonePlaceholder": "+261 34 XX XX XXX",
     "payButton": "Confirmer le paiement",
