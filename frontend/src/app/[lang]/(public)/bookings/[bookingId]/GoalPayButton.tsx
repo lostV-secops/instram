@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
 interface GoalPayButtonProps {
@@ -18,13 +18,62 @@ interface GoalPayButtonProps {
 export function GoalPayButton({ bookingId, lang, isSandbox, labels }: GoalPayButtonProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [confirming, setConfirming] = useState(false);
   const [checkoutOpened, setCheckoutOpened] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const paymentIdRef = useRef<string | null>(null);
+  const confirmFiredRef = useRef(false);
+
+  // Polling : vérifie le statut du paiement toutes les 3s
+  useEffect(() => {
+    if (!checkoutOpened) return;
+
+    const interval = setInterval(async () => {
+      const pid = paymentIdRef.current;
+      if (!pid) return;
+      try {
+        const res = await fetch(`/api/proxy/v1/payments/${pid}`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = (await res.json()) as { status: string };
+        if (data.status === 'CONFIRMED') {
+          clearInterval(interval);
+          router.push(`/${lang}/payment/success`);
+        }
+      } catch {
+        // Silencieux — on réessaie au prochain tick
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [checkoutOpened, lang, router]);
+
+  // Sandbox : quand l'utilisateur revient sur cet onglet → simulate-success
+  useEffect(() => {
+    if (!checkoutOpened || !isSandbox) return;
+
+    const handleVisibility = async () => {
+      if (document.hidden) return;
+      if (confirmFiredRef.current) return;
+      confirmFiredRef.current = true;
+
+      try {
+        await fetch('/api/payments/goalpay-callback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bookingId }),
+        });
+      } catch {
+        // Le polling détectera l'état
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [checkoutOpened, isSandbox, bookingId]);
 
   async function handleClick() {
     setLoading(true);
     setError(null);
+    confirmFiredRef.current = false;
     try {
       const returnUrl = `${window.location.origin}/${lang}/payment/success?bookingId=${bookingId}`;
       const res = await fetch('/api/proxy/v1/payments/goalpay', {
@@ -33,12 +82,10 @@ export function GoalPayButton({ bookingId, lang, isSandbox, labels }: GoalPayBut
         body: JSON.stringify({ bookingId, returnUrl }),
       });
 
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      const data = (await res.json()) as { checkoutUrl: string };
-      // Ouvrir dans un nouvel onglet pour permettre le retour sur cette page
+      const data = (await res.json()) as { checkoutUrl: string; paymentId: string };
+      paymentIdRef.current = data.paymentId;
       window.open(data.checkoutUrl, '_blank', 'noopener,noreferrer');
       setCheckoutOpened(true);
     } catch {
@@ -48,54 +95,21 @@ export function GoalPayButton({ bookingId, lang, isSandbox, labels }: GoalPayBut
     }
   }
 
-  async function handleConfirm() {
-    setConfirming(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/payments/goalpay-callback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId }),
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-
-      router.push(`/${lang}/payment/success`);
-    } catch {
-      setError('Erreur lors de la confirmation. Réessaie.');
-      setConfirming(false);
-    }
-  }
-
   if (checkoutOpened) {
     return (
       <div className="space-y-3">
         <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800 text-center">
-          <p className="font-medium">Paiement GoalPay ouvert dans un nouvel onglet</p>
-          <p className="text-xs text-blue-600 mt-1">Complète le paiement dans l&apos;onglet GoalPay, puis reviens ici.</p>
+          <div className="flex items-center justify-center gap-2 font-medium">
+            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" aria-hidden="true" />
+            En attente de confirmation du paiement…
+          </div>
+          <p className="text-xs text-blue-600 mt-1">
+            Complète le paiement dans l&apos;onglet GoalPay. Cette page se met à jour automatiquement.
+          </p>
         </div>
 
-        {isSandbox && (
-          <button
-            onClick={handleConfirm}
-            disabled={confirming}
-            className="w-full flex items-center justify-center gap-2 rounded-xl bg-action px-4 py-3 text-sm font-semibold text-white shadow-sm hover:opacity-90 active:scale-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {confirming ? (
-              <>
-                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden="true" />
-                Confirmation en cours…
-              </>
-            ) : (
-              <>✓ J&apos;ai payé sur GoalPay — Confirmer</>
-            )}
-          </button>
-        )}
-
         <button
-          onClick={() => setCheckoutOpened(false)}
+          onClick={() => { setCheckoutOpened(false); confirmFiredRef.current = false; }}
           className="w-full text-xs text-gray-500 underline hover:text-gray-700"
         >
           Réouvrir GoalPay
