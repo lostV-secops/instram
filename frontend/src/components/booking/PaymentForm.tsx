@@ -68,10 +68,6 @@ const passengerSchema = z.object({
   seatCode: z.string().min(1),
 });
 
-const paymentSchema = z.object({
-  provider: z.enum(['MVOLA', 'ORANGE_MONEY', 'GOALPAY']),
-  payerPhone: z.string().optional(),
-});
 
 type PaymentStep = 'form' | 'instructions' | 'goalpay_pending' | 'confirmed' | 'failed';
 
@@ -99,9 +95,6 @@ export function PaymentForm({
     })),
   );
   const [provider, setProvider] = useState<PaymentProvider>('MVOLA');
-  const [payerPhone, setPayerPhone] = useState(
-    ownerProfile?.traveler?.mobileMoneyPhone ?? ownerProfile?.phone ?? '',
-  );
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // ─── État de la requête ─────────────────────────────────────────────────────
@@ -225,7 +218,6 @@ export function PaymentForm({
   }, [step, isSandbox, bookingId]);
 
   const providerFieldId = useId();
-  const payerPhoneFieldId = useId();
 
   // ─── Validation ─────────────────────────────────────────────────────────────
   function validate(): boolean {
@@ -242,18 +234,7 @@ export function PaymentForm({
       }
     });
 
-    // GoalPay : pas de numéro requis (géré côté GoalPay)
-    if (provider !== 'GOALPAY') {
-      const localDigits = payerPhone.startsWith('+261')
-        ? payerPhone.slice(4).replace(/\D/g, '')
-        : payerPhone.replace(/\D/g, '');
-      if (localDigits.length < 9) {
-        errs.payerPhone =
-          lang === 'fr'
-            ? 'Numéro invalide (ex. 34 00 000 00)'
-            : 'Laharana diso (ohatra : 34 00 000 00)';
-      }
-    }
+    // Paiement toujours via GoalPay — pas de numéro requis ici
 
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -281,7 +262,7 @@ export function PaymentForm({
             nationalIdRef: p.nationalIdRef || undefined,
             seatCode: p.seatCode,
           })),
-          contactPhone: payerPhone,
+          contactPhone: passengers[0]?.phone || undefined,
           preferredLang: lang.toUpperCase(),
         }),
       });
@@ -297,47 +278,21 @@ export function PaymentForm({
       const booking = (await bookingRes.json()) as Booking;
       setBookingId(booking.id);
 
-      // Étape 2 : Initier le paiement
-      if (provider === 'GOALPAY') {
-        const returnUrl = `${window.location.origin}/${lang}/payment/success?bookingId=${booking.id}`;
-        const gpRes = await fetch('/api/proxy/v1/payments/goalpay', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bookingId: booking.id, returnUrl }),
-        });
-        if (!gpRes.ok) {
-          throw new Error(`GoalPay init failed: ${gpRes.status}`);
-        }
-        const gpData = (await gpRes.json()) as { checkoutUrl: string; paymentId: string };
-        confirmFiredRef.current = false;
-        setGoalpayPaymentId(gpData.paymentId);
-        window.open(gpData.checkoutUrl, '_blank', 'noopener,noreferrer');
-        setStep('goalpay_pending');
-        return;
-      }
-
-      const paymentRes = await fetch('/api/proxy/v1/payments', {
+      // Étape 2 : Paiement via GoalPay (MVola · Orange · Airtel acceptés)
+      const returnUrl = `${window.location.origin}/${lang}/payment/success?bookingId=${booking.id}`;
+      const gpRes = await fetch('/api/proxy/v1/payments/goalpay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bookingId: booking.id,
-          provider,
-          payerPhone,
-        }),
+        body: JSON.stringify({ bookingId: booking.id, returnUrl }),
       });
-
-      if (!paymentRes.ok) {
-        if (paymentRes.status === 409) {
-          setNetworkError(t.booking.paymentExpired);
-        } else {
-          throw new Error(`Payment init failed: ${paymentRes.status}`);
-        }
-        return;
+      if (!gpRes.ok) {
+        throw new Error(`GoalPay init failed: ${gpRes.status}`);
       }
-
-      const payInit = (await paymentRes.json()) as PaymentInitiation;
-      setPaymentData(payInit);
-      setStep('instructions');
+      const gpData = (await gpRes.json()) as { checkoutUrl: string; paymentId: string };
+      confirmFiredRef.current = false;
+      setGoalpayPaymentId(gpData.paymentId);
+      window.open(gpData.checkoutUrl, '_blank', 'noopener,noreferrer');
+      setStep('goalpay_pending');
     } catch (err) {
       if (
         err instanceof TypeError &&
@@ -614,25 +569,11 @@ export function PaymentForm({
           </div>
         </fieldset>
 
-        {provider !== 'GOALPAY' && (
-          <PhoneInput
-            id={payerPhoneFieldId}
-            label={t.booking.payerPhone}
-            value={payerPhone}
-            onChange={setPayerPhone}
-            error={errors.payerPhone}
-            required
-            autoComplete="tel"
-          />
-        )}
-
-        {provider === 'GOALPAY' && (
-          <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-            {lang === 'fr'
-              ? 'Vous serez redirigé vers la page de paiement GoalPay (MVola · Orange · Airtel acceptés).'
-              : 'Haverina any amin\'ny pejin\'ny fandoavana GoalPay ianao (MVola · Orange · Airtel).'}
-          </p>
-        )}
+        <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+          {lang === 'fr'
+            ? 'Vous serez redirigé vers la page de paiement GoalPay (MVola · Orange · Airtel acceptés).'
+            : 'Haverina any amin\'ny pejin\'ny fandoavana GoalPay ianao (MVola · Orange · Airtel).'}
+        </p>
       </section>
 
       {/* Bouton confirmer — VERT TRANSACTIONNEL */}
