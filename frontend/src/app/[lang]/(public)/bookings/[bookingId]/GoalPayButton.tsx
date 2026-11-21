@@ -36,7 +36,8 @@ export function GoalPayButton({ bookingId, lang, isSandbox, labels }: GoalPayBut
         const data = (await res.json()) as { status: string };
         if (data.status === 'CONFIRMED') {
           clearInterval(interval);
-          router.push(`/${lang}/payment/success`);
+          router.push(`/${lang}/bookings/${bookingId}`);
+          router.refresh();
         }
       } catch {
         // Silencieux — on réessaie au prochain tick
