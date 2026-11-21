@@ -95,6 +95,9 @@ export function PaymentForm({
     })),
   );
   const [provider, setProvider] = useState<PaymentProvider>('MVOLA');
+  const [payerPhone, setPayerPhone] = useState(
+    ownerProfile?.traveler?.mobileMoneyPhone ?? ownerProfile?.phone ?? '',
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // ─── État de la requête ─────────────────────────────────────────────────────
@@ -179,23 +182,6 @@ export function PaymentForm({
     return () => clearInterval(interval);
   }, [step, goalpayPaymentId, bookingId, lang, router]);
 
-  // ─── Sandbox : auto-simulate pour Mvola/Orange Money après 3s ──────────────
-  useEffect(() => {
-    if (step !== 'instructions' || !isSandbox || !bookingId) return;
-
-    const timer = setTimeout(async () => {
-      try {
-        await fetch('/api/proxy/v1/dev/payments/simulate-success', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bookingId }),
-        });
-      } catch { /* Le WS détectera */ }
-    }, 3000);
-
-    return () => clearTimeout(timer);
-  }, [step, isSandbox, bookingId]);
-
   // ─── GoalPay sandbox : simulate-success au retour sur l'onglet ─────────────
   useEffect(() => {
     if (step !== 'goalpay_pending' || !isSandbox || !bookingId) return;
@@ -234,7 +220,18 @@ export function PaymentForm({
       }
     });
 
-    // Paiement toujours via GoalPay — pas de numéro requis ici
+    // Mvola/Orange Money en production : numéro payeur requis
+    if (provider !== 'GOALPAY' && !isSandbox) {
+      const localDigits = payerPhone.startsWith('+261')
+        ? payerPhone.slice(4).replace(/\D/g, '')
+        : payerPhone.replace(/\D/g, '');
+      if (localDigits.length < 9) {
+        errs.payerPhone =
+          lang === 'fr'
+            ? 'Numéro invalide (ex. 34 00 000 00)'
+            : 'Laharana diso (ohatra : 34 00 000 00)';
+      }
+    }
 
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -278,21 +275,56 @@ export function PaymentForm({
       const booking = (await bookingRes.json()) as Booking;
       setBookingId(booking.id);
 
-      // Étape 2 : Paiement via GoalPay (MVola · Orange · Airtel acceptés)
-      const returnUrl = `${window.location.origin}/${lang}/payment/success?bookingId=${booking.id}`;
-      const gpRes = await fetch('/api/proxy/v1/payments/goalpay', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId: booking.id, returnUrl }),
-      });
-      if (!gpRes.ok) {
-        throw new Error(`GoalPay init failed: ${gpRes.status}`);
+      // Étape 2 : Paiement selon le provider choisi
+      if (provider === 'GOALPAY') {
+        // GoalPay : ouvre un nouvel onglet, auto-confirm au retour
+        const returnUrl = `${window.location.origin}/${lang}/payment/success?bookingId=${booking.id}`;
+        const gpRes = await fetch('/api/proxy/v1/payments/goalpay', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bookingId: booking.id, returnUrl }),
+        });
+        if (!gpRes.ok) throw new Error(`GoalPay init failed: ${gpRes.status}`);
+        const gpData = (await gpRes.json()) as { checkoutUrl: string; paymentId: string };
+        confirmFiredRef.current = false;
+        setGoalpayPaymentId(gpData.paymentId);
+        window.open(gpData.checkoutUrl, '_blank', 'noopener,noreferrer');
+        setStep('goalpay_pending');
+      } else {
+        // Mvola / Orange Money
+        const phone = isSandbox
+          ? (passengers[0]?.phone || '034 00 000 00')
+          : payerPhone;
+        const paymentRes = await fetch('/api/proxy/v1/payments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bookingId: booking.id, provider, payerPhone: phone }),
+        });
+        if (!paymentRes.ok) {
+          if (paymentRes.status === 409) {
+            setNetworkError(t.booking.paymentExpired);
+          } else {
+            throw new Error(`Payment init failed: ${paymentRes.status}`);
+          }
+          return;
+        }
+        if (isSandbox) {
+          // Sandbox : confirmation immédiate, un clic suffit
+          await fetch('/api/proxy/v1/dev/payments/simulate-success', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bookingId: booking.id }),
+          });
+          setStep('confirmed');
+          const bid = booking.id;
+          setTimeout(() => router.push(`/${lang}/bookings/${bid}`), 1200);
+        } else {
+          // Production : afficher les instructions USSD
+          const payInit = (await paymentRes.json()) as PaymentInitiation;
+          setPaymentData(payInit);
+          setStep('instructions');
+        }
       }
-      const gpData = (await gpRes.json()) as { checkoutUrl: string; paymentId: string };
-      confirmFiredRef.current = false;
-      setGoalpayPaymentId(gpData.paymentId);
-      window.open(gpData.checkoutUrl, '_blank', 'noopener,noreferrer');
-      setStep('goalpay_pending');
     } catch (err) {
       if (
         err instanceof TypeError &&
@@ -569,11 +601,34 @@ export function PaymentForm({
           </div>
         </fieldset>
 
-        <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-          {lang === 'fr'
-            ? 'Vous serez redirigé vers la page de paiement GoalPay (MVola · Orange · Airtel acceptés).'
-            : 'Haverina any amin\'ny pejin\'ny fandoavana GoalPay ianao (MVola · Orange · Airtel).'}
-        </p>
+        {/* Mvola / Orange Money */}
+        {provider !== 'GOALPAY' && !isSandbox && (
+          <PhoneInput
+            label={t.booking.payerPhone}
+            value={payerPhone}
+            onChange={setPayerPhone}
+            error={errors.payerPhone}
+            required
+            autoComplete="tel"
+          />
+        )}
+
+        {provider !== 'GOALPAY' && isSandbox && (
+          <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+            {lang === 'fr'
+              ? '✓ Mode sandbox — le paiement sera confirmé automatiquement.'
+              : '✓ Mode sandbox — ny fandoavana dia hanamarina ho azy.'}
+          </p>
+        )}
+
+        {/* GoalPay */}
+        {provider === 'GOALPAY' && (
+          <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+            {lang === 'fr'
+              ? 'Vous serez redirigé vers la page de paiement GoalPay (MVola · Orange · Airtel acceptés).'
+              : 'Haverina any amin\'ny pejin\'ny fandoavana GoalPay ianao (MVola · Orange · Airtel).'}
+          </p>
+        )}
       </section>
 
       {/* Bouton confirmer — VERT TRANSACTIONNEL */}
