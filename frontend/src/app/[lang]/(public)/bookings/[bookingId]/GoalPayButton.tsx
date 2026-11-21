@@ -4,6 +4,7 @@ import { useState } from 'react';
 
 interface GoalPayButtonProps {
   bookingId: string;
+  lang: string;
   labels: {
     pay: string;
     sub: string;
@@ -12,7 +13,7 @@ interface GoalPayButtonProps {
   };
 }
 
-export function GoalPayButton({ bookingId, labels }: GoalPayButtonProps) {
+export function GoalPayButton({ bookingId, lang, labels }: GoalPayButtonProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,10 +21,11 @@ export function GoalPayButton({ bookingId, labels }: GoalPayButtonProps) {
     setLoading(true);
     setError(null);
     try {
+      const returnUrl = `${window.location.origin}/${lang}/payment/success?bookingId=${bookingId}`;
       const res = await fetch('/api/proxy/v1/payments/goalpay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId }),
+        body: JSON.stringify({ bookingId, returnUrl }),
       });
 
       if (!res.ok) {

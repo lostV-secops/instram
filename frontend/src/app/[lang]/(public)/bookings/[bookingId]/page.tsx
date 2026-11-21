@@ -296,6 +296,7 @@ export default async function BookingDetailPage({ params }: PageProps) {
           </h2>
           <GoalPayButton
             bookingId={booking.id}
+            lang={lang}
             labels={{
               pay: t.bookingDetail.payWithGoalPay,
               sub: t.bookingDetail.payWithGoalPaySub,

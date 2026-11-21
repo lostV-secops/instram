@@ -1,9 +1,11 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getTranslations, isValidLang } from '@/lib/i18n';
+import { GoalPayAutoConfirm } from './GoalPayAutoConfirm';
 
 interface PageProps {
   params: { lang: string };
+  searchParams: { bookingId?: string };
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -12,13 +14,16 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return { title: t.paymentResult.successTitle };
 }
 
-export default function PaymentSuccessPage({ params }: PageProps) {
+export default function PaymentSuccessPage({ params, searchParams }: PageProps) {
   const { lang } = params;
   if (!isValidLang(lang)) return null;
   const t = getTranslations(lang);
+  const { bookingId } = searchParams;
 
   return (
     <div className="max-w-sm mx-auto text-center space-y-6 py-16 px-4">
+      {bookingId && <GoalPayAutoConfirm bookingId={bookingId} />}
+
       <div
         className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-action/10"
         aria-hidden="true"

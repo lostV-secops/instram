@@ -749,6 +749,7 @@ export class PaymentsService {
   async initiateGoalPay(params: {
     bookingId: string;
     userId: string;
+    returnUrl?: string;
   }): Promise<GoalPayInitiationResponse> {
     const { bookingId, userId } = params;
 
@@ -821,6 +822,7 @@ export class PaymentsService {
           ? [{ label: 'Frais de service InsTRAM', unit_price: platformFeeMga, quantity: 1 }]
           : []),
       ],
+      ...(params.returnUrl ? { return_url: params.returnUrl } : {}),
     });
 
     const payment = await this.db.$transaction(async (tx) => {

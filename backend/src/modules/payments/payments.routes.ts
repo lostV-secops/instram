@@ -212,6 +212,7 @@ export default async function paymentsRoutes(fastify: FastifyInstance): Promise<
 
       const schema = z.object({
         bookingId: z.string().uuid({ message: 'bookingId doit être un UUID valide' }),
+        returnUrl: z.string().url().optional(),
       });
       const parseResult = schema.safeParse(req.body);
       if (!parseResult.success) {
@@ -225,6 +226,7 @@ export default async function paymentsRoutes(fastify: FastifyInstance): Promise<
         const result = await paymentsService.initiateGoalPay({
           bookingId: parseResult.data.bookingId,
           userId: getUserId(req),
+          returnUrl: parseResult.data.returnUrl,
         });
         return reply.status(201).send(result);
       } catch (err) {

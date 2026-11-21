@@ -28,6 +28,8 @@ export interface GoalPayOrderRequest {
     unit_price: number;
     quantity: number;
   }>;
+  return_url?: string;  // URL de redirection après paiement (success)
+  cancel_url?: string;  // URL de redirection après annulation
 }
 
 export interface GoalPayOrderResponse {
@@ -60,7 +62,7 @@ export async function createGoalPayOrder(
     throw Object.assign(new Error('GOALPAY_API_TOKEN non configuré'), { code: 'MISCONFIGURATION' });
   }
 
-  const body = {
+  const body: Record<string, unknown> = {
     description: req.description,
     access: token,
     reference: req.reference,
@@ -68,6 +70,8 @@ export async function createGoalPayOrder(
     currency: 'Ar',
     metadata: req.metadata,
   };
+  if (req.return_url) body['return_url'] = req.return_url;
+  if (req.cancel_url) body['cancel_url'] = req.cancel_url;
 
   const response = await fetch(`${GOALPAY_API_URL}${GOALPAY_PATH}`, {
     method: 'POST',
