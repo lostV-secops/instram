@@ -126,7 +126,7 @@ export function createMobileMoneyGateway(
  * En prod : vrais adaptateurs MVola + Orange Money.
  */
 export function buildGatewayMap(redis: import('ioredis').Redis): Map<string, MobileMoneyGateway> {
-  const useSandbox = process.env.NODE_ENV !== 'production';
+  const useSandbox = process.env.NODE_ENV !== 'production' || process.env.GOALPAY_SANDBOX === 'true';
 
   if (useSandbox) {
     return new Map<string, MobileMoneyGateway>([
