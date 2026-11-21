@@ -435,7 +435,7 @@ export class PaymentsService {
   // Architecture §2.7 : worker payment.reconcile (toutes les 5 min)
   // ------------------------------------------------------------------
 
-  async reconcilePending(): Promise<{ checked: number; confirmed: number; failed: number }> {
+  async reconcilePending(): Promise<{ checked: number; confirmed: number; failed: number; expired: number }> {
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
 
     // Paiements PENDING initiés il y a plus de 5 min et sans providerTransactionId confirmé
@@ -519,7 +519,82 @@ export class PaymentsService {
       }
     }
 
-    return { checked: pendingPayments.length, confirmed, failed };
+    // Expirer les réservations abandonnées (PENDING_PAYMENT > 30 min sans paiement actif)
+    const expired = await this.expireStaleBookings();
+
+    return { checked: pendingPayments.length, confirmed, failed, expired };
+  }
+
+  // ------------------------------------------------------------------
+  // expireStaleBookings — Expire les réservations PENDING_PAYMENT abandonnées
+  // Appelé automatiquement depuis reconcilePending() toutes les 5 minutes.
+  // Délai : 30 minutes sans paiement confirmé → PAYMENT_EXPIRED
+  // ------------------------------------------------------------------
+
+  async expireStaleBookings(): Promise<number> {
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+
+    // Réservations PENDING_PAYMENT créées il y a plus de 30 min
+    // sans paiement PENDING ou CONFIRMED actif
+    const staleBookings = await this.db.booking.findMany({
+      where: {
+        status: BookingStatus.PENDING_PAYMENT,
+        createdAt: { lt: thirtyMinutesAgo },
+        payments: {
+          none: {
+            status: { in: [PaymentStatus.PENDING, PaymentStatus.CONFIRMED, PaymentStatus.INITIATED] },
+          },
+        },
+      },
+      include: {
+        seatHolds: { where: { releasedAt: null } },
+      },
+    });
+
+    for (const booking of staleBookings) {
+      await this.db.$transaction(async (tx) => {
+        await tx.booking.update({
+          where: { id: booking.id },
+          data: { status: BookingStatus.PAYMENT_EXPIRED },
+        });
+
+        await tx.seatHold.updateMany({
+          where: { bookingId: booking.id, releasedAt: null },
+          data: { releasedAt: new Date(), expiresAt: new Date() },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            action: AuditAction.PAYMENT_FAILED,
+            entityType: 'Booking',
+            entityId: booking.id,
+            after: { source: 'expireStaleBookings', status: 'PAYMENT_EXPIRED' },
+          },
+        });
+      });
+
+      // Libérer les sièges en temps réel
+      const seatIds = booking.seatHolds.map((h) => h.seatDefinitionId);
+      if (seatIds.length > 0) {
+        await this.redis.publish(
+          `trip:${booking.tripInstanceId}`,
+          JSON.stringify({
+            event: 'SEAT_RELEASED',
+            tripInstanceId: booking.tripInstanceId,
+            seatDefinitionIds: seatIds,
+            bookingId: booking.id,
+          }),
+        );
+      }
+    }
+
+    if (staleBookings.length > 0) {
+      process.stdout.write(
+        `[expireStaleBookings] ${staleBookings.length} réservation(s) expirée(s)\n`,
+      );
+    }
+
+    return staleBookings.length;
   }
 
   // ------------------------------------------------------------------
