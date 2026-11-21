@@ -297,6 +297,7 @@ export default async function BookingDetailPage({ params }: PageProps) {
           <GoalPayButton
             bookingId={booking.id}
             lang={lang}
+            isSandbox={process.env.GOALPAY_SANDBOX === 'true'}
             labels={{
               pay: t.bookingDetail.payWithGoalPay,
               sub: t.bookingDetail.payWithGoalPaySub,
