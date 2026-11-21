@@ -534,15 +534,24 @@ export class PaymentsService {
   async expireStaleBookings(): Promise<number> {
     const fourMinutesAgo = new Date(Date.now() - 4 * 60 * 1000);
 
-    // Réservations PENDING_PAYMENT créées il y a plus de 4 min
-    // sans paiement PENDING ou CONFIRMED actif
+    // Expirer les réservations PENDING_PAYMENT de plus de 4 min qui n'ont :
+    //   - aucun paiement CONFIRMED (paiement réussi)
+    //   - aucun paiement PENDING/INITIATED initié récemment (< 4 min)
+    // Cela couvre MVola/Orange Money (sans paiement actif) ET GoalPay
+    // (paiement PENDING mais initié il y a > 4 min = utilisateur a abandonné).
     const staleBookings = await this.db.booking.findMany({
       where: {
         status: BookingStatus.PENDING_PAYMENT,
         createdAt: { lt: fourMinutesAgo },
         payments: {
           none: {
-            status: { in: [PaymentStatus.PENDING, PaymentStatus.CONFIRMED, PaymentStatus.INITIATED] },
+            OR: [
+              { status: PaymentStatus.CONFIRMED },
+              {
+                status: { in: [PaymentStatus.PENDING, PaymentStatus.INITIATED] },
+                initiatedAt: { gt: fourMinutesAgo },
+              },
+            ],
           },
         },
       },
