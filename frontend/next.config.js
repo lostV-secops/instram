@@ -22,6 +22,14 @@ const apiRemotePattern = (() => {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Expose le flag sandbox aux composants client via process.env
+  env: {
+    NEXT_PUBLIC_GOALPAY_SANDBOX:
+      process.env.GOALPAY_SANDBOX === 'true' ||
+      process.env.NEXT_PUBLIC_GOALPAY_SANDBOX === 'true'
+        ? 'true'
+        : 'false',
+  },
   // Image Docker (Dokploy) : sortie standalone. Vercel ne définit pas cette
   // variable et garde son build par défaut (standalone incompatible).
   ...(process.env.NEXT_OUTPUT === 'standalone' ? { output: 'standalone' } : {}),
