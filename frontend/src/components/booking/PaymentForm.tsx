@@ -55,7 +55,7 @@ interface PaymentFormProps {
   userId: string | null;
   /** Profil du compte connecté — pré-remplit le premier siège */
   ownerProfile?: Me | null;
-  /** Mode sandbox GoalPay — confirmation automatique au retour sur l'onglet */
+  /** Mode sandbox — ignoré si NEXT_PUBLIC_GOALPAY_SANDBOX=true */
   isSandbox?: boolean;
 }
 
@@ -79,8 +79,10 @@ export function PaymentForm({
   wsToken,
   userId,
   ownerProfile,
-  isSandbox,
+  isSandbox: isSandboxProp,
 }: PaymentFormProps) {
+  // NEXT_PUBLIC_ est disponible côté client ; le prop est le fallback serveur
+  const isSandbox = process.env.NEXT_PUBLIC_GOALPAY_SANDBOX === 'true' || isSandboxProp === true;
   const t = useTranslations();
   const router = useRouter();
 

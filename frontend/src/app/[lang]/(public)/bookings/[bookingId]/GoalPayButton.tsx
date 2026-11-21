@@ -15,7 +15,8 @@ interface GoalPayButtonProps {
   };
 }
 
-export function GoalPayButton({ bookingId, lang, isSandbox, labels }: GoalPayButtonProps) {
+export function GoalPayButton({ bookingId, lang, isSandbox: isSandboxProp, labels }: GoalPayButtonProps) {
+  const isSandbox = process.env.NEXT_PUBLIC_GOALPAY_SANDBOX === 'true' || isSandboxProp === true;
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [checkoutOpened, setCheckoutOpened] = useState(false);
