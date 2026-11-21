@@ -27,8 +27,11 @@ import { useWebSocket } from '@/lib/ws';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import PhoneInput from '@/components/ui/PhoneInput';
+import Link from 'next/link';
+import { QrCodeCanvas } from '@/components/ui/QrCodeCanvas';
 import type {
   Booking,
+  BookingDetail,
   Me,
   PaymentInitiation,
   SeatHoldResponse,
@@ -108,6 +111,7 @@ export function PaymentForm({
   const [networkError, setNetworkError] = useState<string | null>(null);
   const [paymentData, setPaymentData] = useState<PaymentInitiation | null>(null);
   const [bookingId, setBookingId] = useState<string | null>(null);
+  const [confirmedBooking, setConfirmedBooking] = useState<BookingDetail | null>(null);
   const [goalpayPaymentId, setGoalpayPaymentId] = useState<string | null>(null);
   const confirmFiredRef = useRef(false);
 
@@ -310,16 +314,24 @@ export function PaymentForm({
           }
           return;
         }
-        if (isSandbox) {
-          // Sandbox : confirmation immédiate, un clic suffit
-          await fetch('/api/proxy/v1/dev/payments/simulate-success', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bookingId: booking.id }),
-          });
+
+        // Toujours tenter la confirmation sandbox.
+        // Si l'endpoint n'existe pas (prod sans GOALPAY_SANDBOX) → 404 → USSD.
+        const simRes = await fetch('/api/proxy/v1/dev/payments/simulate-success', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bookingId: booking.id }),
+        });
+
+        if (simRes.ok) {
+          // Sandbox/dev : récupérer le détail pour afficher le billet
+          const detailRes = await fetch(`/api/proxy/v1/bookings/${booking.id}`, { cache: 'no-store' });
+          if (detailRes.ok) {
+            const detail = (await detailRes.json()) as BookingDetail;
+            setConfirmedBooking(detail);
+          }
+          setBookingId(booking.id);
           setStep('confirmed');
-          const bid = booking.id;
-          setTimeout(() => router.push(`/${lang}/bookings/${bid}`), 1200);
         } else {
           // Production : afficher les instructions USSD
           const payInit = (await paymentRes.json()) as PaymentInitiation;
@@ -454,15 +466,54 @@ export function PaymentForm({
     );
   }
 
-  // ─── Rendu : Confirmation ────────────────────────────────────────────────────
+  // ─── Rendu : Confirmation (billet affiché directement) ──────────────────────
   if (step === 'confirmed') {
+    const ticket = confirmedBooking?.ticket;
+    const bid = bookingId ?? confirmedBooking?.id;
     return (
-      <div
-        role="status"
-        className="bg-green-50 border border-green-400 text-green-800 rounded-xl p-5 text-center"
-      >
-        <p className="text-xl font-bold">{t.booking.paymentSuccess}</p>
-        <p className="text-sm mt-1">{t.booking.bookingConfirmed}</p>
+      <div role="status" className="space-y-4">
+        <div className="bg-green-50 border border-green-400 text-green-800 rounded-xl p-4 text-center">
+          <p className="text-lg font-bold">{t.booking.paymentSuccess}</p>
+          <p className="text-sm mt-1">{t.booking.bookingConfirmed}</p>
+        </div>
+
+        {ticket && (
+          <div className="bg-white rounded-xl border border-brand p-4 text-center space-y-3">
+            <p className="text-xs font-semibold text-brand-dark uppercase tracking-wide">
+              {t.bookingDetail?.ticket ?? 'Billet'}
+            </p>
+            {ticket.qrPayload && (
+              <div className="flex justify-center">
+                <QrCodeCanvas
+                  payload={ticket.qrPayload}
+                  size={200}
+                  alt={`QR code billet ${confirmedBooking?.reference}`}
+                  downloadFilename={`qr-${confirmedBooking?.reference}`}
+                  downloadLabel={t.bookingDetail?.downloadPng ?? 'Télécharger PNG'}
+                />
+              </div>
+            )}
+            <p className="font-mono text-2xl font-bold text-brand-dark tracking-widest">
+              {confirmedBooking?.reference}
+            </p>
+            <a
+              href={`/api/proxy/v1/bookings/${bid}/ticket.pdf`}
+              download={`billet-${confirmedBooking?.reference}.pdf`}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:opacity-90 transition-opacity"
+            >
+              ↓ {t.bookingDetail?.downloadPdf ?? 'Télécharger PDF'}
+            </a>
+          </div>
+        )}
+
+        {bid && (
+          <Link
+            href={`/${lang}/bookings/${bid}`}
+            className="block text-center text-sm text-brand underline hover:text-brand-dark"
+          >
+            {lang === 'fr' ? 'Voir le détail de ma réservation →' : 'Jereo ny antsipiriany →'}
+          </Link>
+        )}
       </div>
     );
   }
