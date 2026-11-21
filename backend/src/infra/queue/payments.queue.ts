@@ -16,7 +16,7 @@ import type { Redis } from 'ioredis';
 // =====================================================================
 
 const QUEUE_NAME = 'payment.reconcile';
-const RECONCILE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const RECONCILE_INTERVAL_MS = 1 * 60 * 1000; // 1 minute
 
 let _reconcileQueue: Queue | undefined;
 
