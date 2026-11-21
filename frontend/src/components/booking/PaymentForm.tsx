@@ -67,7 +67,7 @@ const passengerSchema = z.object({
 });
 
 const paymentSchema = z.object({
-  provider: z.enum(['MVOLA', 'ORANGE_MONEY', 'GOALPAY']),
+  provider: z.enum(['MVOLA', 'ORANGE_MONEY']),
   payerPhone: z.string().optional(),
 });
 
@@ -178,17 +178,14 @@ export function PaymentForm({
       }
     });
 
-    // GoalPay : pas de numéro requis (GoalPay gère ça sur sa page)
-    if (provider !== 'GOALPAY') {
-      const localDigits = payerPhone.startsWith('+261')
-        ? payerPhone.slice(4).replace(/\D/g, '')
-        : payerPhone.replace(/\D/g, '');
-      if (localDigits.length < 9) {
-        errs.payerPhone =
-          lang === 'fr'
-            ? 'Numéro invalide (ex. 34 00 000 00)'
-            : 'Laharana diso (ohatra : 34 00 000 00)';
-      }
+    const localDigits = payerPhone.startsWith('+261')
+      ? payerPhone.slice(4).replace(/\D/g, '')
+      : payerPhone.replace(/\D/g, '');
+    if (localDigits.length < 9) {
+      errs.payerPhone =
+        lang === 'fr'
+          ? 'Numéro invalide (ex. 34 00 000 00)'
+          : 'Laharana diso (ohatra : 34 00 000 00)';
     }
 
     setErrors(errs);
@@ -234,21 +231,6 @@ export function PaymentForm({
       setBookingId(booking.id);
 
       // Étape 2 : Initier le paiement
-      if (provider === 'GOALPAY') {
-        // GoalPay : redirection vers la page de paiement hébergée GoalPay
-        const gpRes = await fetch('/api/proxy/v1/payments/goalpay', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bookingId: booking.id }),
-        });
-        if (!gpRes.ok) {
-          throw new Error(`GoalPay init failed: ${gpRes.status}`);
-        }
-        const gpData = (await gpRes.json()) as { checkoutUrl: string };
-        window.location.href = gpData.checkoutUrl;
-        return;
-      }
-
       const paymentRes = await fetch('/api/proxy/v1/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -489,7 +471,7 @@ export function PaymentForm({
         <fieldset>
           <legend className="sr-only">{t.booking.paymentMethod}</legend>
           <div className="flex gap-2 flex-wrap">
-            {(['MVOLA', 'ORANGE_MONEY', 'GOALPAY'] as const).map((p) => (
+            {(['MVOLA', 'ORANGE_MONEY'] as const).map((p) => (
               <label
                 key={p}
                 className={[
@@ -507,40 +489,21 @@ export function PaymentForm({
                   onChange={() => setProvider(p as PaymentProvider)}
                   className="sr-only"
                 />
-                {p === 'MVOLA' ? t.booking.mvola
-                  : p === 'ORANGE_MONEY' ? t.booking.orangeMoney
-                  : (
-                    <span className="flex flex-col items-center gap-0.5">
-                      <span>{t.booking.goalpay}</span>
-                      <span className="text-[10px] font-normal opacity-70">{t.booking.goalpaySubtitle}</span>
-                    </span>
-                  )
-                }
+                {p === 'MVOLA' ? t.booking.mvola : t.booking.orangeMoney}
               </label>
             ))}
           </div>
         </fieldset>
 
-        {/* Numéro payeur — masqué pour GoalPay (géré côté GoalPay) */}
-        {provider !== 'GOALPAY' && (
-          <PhoneInput
-            id={payerPhoneFieldId}
-            label={t.booking.payerPhone}
-            value={payerPhone}
-            onChange={setPayerPhone}
-            error={errors.payerPhone}
-            required
-            autoComplete="tel"
-          />
-        )}
-
-        {provider === 'GOALPAY' && (
-          <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-            {t.booking.goalpaySubtitle} — {lang === 'fr'
-              ? 'Vous serez redirigé vers la page de paiement GoalPay.'
-              : 'Haverina any amin\'ny pejin\'ny fandoavana GoalPay ianao.'}
-          </p>
-        )}
+        <PhoneInput
+          id={payerPhoneFieldId}
+          label={t.booking.payerPhone}
+          value={payerPhone}
+          onChange={setPayerPhone}
+          error={errors.payerPhone}
+          required
+          autoComplete="tel"
+        />
       </section>
 
       {/* Bouton confirmer — VERT TRANSACTIONNEL */}
