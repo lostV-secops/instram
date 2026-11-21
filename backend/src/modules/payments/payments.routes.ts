@@ -290,7 +290,7 @@ export default async function paymentsRoutes(fastify: FastifyInstance): Promise<
   // Confirme instantanément un paiement PENDING sans passer par le provider.
   // Protégé : disponible uniquement si NODE_ENV !== 'production'.
   // ------------------------------------------------------------------
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production' || process.env.GOALPAY_SANDBOX === 'true') {
     fastify.post(
       '/dev/payments/simulate-success',
       { onRequest: [fastify.authenticate] },

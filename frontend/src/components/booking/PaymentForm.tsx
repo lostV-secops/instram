@@ -186,6 +186,23 @@ export function PaymentForm({
     return () => clearInterval(interval);
   }, [step, goalpayPaymentId, bookingId, lang, router]);
 
+  // ─── Sandbox : auto-simulate pour Mvola/Orange Money après 3s ──────────────
+  useEffect(() => {
+    if (step !== 'instructions' || !isSandbox || !bookingId) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        await fetch('/api/proxy/v1/dev/payments/simulate-success', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bookingId }),
+        });
+      } catch { /* Le WS détectera */ }
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [step, isSandbox, bookingId]);
+
   // ─── GoalPay sandbox : simulate-success au retour sur l'onglet ─────────────
   useEffect(() => {
     if (step !== 'goalpay_pending' || !isSandbox || !bookingId) return;
@@ -342,7 +359,7 @@ export function PaymentForm({
         ? paymentData.instructions.messageMg
         : paymentData.instructions.messageFr;
 
-    const isDev = process.env.NODE_ENV === 'development';
+    const showSimulate = process.env.NODE_ENV === 'development' || isSandbox;
 
     const handleDevSimulate = async () => {
       if (!bookingId) return;
@@ -409,7 +426,7 @@ export function PaymentForm({
           {t.booking.paymentPending}
         </div>
 
-        {isDev && (
+        {showSimulate && (
           <button
             type="button"
             onClick={handleDevSimulate}
