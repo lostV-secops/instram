@@ -169,6 +169,7 @@ export default async function BookingNewPage({
         wsToken={wsToken}
         userId={userInfo?.id ?? null}
         ownerProfile={ownerProfile}
+        isSandbox={process.env.GOALPAY_SANDBOX === 'true'}
       />
     </div>
   );

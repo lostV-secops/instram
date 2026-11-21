@@ -55,6 +55,8 @@ interface PaymentFormProps {
   userId: string | null;
   /** Profil du compte connecté — pré-remplit le premier siège */
   ownerProfile?: Me | null;
+  /** Mode sandbox GoalPay — confirmation automatique au retour sur l'onglet */
+  isSandbox?: boolean;
 }
 
 // ─── Validation Zod ───────────────────────────────────────────────────────────
@@ -71,7 +73,7 @@ const paymentSchema = z.object({
   payerPhone: z.string().optional(),
 });
 
-type PaymentStep = 'form' | 'instructions' | 'confirmed' | 'failed';
+type PaymentStep = 'form' | 'instructions' | 'goalpay_pending' | 'confirmed' | 'failed';
 
 export function PaymentForm({
   holdId,
@@ -81,6 +83,7 @@ export function PaymentForm({
   wsToken,
   userId,
   ownerProfile,
+  isSandbox,
 }: PaymentFormProps) {
   const t = useTranslations();
   const router = useRouter();
@@ -107,6 +110,8 @@ export function PaymentForm({
   const [networkError, setNetworkError] = useState<string | null>(null);
   const [paymentData, setPaymentData] = useState<PaymentInitiation | null>(null);
   const [bookingId, setBookingId] = useState<string | null>(null);
+  const [goalpayPaymentId, setGoalpayPaymentId] = useState<string | null>(null);
+  const confirmFiredRef = useRef(false);
 
   // ─── Libération automatique du hold à l'abandon ────────────────────────────
   // Garde les valeurs dans des refs pour éviter les stale closures du cleanup.
@@ -159,6 +164,48 @@ export function PaymentForm({
       setNetworkError(t.booking.errorPayment);
     }
   }, [lastEvent, bookingId, lang, router, t.booking.errorPayment]);
+
+  // ─── GoalPay : polling statut paiement toutes les 3s ───────────────────────
+  useEffect(() => {
+    if (step !== 'goalpay_pending' || !goalpayPaymentId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/proxy/v1/payments/${goalpayPaymentId}`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = (await res.json()) as { status: string; booking?: { id: string } };
+        if (data.status === 'CONFIRMED') {
+          clearInterval(interval);
+          setStep('confirmed');
+          const bid = bookingId;
+          if (bid) setTimeout(() => router.push(`/${lang}/bookings/${bid}`), 1200);
+        }
+      } catch { /* silencieux */ }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [step, goalpayPaymentId, bookingId, lang, router]);
+
+  // ─── GoalPay sandbox : simulate-success au retour sur l'onglet ─────────────
+  useEffect(() => {
+    if (step !== 'goalpay_pending' || !isSandbox || !bookingId) return;
+
+    const handleVisibility = async () => {
+      if (document.hidden) return;
+      if (confirmFiredRef.current) return;
+      confirmFiredRef.current = true;
+      try {
+        await fetch('/api/payments/goalpay-callback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bookingId }),
+        });
+      } catch { /* le polling détectera */ }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [step, isSandbox, bookingId]);
 
   const providerFieldId = useId();
   const payerPhoneFieldId = useId();
@@ -235,16 +282,20 @@ export function PaymentForm({
 
       // Étape 2 : Initier le paiement
       if (provider === 'GOALPAY') {
+        const returnUrl = `${window.location.origin}/${lang}/payment/success?bookingId=${booking.id}`;
         const gpRes = await fetch('/api/proxy/v1/payments/goalpay', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bookingId: booking.id }),
+          body: JSON.stringify({ bookingId: booking.id, returnUrl }),
         });
         if (!gpRes.ok) {
           throw new Error(`GoalPay init failed: ${gpRes.status}`);
         }
-        const gpData = (await gpRes.json()) as { checkoutUrl: string };
-        window.location.href = gpData.checkoutUrl;
+        const gpData = (await gpRes.json()) as { checkoutUrl: string; paymentId: string };
+        confirmFiredRef.current = false;
+        setGoalpayPaymentId(gpData.paymentId);
+        window.open(gpData.checkoutUrl, '_blank', 'noopener,noreferrer');
+        setStep('goalpay_pending');
         return;
       }
 
@@ -367,6 +418,32 @@ export function PaymentForm({
             🧪 [DEV] Simuler paiement reçu
           </button>
         )}
+      </div>
+    );
+  }
+
+  // ─── Rendu : Attente GoalPay ─────────────────────────────────────────────────
+  if (step === 'goalpay_pending') {
+    return (
+      <div className="rounded-xl border border-blue-200 bg-blue-50 p-5 space-y-3 text-center">
+        <div className="flex items-center justify-center gap-2 text-blue-800 font-medium">
+          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" aria-hidden="true" />
+          En attente de confirmation du paiement…
+        </div>
+        <p className="text-xs text-blue-600">
+          Complète le paiement dans l&apos;onglet GoalPay. Cette page se met à jour automatiquement.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            if (goalpayPaymentId) {
+              window.open(`https://goalpay.pro`, '_blank', 'noopener,noreferrer');
+            }
+          }}
+          className="text-xs text-blue-700 underline hover:text-blue-900"
+        >
+          Réouvrir GoalPay
+        </button>
       </div>
     );
   }
