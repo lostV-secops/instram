@@ -10,7 +10,7 @@
  * - Bouton de déconnexion
  */
 
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { Badge } from '@/components/ui/Badge';
 import type { AdminRole } from '@/lib/types';
 
@@ -34,6 +34,8 @@ interface AdminHeaderProps {
 
 export function AdminHeader({ onMenuToggle, role, pageTitle }: AdminHeaderProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const lang = pathname.startsWith('/mg') ? 'mg' : 'fr';
 
   const handleLogout = async () => {
     try {
@@ -41,7 +43,7 @@ export function AdminHeader({ onMenuToggle, role, pageTitle }: AdminHeaderProps)
     } catch {
       // Ignorer l'erreur réseau — la session sera invalide de toute façon
     }
-    router.push('/fr/auth/login');
+    router.push(`/${lang}/auth/login`);
   };
 
   return (

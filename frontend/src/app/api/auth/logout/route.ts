@@ -43,9 +43,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     expires: new Date(0),
   };
 
-  // Redirection vers l'accueil après déconnexion
+  // Redirection vers login dans la langue courante après déconnexion
+  const locale = request.cookies.get('NEXT_LOCALE')?.value === 'mg' ? 'mg' : 'fr';
   const response = NextResponse.redirect(
-    new URL('/', request.url),
+    new URL(`/${locale}/auth/login`, request.url),
     { status: 303 },
   );
 

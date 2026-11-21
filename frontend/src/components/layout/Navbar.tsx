@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations, useLang } from '@/components/TranslationsProvider';
 
 interface NavbarProps {
@@ -15,7 +15,17 @@ export function Navbar({ isAuthenticated = false, userFirstName, userRoles = [] 
   const t = useTranslations();
   const lang = useLang();
   const pathname = usePathname();
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // Ignorer l'erreur réseau
+    }
+    router.push(`/${lang}/auth/login`);
+  };
 
   const coopRoles = ['COOP_ADMIN', 'COOP_ASSISTANT', 'COOP_DRIVER', 'COOP_CONTROLLER'];
   const hasCoopAccess = isAuthenticated && userRoles.some((r) => coopRoles.includes(r));
@@ -100,11 +110,13 @@ export function Navbar({ isAuthenticated = false, userFirstName, userRoles = [] 
               {userFirstName && (
                 <span className="text-white/80 text-sm">{userFirstName}</span>
               )}
-              <form action="/api/auth/logout" method="POST">
-                <button type="submit" className="text-white/90 hover:text-white text-sm transition-colors">
-                  {t.common.logout}
-                </button>
-              </form>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="text-white/90 hover:text-white text-sm transition-colors"
+              >
+                {t.common.logout}
+              </button>
             </div>
           ) : (
             <div className="flex items-center gap-2">
@@ -190,15 +202,13 @@ export function Navbar({ isAuthenticated = false, userFirstName, userRoles = [] 
               {userFirstName && (
                 <p className="pt-2 text-white/60 text-xs">{userFirstName}</p>
               )}
-              <form action="/api/auth/logout" method="POST">
-                <button
-                  type="submit"
-                  className="w-full text-left py-2.5 text-white/90 hover:text-white text-sm"
-                  onClick={closeMenu}
-                >
-                  {t.common.logout}
-                </button>
-              </form>
+              <button
+                type="button"
+                onClick={() => { closeMenu(); handleLogout(); }}
+                className="w-full text-left py-2.5 text-white/90 hover:text-white text-sm"
+              >
+                {t.common.logout}
+              </button>
             </>
           ) : (
             <>
