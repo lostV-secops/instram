@@ -13,8 +13,9 @@ backend/coverage/
 
 # Toute variante de fichier d'environnement sauf les exemples
 *.env
-.env.dokploy
+.env.*
 !*.env.example
+!.env.*.example
 
 # Playwright — sessions sauvegardées (contiennent des tokens JWT)
 frontend/e2e/.auth/
