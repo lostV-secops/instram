@@ -532,14 +532,14 @@ export class PaymentsService {
   // ------------------------------------------------------------------
 
   async expireStaleBookings(): Promise<number> {
-    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
 
-    // Réservations PENDING_PAYMENT créées il y a plus de 30 min
+    // Réservations PENDING_PAYMENT créées il y a plus de 5 min
     // sans paiement PENDING ou CONFIRMED actif
     const staleBookings = await this.db.booking.findMany({
       where: {
         status: BookingStatus.PENDING_PAYMENT,
-        createdAt: { lt: thirtyMinutesAgo },
+        createdAt: { lt: fiveMinutesAgo },
         payments: {
           none: {
             status: { in: [PaymentStatus.PENDING, PaymentStatus.CONFIRMED, PaymentStatus.INITIATED] },
