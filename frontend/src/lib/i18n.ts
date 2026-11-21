@@ -56,3 +56,46 @@ export function cityName(
 export function dateLocale(lang: string): string {
   return lang === 'mg' ? 'mg-MG' : 'fr-FR';
 }
+
+// Fuseau horaire Madagascar (UTC+3)
+const TZ_MG = 'Indian/Antananarivo';
+
+/** Formate une heure ISO en HH:mm heure malgache. */
+export function formatTimeMG(isoDate: string, lang = 'fr'): string {
+  try {
+    return new Date(isoDate).toLocaleTimeString(dateLocale(lang), {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: TZ_MG,
+    });
+  } catch {
+    return isoDate;
+  }
+}
+
+/** Formate une date+heure ISO en date + HH:mm heure malgache. */
+export function formatDateTimeMG(isoDate: string, lang = 'fr'): string {
+  try {
+    return new Date(isoDate).toLocaleString(dateLocale(lang), {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: TZ_MG,
+    });
+  } catch {
+    return isoDate;
+  }
+}
+
+/** Formate une date ISO en date courte heure malgache. */
+export function formatDateMG(isoDate: string, lang = 'fr', options?: Intl.DateTimeFormatOptions): string {
+  try {
+    return new Date(isoDate).toLocaleDateString(dateLocale(lang), {
+      timeZone: TZ_MG,
+      ...options,
+    });
+  } catch {
+    return isoDate;
+  }
+}

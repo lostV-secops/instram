@@ -6,6 +6,7 @@
 import Link from 'next/link';
 import { Badge } from '@/components/ui/Badge';
 import type { TripStatus } from '@/lib/types';
+import { formatDateTimeMG } from '@/lib/i18n';
 
 interface TripRowProps {
   tripId: string;
@@ -51,16 +52,7 @@ function statusVariant(
 }
 
 function formatTime(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString('fr-MG', {
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return iso;
-  }
+  return formatDateTimeMG(iso, 'fr');
 }
 
 export function TripRow({

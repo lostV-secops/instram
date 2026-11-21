@@ -7,6 +7,7 @@ import Link from 'next/link';
 import type { TripSearchResult } from '@/lib/types';
 import type { Lang } from '@/lib/types';
 import type { Translations } from '@/lib/i18n';
+import { formatTimeMG } from '@/lib/i18n';
 
 interface TripCardProps {
   trip: TripSearchResult;
@@ -22,15 +23,8 @@ function formatDuration(minutes: number, t: Translations): string {
   return m > 0 ? `${h}${t.search.hours} ${m}${t.search.min}` : `${h}${t.search.hours}`;
 }
 
-function formatTime(isoDate: string): string {
-  try {
-    return new Date(isoDate).toLocaleTimeString('fr-MG', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return isoDate;
-  }
+function formatTime(isoDate: string, lang: Lang): string {
+  return formatTimeMG(isoDate, lang);
 }
 
 function formatMGA(amount: number): string {
@@ -85,7 +79,7 @@ export function TripCard({ trip, lang, t, passengers }: TripCardProps) {
       <div className="flex items-center gap-3 mb-3">
         <div className="text-center">
           <p className="text-xl font-bold text-gray-900 tabular-nums">
-            {formatTime(departureAt)}
+            {formatTime(departureAt, lang)}
           </p>
           <p className="text-xs text-gray-500">{t.search.departure}</p>
         </div>
@@ -103,7 +97,7 @@ export function TripCard({ trip, lang, t, passengers }: TripCardProps) {
         {arrivalEstimatedAt && (
           <div className="text-center">
             <p className="text-xl font-bold text-gray-900 tabular-nums">
-              {formatTime(arrivalEstimatedAt)}
+              {formatTime(arrivalEstimatedAt, lang)}
             </p>
             <p className="text-xs text-gray-500">{t.search.arrival}</p>
           </div>
